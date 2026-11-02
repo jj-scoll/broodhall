@@ -1,0 +1,153 @@
+# Frozen guard corpus: <legacy kind> TAB <current kind> TAB <command> (\n in the command = newline).
+# legacy = decideLegacy (the shipped bash rules), current = decide(). Each row runs with fresh
+# session state. A row where the two columns differ is an intentional divergence from the bash
+# original; change the second column first and watch the test fail before touching decide().
+allow	allow	ls -la
+allow	allow	docker ps -a
+block:dangerous:rm -rf /	block:dangerous:rm -rf /	rm -rf /
+block:dangerous:rm -rf ~	block:dangerous:rm -rf ~	rm -rf ~
+block:dangerous:rm -rf $HOME	block:dangerous:rm -rf $HOME	rm -rf $HOME
+block:dangerous:rm -rf /	block:dangerous:rm -rf /	sudo rm -rf /
+block:dangerous:rm -rf /	block:dangerous:rm -rf /	cd x && rm -rf /
+block:dangerous:rm -rf /	block:dangerous:rm -rf /	rm -rf /*
+block:dangerous:rm -rf /	allow	rm -rf /tmp/claude-1000/-home-user-ask/abc/scratchpad/work
+block:dangerous:rm -rf /	allow	rm -rf /home/user/src/claude-tools-wt/guards/build
+block:dangerous:rm -rf /	allow	rm -rf /nix/store/abc-foo.drv
+block:dangerous:rm -rf ~	allow	rm -rf ~/.cache/some-tool
+block:dangerous:rm -rf $HOME	allow	rm -rf $HOME/projects/x/node_modules
+block:dangerous:rm -rf /	allow	echo rm -rf /
+block:dangerous:git push --force	block:dangerous:git push --force	git push --force origin x
+block:dangerous:git push -f 	block:dangerous:git push -f 	git push -f origin x
+block:dangerous:git push --force	allow	git push --force-with-lease origin x
+block:dangerous:git push --force	allow	git push --force-with-lease=main:abc123 origin main
+block:dangerous:git push --force	allow	git push --force-if-includes --force-with-lease origin x
+block:dangerous:git push --force	block:dangerous:git push --force	git push --force-with-lease --force origin x
+allow	block:dangerous:git push --force	git push origin --force
+allow	block:dangerous:git push --force	git -C ../repo push --force origin x
+allow	block:dangerous:git push -f 	git push -uf origin x
+allow	allow	git push -o ci.skip origin x
+allow	allow	git push origin main
+block:dangerous:git push -f 	block:dangerous:git push -f 	bash -c 'git push -f origin x'
+block:dangerous:git push --force	block:dangerous:git push --force	sudo git push --force origin x
+block:dangerous:git push --force	allow	echo "never git push --force here"
+block:dangerous:git push --force	allow	git commit -m "no git push --force on main"
+block:dangerous:> /etc/	block:dangerous:> /etc/	echo x > /etc/hosts
+block:dangerous:dd if=	block:dangerous:dd if=	dd if=/dev/zero of=/dev/sda
+block:dangerous:chown -R	allow	chown -R user /srv
+block:privileged-container	block:privileged-container	docker run -d --privileged ubuntu
+allow	allow	docker run -v /home/user/dev:/src ubuntu
+warn:slow-op	context:plan-before-apply	terraform apply
+warn:slow-op	context:plan-before-apply	terraform destroy -auto-approve
+allow	context:plan-before-apply	terragrunt run-all apply
+warn:slow-op	allow	terraform plan && terraform apply
+warn:slow-op	context:slow-op	docker build -t x .
+warn:slow-op	allow	pytest -q
+warn:slow-op	allow	go build ./...
+warn:slow-op	allow	cargo build
+warn:slow-op	allow	npm run build
+warn:slow-op	allow	yarn build
+warn:slow-op	allow	echo terraform apply
+block:dangerous:rm -rf /	block:dangerous:rm -rf /	bash -c 'rm -rf /'
+allow	block:dangerous:rm -rf $HOME	rm -rf "$HOME"
+block:dangerous:rm -rf /	block:dangerous:rm -rf /	ssh host 'rm -rf /'
+allow	block:dangerous:rm -rf /	rm -fr /
+allow	block:dangerous:rm -rf /	rm -r -f /
+block:dangerous:rm -rf /	block:dangerous:rm -rf /home	rm -rf /home
+block:dangerous:rm -rf /	block:dangerous:rm -rf /nix	rm -rf /nix
+block:dangerous:rm -rf /	block:dangerous:rm -rf ~	rm -rf /home/user
+block:dangerous:rm -rf /	block:dangerous:rm -rf /	echo "don't; rm -rf /
+# shell-ast port: the remaining substring rules read the parsed command
+block:dangerous:> /etc/	block:dangerous:> /etc/	cat foo >> /etc/hosts
+block:dangerous:> /etc/	block:dangerous:> /etc/	cd x && echo y > /etc/passwd
+block:dangerous:> /etc/	block:dangerous:> /etc/	bash -c 'echo y > /etc/passwd'
+allow	block:dangerous:> /etc/	echo x >/etc/hosts
+block:dangerous:> /etc/	allow	echo "write > /etc/hosts is blocked"
+block:dangerous:> /etc/	allow	git commit -m "document > /etc/ handling"
+allow	allow	echo x > /etcetera/foo
+allow	allow	cat /etc/hosts
+block:dangerous:dd if=	block:dangerous:dd if=	cd x && dd if=a of=b
+block:dangerous:dd if=	block:dangerous:dd if=	sudo dd if=/dev/zero of=/dev/sda
+block:dangerous:dd if=	allow	echo "dd if=/dev/zero is dangerous"
+block:dangerous:dd if=	allow	grep "dd if=" notes.md
+allow	allow	dd of=out.img
+block:dangerous::(){ :|:& };:	block:dangerous::(){ :|:& };:	:(){ :|:& };:
+block:dangerous::(){ :|:& };:	allow	echo ':(){ :|:& };:'
+block:dangerous:chmod -R 777 /	block:dangerous:chmod -R 777 /	chmod -R 777 /
+block:dangerous:chmod -R 777 /	allow	chmod -R 777 /var/www/html
+allow	block:dangerous:chmod -R 777 /	chmod -Rv 0777 /
+allow	allow	chmod -R 755 /
+allow	allow	chmod 777 /
+block:dangerous:chmod -R 777 /	allow	echo "chmod -R 777 /"
+block:dangerous:chown -R	allow	sudo chown -R root /x
+allow	allow	chown --recursive user /srv
+allow	allow	chown -hR user /srv
+allow	allow	chown user file
+block:dangerous:chown -R	allow	git commit -m "fix chown -R in script"
+block:dangerous:chown -R	allow	grep -r 'chown -R' scripts/
+block:dangerous:chown -R	allow	cat > notes.md <<'EOF'\nchown -R x y\nEOF
+block:dangerous:chown -R	allow	bash <<'EOF'\nchown -R x y\nEOF
+block:dangerous:chown -R	allow	cat <<EOF\nhello\nEOF\nchown -R a b
+block:dangerous:chown -R	block:dangerous:chown -R	echo "don't; chown -R a b
+allow	allow	echo "unterminated
+block:privileged-container	block:privileged-container	sudo docker run -v /dev:/dev ubuntu
+block:privileged-container	block:privileged-container	podman run --privileged x
+block:privileged-container	block:privileged-container	docker run --mount type=bind,source=/dev,target=/dev x
+allow	block:privileged-container	docker -H tcp://h run --privileged x
+block:privileged-container	allow	echo "docker run --privileged"
+block:privileged-container	allow	git commit -m "docker run --privileged is banned"
+allow	allow	docker run -v /devices:/x ubuntu
+# destructive git: ask, never a silent allow (separate commit so it can be dropped)
+allow	ask:git-branch-D	git branch -D old-feature
+allow	ask:git-branch-D	cd repo && git -C ../x branch -D a b
+allow	ask:git-branch-D	git branch -d -f old
+allow	allow	git branch -d merged-feature
+allow	allow	git branch --show-current
+allow	allow	git branch -a
+allow	ask:git-stash	git stash
+allow	ask:git-stash	git stash -u
+allow	ask:git-stash	git stash drop
+allow	ask:git-stash	git stash clear
+allow	ask:git-stash	git stash drop stash@{1}
+allow	allow	git stash pop
+allow	allow	git stash list
+allow	allow	git stash show -p
+allow	allow	git stash apply
+allow	ask:git-reset-hard	git reset --hard
+allow	ask:git-reset-hard	git reset --hard origin/main
+allow	ask:git-reset-hard	bash -c 'git fetch && git reset --hard FETCH_HEAD'
+allow	allow	git reset --soft HEAD~1
+allow	allow	git reset HEAD file.go
+allow	ask:git-checkout-dot	git checkout -- .
+allow	ask:git-checkout-dot	git checkout .
+allow	ask:git-checkout-dot	git restore .
+allow	ask:git-checkout-dot	git restore --worktree .
+allow	allow	git restore --staged .
+allow	allow	git restore file.go
+allow	allow	git checkout main
+allow	allow	git checkout -b feature
+allow	allow	git checkout -- file.go
+allow	ask:git-clean-f	git clean -fd
+allow	ask:git-clean-f	git clean -f
+allow	ask:git-clean-f	git clean --force -x
+allow	allow	git clean -n
+allow	allow	git clean -fdn
+allow	allow	git clean --dry-run -f
+allow	allow	echo "run git reset --hard to undo"
+allow	allow	git commit -m "git stash drop and git clean -f are gated"
+allow	allow	grep -rn 'git branch -D' docs/
+allow	allow	cat > notes.md <<'EOF'\ngit reset --hard\nEOF
+block:dangerous:git push --force	block:dangerous:git push --force	git reset --hard && git push --force origin x
+allow	ask:git-reset-hard	echo done; git reset --hard
+# unparseable input still asks on the destructive verbs (a substring test, as the legacy rules do)
+allow	ask:git-reset-hard	echo "oops; git reset -q --hard origin/dev
+allow	ask:git-clean-f	echo "oops; git clean -qffdx
+allow	ask:git-branch-D	echo "oops; git branch -D old
+allow	ask:git-stash	echo "oops; git stash drop
+allow	ask:git-checkout-dot	echo "oops; git checkout -- .
+allow	allow	echo "oops; git stash pop
+block:dangerous:chown -R	block:dangerous:chown -R	chown -R x /
+block:dangerous:chown -R	block:dangerous:chown -R	chown -R x ~
+block:dangerous:chown -R	block:dangerous:chown -R	sudo chown -R root /nix
+block:dangerous:chown -R	block:dangerous:chown -R	chown -R user /home/user/
+allow	block:dangerous:chown -R	chown -hR user $HOME
+block:dangerous:chown -R	block:dangerous:chown -R	bash -c 'chown -R x /storage'

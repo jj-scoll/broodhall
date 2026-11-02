@@ -1,0 +1,16 @@
+{
+  "name": "jj-scoll",
+  "description": "Claude Code plugins from jj-scoll/guardrails",
+  "owner": {
+    "name": "Jeff Scollick",
+    "url": "https://github.com/jj-scoll"
+  },
+  "plugins": [
+    {
+      "name": "guardrails",
+      "source": "./plugins/guardrails",
+      "description": "Blocks destructive shell commands, asks before destructive git, settings edits and secret-file reads, masks secrets, and stops repeated or oversized Reads and retry loops.",
+      "category": "security"
+    }
+  ]
+}

@@ -1,0 +1,222 @@
+{
+  "notes": "Match against full normalized column name (lowercase, camelCase->snake_case). tier1=direct PII (mask by default), tier2=linkable/quasi-identifier (opt-in or default-on at user discretion), tier3=free text/json whose contents are unknown (mask or content-regex). Add your own schema's columns in ~/.config/claude-tools/pii-columns.json.",
+  "rules": [
+    {
+      "name": "email",
+      "category": "email",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?e_?mail(?:_?addr(?:ess)?)?",
+      "exclude": ".*_(?:enabled|flag|verified|sent|count|type|status|template|subject|opt_?in)"
+    },
+    {
+      "name": "phone_fax",
+      "category": "phone_fax",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:phone|fax|mobile|cell|telephone|tel)(?:_?(?:no|num|number))?(?:_?ext)?",
+      "exclude": ".*_(?:type|enabled|status|flag)"
+    },
+    {
+      "name": "person_name_parts",
+      "category": "person_name",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:first_?name|last_?name|middle_?name|sur_?name|full_?name|given_?name|family_?name|maiden_?name|preferred_?name)"
+    },
+    {
+      "name": "person_name_role",
+      "category": "person_name",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:driver|insured|policyholder|customer|claimant|contact|applicant|owner|holder|beneficiary|ph|po|fp|tp)_?name"
+    },
+    {
+      "name": "person_name_bare",
+      "category": "person_name",
+      "tier": 1,
+      "pattern": "name"
+    },
+    {
+      "name": "person_initial",
+      "category": "person_name",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:ph|po|fp|tp|driver|insured|middle)_?initial"
+    },
+    {
+      "name": "street_address",
+      "category": "address",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:street|addr(?:ess)?)(?:_?(?:address|line_?[0-9]?|_?(?:no|num|number)))?",
+      "exclude": "(?:.*_)?(?:ip|email|mac|web|url|bucket)_?addr(?:ess)?.*|.*addr(?:ess)?_(?:type|status|verified|count|id).*"
+    },
+    {
+      "name": "postal_code",
+      "category": "address",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:postal(?:_?(?:code|cd))?|zip(?:_?code)?|post_?code)"
+    },
+    {
+      "name": "city_coarse",
+      "category": "address_coarse",
+      "tier": 2,
+      "pattern": "(?:[a-z0-9_]*_)?(?:city|town|municipality)"
+    },
+    {
+      "name": "province_role_coarse",
+      "category": "address_coarse",
+      "tier": 2,
+      "pattern": "(?:[a-z0-9_]*_)?(?:ph|policyholder|insured|home|mailing|customer|owner)_?(?:province|state)"
+    },
+    {
+      "name": "dob",
+      "category": "dob_age",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:dob|birth_?(?:date|dt|day|year|month)|date_of_birth)"
+    },
+    {
+      "name": "age",
+      "category": "dob_age",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?age|age_of_(?:operator|driver|insured|policyholder|claimant)",
+      "exclude": "(?:.*_)?(?:vehicle|veh|file|record|account|data|cache|token|session|battery|coverage|mileage)_age"
+    },
+    {
+      "name": "driver_licence",
+      "category": "gov_id",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:drivers?_?licen[cs]e(?:(?:_?(?:no|num|number)))?|licen[cs]e(?:_?(?:no|num|number)))"
+    },
+    {
+      "name": "gov_id_other",
+      "category": "gov_id",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:sin|ssn|social_?(?:insurance|security)(?:_?(?:no|num|number))?|passport(?:_?(?:no|num|number))?|health_?card(?:_?(?:no|num|number))?|national_?id|tax_?id)"
+    },
+    {
+      "name": "financial_acct_card",
+      "category": "financial",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:account|acct|card|bank|iban|routing|transit|cheque|credit_?card)(?:_?(?:no|num|number))"
+    },
+    {
+      "name": "policy_claim_number",
+      "category": "financial_policy_claim",
+      "tier": 2,
+      "pattern": "(?:[a-z0-9_]*_)?(?:pol|policy|claim|clm)_?(?:no|num|number|id|identification)|policynumber|report_pol_num|claimant_?number",
+      "exclude": ".*(?:control|digit|link|type|status|count).*"
+    },
+    {
+      "name": "vin",
+      "category": "other_identifier",
+      "tier": 2,
+      "pattern": "(?:[a-z0-9_]*_)?vin"
+    },
+    {
+      "name": "demographic",
+      "category": "demographic",
+      "tier": 2,
+      "pattern": "(?:[a-z0-9_]*_)?(?:gender|agender|marital_status|sex)|driver_relationship|relation_to_app"
+    },
+    {
+      "name": "credentials",
+      "category": "credentials",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:password|passwd|pwd|secret|token|api_?key|access_?key|private_?key|credential|passphrase|salt)(?:_?hash)?"
+    },
+    {
+      "name": "ip_device",
+      "category": "ip_device",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:ip(?:_?addr(?:ess)?)?|ipv[46]|mac_?addr(?:ess)?|device_?id|imei|user_?agent|remote_?addr)"
+    },
+    {
+      "name": "user_identity",
+      "category": "other_identifier",
+      "tier": 2,
+      "pattern": "(?:[a-z0-9_]*_)?(?:user_?id|user_?name|username|login|created_by|updated_by|modified_by)"
+    },
+    {
+      "name": "free_text_name",
+      "category": "free_text",
+      "tier": 3,
+      "pattern": "(?:[a-z0-9_]*_)?(?:notes?|comments?|remarks?|memo|narrative|message|body|descr(?:iption)?|errors?|error_(?:desc|detail|message|msg|stmt)|text|details?)"
+    },
+    {
+      "name": "json_blob_name",
+      "category": "json_blob",
+      "tier": 3,
+      "pattern": "(?:[a-z0-9_]*_)?(?:payload|transaction|raw_?data|json|blob|attributes|metadata)"
+    },
+    {
+      "name": "hipaa_event_dates",
+      "category": "dob_age",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:date_?of_?(?:injury|accident|loss|death|hire|termination|admission|discharge|service|treatment|exam|examination|surgery|onset|incident|close)|date_?(?:hired|reported|closed|reopened)|(?:injury|injury_?start|accident|loss|death|hire|hired|termination|separated|admission|discharge|hospital|exam|examination|prescription|perscription|onset|treatment|returntowork|return_to_work|reported|reopen|reopened|claim_reopened|close|closed|mmi|incident|claim_start|claimantrprtd|claimant_report|claimant_reported)_?(?:date|dt)|termination_effective_?(?:date|dt)|service_(?:from|to)_(?:date|dt))"
+    },
+    {
+      "name": "hipaa_biometric_photo",
+      "category": "health_info",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:biometric[a-z0-9_]*|photo|photos|photograph|selfie|headshot|voice_?print|retina_?scan|face_?(?:print|scan)|finger_?print_(?:image|data|template))"
+    },
+    {
+      "name": "hipaa_account_nbr",
+      "category": "financial",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:account|acct)_?nbr"
+    },
+    {
+      "name": "hipaa_address_variants",
+      "category": "address",
+      "tier": 1,
+      "pattern": "address_of_[a-z0-9_]+|(?:[a-z0-9_]*_)?address_+city|addressline[0-9]internal|(?:policy|pharmacy|mail|mailing|home|billing|primary|secondary|loss|accident)address"
+    },
+    {
+      "name": "hipaa_zip",
+      "category": "address",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:wcm|pharmacy)?zip_?(?:code)?(?:override)?(?:_of_[a-z0-9_]+)?(?:_?4_?code|_?plus_?4)?"
+    },
+    {
+      "name": "hipaa_phone_variants",
+      "category": "phone_fax",
+      "tier": 1,
+      "pattern": "[a-z0-9_]*phone(?:_number_of_[a-z0-9_]+)?"
+    },
+    {
+      "name": "hipaa_demographic",
+      "category": "demographic",
+      "tier": 1,
+      "pattern": "(?:[a-z0-9_]*_)?(?:(?:gender|sex)_?(?:code|cd)|race|ethnicity|ethnic_?(?:group|code)|religion|nationality)"
+    },
+    {
+      "name": "hipaa_pronouns",
+      "category": "demographic",
+      "tier": 1,
+      "pattern": "pronoun[a-z]*"
+    },
+    {
+      "name": "hipaa_address_misc",
+      "category": "address",
+      "tier": 1,
+      "pattern": "addressline[0-9]kanji|postalcodedenorm|extrafield[0-9]*|cedexbureau"
+    },
+    {
+      "name": "hipaa_geocode",
+      "category": "address",
+      "tier": 1,
+      "pattern": "[a-z]*spatial(?:point|denorm)|latitude|longitude|(?:geo_?)?(?:lat|lon|lng)"
+    }
+  ],
+  "explicit_columns": [
+    "driver_id"
+  ],
+  "free_text_columns": [
+    "errors",
+    "error",
+    "error_stmt",
+    "error_detail",
+    "error_message",
+    "error_desc",
+    "notes",
+    "description",
+    "transaction"
+  ]
+}

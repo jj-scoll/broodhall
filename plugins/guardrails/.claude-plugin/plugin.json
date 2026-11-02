@@ -1,0 +1,27 @@
+{
+  "name": "guardrails",
+  "displayName": "Guardrails",
+  "version": "0.1.0",
+  "description": "Guards for Claude Code tool calls: blocks destructive shell commands, asks before destructive git, settings edits and secret-file reads, masks secrets in output, and stops repeated or oversized Reads and retry loops.",
+  "author": {
+    "name": "Jeff Scollick",
+    "url": "https://github.com/jj-scoll"
+  },
+  "repository": "https://github.com/jj-scoll/guardrails",
+  "license": "MIT",
+  "keywords": ["guard", "safety", "hooks", "secrets", "git"],
+  "userConfig": {
+    "disabled_guards": {
+      "type": "string",
+      "title": "Disabled guard families",
+      "description": "Comma-separated families to turn off: pii, raw-client-data, session-url, egress, git. The core blocks (rm -rf of home or root, git push --force, dd, fork bombs) cannot be turned off.",
+      "default": "pii,raw-client-data,session-url"
+    },
+    "allowed_email_domains": {
+      "type": "string",
+      "title": "Your email addresses or domains",
+      "description": "Comma-separated addresses or @domains the egress guard treats as yours, such as @example.com. The domain of your global git user.email always counts.",
+      "default": ""
+    }
+  }
+}
