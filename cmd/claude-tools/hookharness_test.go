@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -38,6 +40,21 @@ func runHook(t *testing.T, fn func([]string) int, input string) (code int, stdou
 	o, _ := io.ReadAll(outR)
 	e, _ := io.ReadAll(errR)
 	return code, string(o), string(e)
+}
+
+// guardHintMessages returns the guard messages that point the model at other tools: the
+// large-read nudge and block, and the raw-client-data ask.
+func guardHintMessages(t *testing.T) []string {
+	t.Helper()
+	var msgs []string
+	for _, lines := range []int{300, 1500} {
+		p := filepath.Join(t.TempDir(), "big.go")
+		os.WriteFile(p, []byte(strings.Repeat("// a line of Go source code padded out to be long\n", lines)), 0o644)
+		b, _ := json.Marshal(map[string]any{"session_id": "s", "tool_name": "Read", "tool_input": map[string]any{"file_path": p}})
+		_, out, _ := runHook(t, largeReadGuard, string(b))
+		msgs = append(msgs, out)
+	}
+	return append(msgs, rawClientDataRule(`python3 q.py scratch/clients.parquet`).Msg)
 }
 
 // bashInput builds a PreToolUse/Post* hook payload for a Bash command.

@@ -1,7 +1,7 @@
 {
   "name": "guardrails",
   "displayName": "Guardrails",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Guards for Claude Code tool calls: blocks destructive shell commands, asks before destructive git, settings edits and secret-file reads, masks secrets in output, and stops repeated or oversized Reads and retry loops.",
   "author": {
     "name": "Jeff Scollick",

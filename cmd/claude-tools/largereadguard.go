@@ -110,14 +110,18 @@ func largeReadGuard(args []string) int {
 		PermissionDecisionReason string `json:"permissionDecisionReason,omitempty"`
 		AdditionalContext        string `json:"additionalContext,omitempty"`
 	}
+	use, consider := "", ""
+	if structureTool != "" {
+		use, consider = structureTool+" for structure, ", structureTool+" for structure, or "
+	}
 	out := hookOut{HookEventName: "PreToolUse"}
 	if tokens > denyTokens {
 		logGuardEvent(in.SessionID, "block", "large-read")
 		out.PermissionDecision = "deny"
-		out.PermissionDecisionReason = fmt.Sprintf("Read blocked: %s would inject ~%d tokens (%d lines) into context. Use claude-mem smart-explore for structure, Grep to locate the relevant section, then Read with offset+limit for the ~20-50 lines you need. (large-read-guard hook)", file, tokens, lines)
+		out.PermissionDecisionReason = fmt.Sprintf("Read blocked: %s would inject ~%d tokens (%d lines) into context. Use %sGrep to locate the relevant section, then Read with offset+limit for the ~20-50 lines you need. (large-read-guard hook)", file, tokens, lines, use)
 	} else {
 		logGuardEvent(in.SessionID, "nudge", "large-read")
-		out.AdditionalContext = fmt.Sprintf("Large read: %s is %d lines (~%d tokens). Consider claude-mem smart-explore for structure, or Read with offset+limit if you only need a specific range. Proceeding.", file, lines, tokens)
+		out.AdditionalContext = fmt.Sprintf("Large read: %s is %d lines (~%d tokens). Consider %sRead with offset+limit if you only need a specific range. Proceeding.", file, lines, tokens, consider)
 	}
 	// Same bytes as `jq -cn '{hookSpecificOutput:{...}}'`.
 	enc := json.NewEncoder(os.Stdout)

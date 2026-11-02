@@ -50,8 +50,12 @@ func rawClientDataRule(cmd string) decision {
 	if ref == "" {
 		return decision{}
 	}
+	masked := ""
+	if maskedCopyTool != "" {
+		masked = ", or a masked copy (" + maskedCopyTool + " writes ~/.cache/pii-safe/...)"
+	}
 	return decision{Ask: true, Rule: "raw-client-data",
-		Msg: "ASK: Python reading raw client data (" + ref + "): its output is not PII-masked. Prefer the duckdb CLI, whose output is masked, or a masked copy (claude-tools pii-mirror <path> writes ~/.cache/pii-safe/...). Confirm with the user before running it."}
+		Msg: "ASK: Python reading raw client data (" + ref + "): its output is not PII-masked. Prefer the duckdb CLI, whose output is masked" + masked + ". Confirm with the user before running it."}
 }
 
 // duckdbDotRE finds dot-commands that change how or where duckdb prints results, or run SQL
