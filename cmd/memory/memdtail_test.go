@@ -208,7 +208,7 @@ func TestMemdTailRereadNoDuplicates(t *testing.T) {
 }
 
 func TestMemdTailObserverPathNoQueue(t *testing.T) {
-	e := newTailEnv(t, "observer-sessions")
+	e := newTailEnv(t, "memory-observer-cwd")
 	tailAppend(t, e.path("sess-o.jsonl"), tailPrompt("sess-o", "obs", tailTS(10, 0, 0), "cli")+tailPair("sess-o", "t1", tailTS(10, 0, 1)))
 	tailScan(t, e.tailer())
 	if got := tailCount(t, e.db, "SELECT count(*) FROM queue"); got != 0 {

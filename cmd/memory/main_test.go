@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -13,6 +15,12 @@ var testExtDir string
 func TestMain(m *testing.M) {
 	testExtDir = memdExtDir()
 	os.Setenv("MEMORY_EXT_DIR", testExtDir)
+	for _, name := range []string{"fts", "httpfs", "quack"} {
+		if _, err := os.Stat(filepath.Join(testExtDir, name+".duckdb_extension")); err != nil {
+			fmt.Fprintf(os.Stderr, "memory tests need the signed DuckDB extensions fts, httpfs and quack in %s (set MEMORY_EXT_DIR): %v\n", testExtDir, err)
+			os.Exit(1)
+		}
+	}
 	// No test reads the user's settings file.
 	os.Setenv("MEMORY_SETTINGS", "/nonexistent/memory-settings.json")
 	os.Exit(m.Run())
