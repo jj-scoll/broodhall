@@ -21,7 +21,7 @@ const (
 	handoffMinCap     = 250  // the least the guard may cut a handoff block to
 	handoffDefaultAge = 168 * time.Hour
 	handoffCompactAge = 30 * time.Minute // a compact only re-shows a fresh handoff
-	handoffHeader     = "# Handoff from a previous session"
+	handoffHeader     = "# Handoff left by an earlier session"
 )
 
 // handoffEntry is the claimed row: its fields and when it was written.

@@ -49,13 +49,13 @@ func TestClaimHandoffFormat(t *testing.T) {
 		want   string
 	}{
 		{"relative file joins project_dir and ids are listed", hoEntry("Goal: ship"),
-			"# Handoff from a previous session (written 10 minutes ago, shown once)\nGoal: ship\nDetails: get_observations ids 12,34; full text in /work/p/HANDOFF-abc.md"},
+			"# Handoff left by an earlier session (written 10 minutes ago, shown once)\nGoal: ship\nDetails: get_observations ids 12,34; full text in /work/p/HANDOFF-abc.md"},
 		{"absolute file kept, no ids", map[string]any{"text": "  Goal: ship  \n", "handoff_file": "/elsewhere/H.md", "project_dir": "/work/p"},
-			"# Handoff from a previous session (written 10 minutes ago, shown once)\nGoal: ship\nDetails: full text in /elsewhere/H.md"},
+			"# Handoff left by an earlier session (written 10 minutes ago, shown once)\nGoal: ship\nDetails: full text in /elsewhere/H.md"},
 		{"no handoff_file defaults to HANDOFF.md", map[string]any{"text": "Goal: ship", "project_dir": "/work/p"},
-			"# Handoff from a previous session (written 10 minutes ago, shown once)\nGoal: ship\nDetails: full text in /work/p/HANDOFF.md"},
+			"# Handoff left by an earlier session (written 10 minutes ago, shown once)\nGoal: ship\nDetails: full text in /work/p/HANDOFF.md"},
 		{"no project_dir leaves the name as written", map[string]any{"text": "Goal: ship", "handoff_file": "H.md"},
-			"# Handoff from a previous session (written 10 minutes ago, shown once)\nGoal: ship\nDetails: full text in H.md"},
+			"# Handoff left by an earlier session (written 10 minutes ago, shown once)\nGoal: ship\nDetails: full text in H.md"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -187,17 +187,17 @@ func TestStartContextClaimsHandoffFirst(t *testing.T) {
 	seedHandoff(t, db, "p", hoEntry("Goal: ship it"), hoNow.Add(-time.Hour))
 
 	// session_start_context and the plain builder never consume it
-	if b := buildContext(db, "p", hoNow); strings.Contains(b, "# Handoff from a previous session") {
+	if b := buildContext(db, "p", hoNow); strings.Contains(b, "# Handoff left by an earlier session") {
 		t.Fatalf("buildContext must not claim:\n%s", b)
 	}
 	block := buildStartContext(db, "p", "startup", hoNow)
-	if !strings.HasPrefix(block, "# Handoff from a previous session (written about 1 hour ago, shown once)\nGoal: ship it\nDetails:") {
+	if !strings.HasPrefix(block, "# Handoff left by an earlier session (written about 1 hour ago, shown once)\nGoal: ship it\nDetails:") {
 		t.Errorf("handoff must lead the block:\n%.300s", block)
 	}
 	if !strings.Contains(block, "# Work state") || !strings.Contains(block, "Some observation") {
 		t.Errorf("rest of the block missing:\n%s", block)
 	}
-	if again := buildStartContext(db, "p", "startup", hoNow); strings.Contains(again, "# Handoff from a previous session") {
+	if again := buildStartContext(db, "p", "startup", hoNow); strings.Contains(again, "# Handoff left by an earlier session") {
 		t.Errorf("second SessionStart must not show it again:\n%.300s", again)
 	}
 	// the handoff block is separated from the work state by a blank line
@@ -224,7 +224,7 @@ func TestStartContextHandoffKeepsGuard(t *testing.T) {
 			if n > contextGuard {
 				t.Fatalf("JSON = %d bytes, over guard %d", n, contextGuard)
 			}
-			if !strings.HasPrefix(block, "# Handoff from a previous session") {
+			if !strings.HasPrefix(block, "# Handoff left by an earlier session") {
 				t.Error("handoff must survive the guard and stay first")
 			}
 			if !strings.Contains(block, "Cut to fit. Details:") {
@@ -248,12 +248,12 @@ func TestMemdHTTPContextClaimsHandoff(t *testing.T) {
 	h := memdHandler(db)
 
 	_, body, _ := httpDo(t, h, "GET", "/context?project=proj-a&source=resume", "")
-	if strings.Contains(body, "Handoff from a previous session") {
+	if strings.Contains(body, "Handoff left by an earlier session") {
 		t.Fatalf("resume must not show it: %s", body)
 	}
 	// session_start_context is a model-facing tool, not a SessionStart: it never claims
 	_, body, _ = httpDo(t, h, "POST", "/tool/session_start_context", `{"project":"proj-a"}`)
-	if strings.Contains(body, "Handoff from a previous session") {
+	if strings.Contains(body, "Handoff left by an earlier session") {
 		t.Fatalf("the tool must not claim: %s", body)
 	}
 	_, body, _ = httpDo(t, h, "GET", "/context?project=proj-a&source=startup", "")
@@ -265,11 +265,11 @@ func TestMemdHTTPContextClaimsHandoff(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &out); err != nil {
 		t.Fatalf("not hook JSON: %v: %s", err, body)
 	}
-	if !strings.HasPrefix(out.HookSpecificOutput.AdditionalContext, "# Handoff from a previous session") {
+	if !strings.HasPrefix(out.HookSpecificOutput.AdditionalContext, "# Handoff left by an earlier session") {
 		t.Errorf("startup must lead with the handoff: %.200s", out.HookSpecificOutput.AdditionalContext)
 	}
 	_, body, _ = httpDo(t, h, "GET", "/context?project=proj-a&source=startup", "")
-	if strings.Contains(body, "Handoff from a previous session") {
+	if strings.Contains(body, "Handoff left by an earlier session") {
 		t.Errorf("shown twice: %s", body)
 	}
 }

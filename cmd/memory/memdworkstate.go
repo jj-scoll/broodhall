@@ -299,7 +299,7 @@ func memWorkStateWrite(db *sql.DB, args map[string]any) (string, error) {
 		return "", err
 	}
 	if list == wsHandoffList {
-		return fmt.Sprintf("Saved the handoff in %s. The next session here is shown it once.", project), nil
+		return fmt.Sprintf("Handoff stored for %s; the next session there sees it once, at startup.", project), nil
 	}
 
 	lists, err := workStateFoldRows(db, project)
@@ -369,9 +369,9 @@ func memWorkStateReadAt(db *sql.DB, args map[string]any, now time.Time) (string,
 		in = fmt.Sprintf(" in %q", list)
 	}
 	if closed {
-		return fmt.Sprintf("Nothing recorded%s for %s.", in, project), nil
+		return fmt.Sprintf("No work state recorded%s for %s.", in, project), nil
 	}
-	return fmt.Sprintf("Nothing open%s for %s. Pass includeClosed to see closed items.", in, project), nil
+	return fmt.Sprintf("No open items%s for %s; set includeClosed to include finished ones.", in, project), nil
 }
 
 // wsClosedStatus reports whether a status value marks done or dropped work.

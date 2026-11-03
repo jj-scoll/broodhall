@@ -177,15 +177,15 @@ func TestMemWorkStateRoundTrip(t *testing.T) {
 	// closing the list hides it
 	wsWrite(t, db, dir, "release", map[string]any{"status": "done"})
 	got, _ = memWorkStateReadAt(db, map[string]any{"cwd": dir}, now)
-	if got != "Nothing open for "+proj+". Pass includeClosed to see closed items." {
+	if got != "No open items for "+proj+"; set includeClosed to include finished ones." {
 		t.Errorf("after close: %q", got)
 	}
 	got, _ = memWorkStateReadAt(db, map[string]any{"cwd": dir, "list": "other"}, now)
-	if got != `Nothing open in "other" for `+proj+`. Pass includeClosed to see closed items.` {
+	if got != `No open items in "other" for `+proj+`; set includeClosed to include finished ones.` {
 		t.Errorf("empty list read: %q", got)
 	}
 	got, _ = memWorkStateReadAt(db, map[string]any{"cwd": t.TempDir(), "includeClosed": true}, now)
-	if !strings.HasPrefix(got, "Nothing recorded for ") {
+	if !strings.HasPrefix(got, "No work state recorded for ") {
 		t.Errorf("nothing recorded: %q", got)
 	}
 }
@@ -283,7 +283,7 @@ func TestMemWorkStateHandoffReply(t *testing.T) {
 	db, _ := openTestMemd(t)
 	dir := t.TempDir()
 	out := wsWrite(t, db, dir, "handoff", map[string]any{"text": strings.Repeat("h", 3000)})
-	want := "Saved the handoff in " + projectKey(dir) + ". The next session here is shown it once."
+	want := "Handoff stored for " + projectKey(dir) + "; the next session there sees it once, at startup."
 	if out != want {
 		t.Errorf("reply = %q, want %q", out, want)
 	}

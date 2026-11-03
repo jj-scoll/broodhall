@@ -77,8 +77,8 @@ func TestMemdContextJSONShape(t *testing.T) {
 func TestMemdContextEmptyDB(t *testing.T) {
 	db := ctxDB(t)
 	block := buildContext(db, "p", ctxNow)
-	if !strings.Contains(block, "# Work state: your to-do lists and working state") ||
-		!strings.Contains(block, "Nothing open yet.") {
+	if !strings.Contains(block, "# Work state: to-do lists and notes that persist across sessions") ||
+		!strings.Contains(block, "No open items yet.") {
 		t.Errorf("empty block missing work state header or placeholder:\n%s", block)
 	}
 	if n := ctxSize(block); n > 1500 || n == 0 {
@@ -120,7 +120,7 @@ func TestMemdContextSelectionCounts(t *testing.T) {
 	if strings.Index(block, "obs-title-11") > strings.Index(block, "obs-title-30") {
 		t.Error("timeline not oldest first")
 	}
-	for _, want := range []string{"# [p] recent context, 2026-03-10 12:00pm UTC", "Format: ID TIME TYPE TITLE", "### Mar 9, 2026"} {
+	for _, want := range []string{"# [p] recent context, 2026-03-10 12:00pm UTC", "Each row: ID, time, type marker, title", "### Mar 9, 2026"} {
 		if !strings.Contains(block, want) {
 			t.Errorf("missing %q in\n%s", want, block)
 		}
@@ -355,7 +355,7 @@ func TestMemdContextWorkStateReadError(t *testing.T) {
 	if !strings.Contains(block, "Work state unavailable (read error); try work_state_read") {
 		t.Errorf("read error must be stated:\n%s", block)
 	}
-	if strings.Contains(block, "Nothing open yet.") {
+	if strings.Contains(block, "No open items yet.") {
 		t.Error("must not claim nothing is open when the read failed")
 	}
 }

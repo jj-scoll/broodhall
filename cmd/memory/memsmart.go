@@ -589,7 +589,7 @@ func smartOutline(args map[string]any) (string, error) {
 		return "", err
 	}
 	if f == nil || len(f.symbols) == 0 {
-		return fmt.Sprintf("Could not parse %s. File may use an unsupported language or be empty.", smartArg(args, "file_path")), nil
+		return fmt.Sprintf("Cannot parse %s: the language is unsupported or the file is empty.", smartArg(args, "file_path")), nil
 	}
 	return f.fold(abs), nil
 }
@@ -636,7 +636,7 @@ func smartUnfold(args map[string]any) (string, error) {
 		return "", err
 	}
 	if f == nil || len(f.symbols) == 0 {
-		return fmt.Sprintf("Could not parse %s. File may be unsupported or empty.", smartArg(args, "file_path")), nil
+		return fmt.Sprintf("Cannot parse %s: the language is unsupported or the file is empty.", smartArg(args, "file_path")), nil
 	}
 	s := findSymbol(f.symbols, name, true, "")
 	if s == nil {
@@ -660,7 +660,7 @@ func smartUnfold(args map[string]any) (string, error) {
 			n++
 		})
 		if n > smartUnfoldList {
-			b.WriteString("  ... more symbols omitted; use smart_search to narrow the lookup.\n")
+			b.WriteString("  ... the list is cut here; narrow it with smart_search.\n")
 		}
 		return strings.TrimRight(b.String(), "\n"), nil
 	}
@@ -819,13 +819,13 @@ func smartSearch(args map[string]any) (string, error) {
 		}
 	}
 	if len(contentFiles) > 0 {
-		b.WriteString("── Matching Files ──\n\n")
+		b.WriteString("── Files with matching content ──\n\n")
 		for _, f := range contentFiles {
-			fmt.Fprintf(&b, "  %s (%s, %d lines, ~%d tokens folded) — smart_outline to expand\n",
+			fmt.Fprintf(&b, "  %s (%s, %d lines, ~%d tokens when folded) — smart_outline lists its symbols\n",
 				rels[f], f.language, f.totalLines, (len(f.fold(rels[f]))+3)/4)
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("── Actions ──\n  To see full implementation: use smart_unfold with file path and symbol name")
+	b.WriteString("── Next step ──\n  Read one symbol in full: smart_unfold with the file path and the symbol name")
 	return b.String(), nil
 }

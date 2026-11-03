@@ -212,7 +212,7 @@ func TestMemdQueryTimeline(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(got, "**Window:** 1 records before -> 1 records after | **Items:** 3") {
+		if !strings.Contains(got, "**Window:** 1 before, 1 after | **Items:** 3") {
 			t.Errorf("window line:\n%s", got)
 		}
 		// The window counts every record kind: prompt, anchor, summary. #1 and #4 are out.
@@ -244,11 +244,11 @@ func TestMemdQueryTimeline(t *testing.T) {
 			args map[string]any
 			want string
 		}{
-			{"neither", map[string]any{}, `Error: Must provide either "anchor" or "query" parameter`},
-			{"both", map[string]any{"anchor": float64(1), "query": "x"}, `Error: Cannot provide both "anchor" and "query" parameters. Use one or the other.`},
+			{"neither", map[string]any{}, `Error: pass an "anchor" or a "query"`},
+			{"both", map[string]any{"anchor": float64(1), "query": "x"}, `Error: "anchor" and "query" cannot be combined; pass only one`},
 			{"missing obs", map[string]any{"anchor": float64(999)}, "Observation #999 not found"},
-			{"bad depth", map[string]any{"anchor": float64(1), "depth_before": float64(-1)}, "Invalid timeline depth: depth_before and depth_after must be non-negative safe integers"},
-			{"no query hit", map[string]any{"query": "zzzqqqnomatch"}, `No observations found matching "zzzqqqnomatch". Try a different search query.`},
+			{"bad depth", map[string]any{"anchor": float64(1), "depth_before": float64(-1)}, "depth_before and depth_after must each be a whole number, 0 or higher"},
+			{"no query hit", map[string]any{"query": "zzzqqqnomatch"}, `Nothing in memory matches "zzzqqqnomatch". Try other search words.`},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -274,14 +274,14 @@ func TestMemdQueryGetObservations(t *testing.T) {
 		t.Errorf("date_asc order:\n%s", got)
 	}
 	got, _ = memGetObservations(db, map[string]any{"ids": []any{float64(999)}})
-	if got != "No selected observations found." {
+	if got != "None of those IDs match an observation." {
 		t.Errorf("missing id: %q", got)
 	}
 	if _, err := memGetObservations(db, map[string]any{}); err == nil {
 		t.Error("missing ids must be an error")
 	}
 	got, _ = memGetObservations(db, map[string]any{"ids": []any{float64(1), float64(3)}, "limit": float64(1)})
-	if !strings.HasPrefix(got, "Selected observations (1).") {
+	if !strings.HasPrefix(got, "Observations (1).") {
 		t.Errorf("limit: %q", got)
 	}
 }
@@ -312,7 +312,7 @@ func TestMemdQueryGetToolUses(t *testing.T) {
 	})
 	t.Run("none", func(t *testing.T) {
 		got, _ := memGetToolUses(db, map[string]any{"ids": []any{float64(99)}})
-		if got != "No selected tool calls found." {
+		if got != "None of those IDs match a tool call." {
 			t.Errorf("got %q", got)
 		}
 	})
