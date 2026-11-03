@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run.sh\" session-start", "timeout": 15 }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run.sh\" lookup", "timeout": 5 }
+        ]
+      }
+    ]
+  }
+}

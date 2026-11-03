@@ -15,6 +15,12 @@ claude plugin install guardrails@broodhall
 If a broken binary blocks every tool call, run `claude plugin disable guardrails@broodhall`
 in a terminal and start a new session.
 
+Memory, a separate plugin that keeps notes of your sessions in a local database, installs with:
+
+```sh
+claude plugin install memory@broodhall
+```
+
 Documentation: https://jj-scoll.github.io/broodhall/
 
 ## License

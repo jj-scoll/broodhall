@@ -56,6 +56,9 @@ nav:
       - Options: guardrails/options.md
   - Memory:
       - Overview: memory/index.md
+      - Privacy and redaction: memory/privacy.md
+      - Options: memory/options.md
+      - UI and Quack: memory/ui-and-quack.md
   - Reference:
       - Build: reference/build.md
       - Release: reference/release.md

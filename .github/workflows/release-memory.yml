@@ -1,0 +1,90 @@
+# Push a tag memory-v<version> matching plugins/memory/.claude-plugin/plugin.json to publish the
+# binaries plugins/memory/scripts/run.sh downloads: memory_<os>_<arch>.tar.xz and checksums.txt.
+# Build jobs upload a plain .tar (it keeps the exec bit through the artifact); publish packs
+# each with xz -9e on Linux, so the macOS runners need no xz.
+# Each tarball holds the binary and ext/, the signed DuckDB extensions it loads (fts, httpfs,
+# quack), so nothing is downloaded at runtime. DUCKDB_VERSION must match the DuckDB that
+# duckdb-go in go.mod links; the tests LOAD the extensions, so a mismatch fails the build.
+# DuckDB needs cgo, so each platform builds on a native runner instead of cross-compiling.
+# The release.yml `v*` filter does not fire on these tags: a tag pattern is matched against the
+# whole tag name, and `memory-v0.1.0` does not start with `v`.
+name: release-memory
+
+on:
+  push:
+    tags: ["memory-v*"]
+
+permissions:
+  contents: read
+
+env:
+  DUCKDB_VERSION: v2.0.0
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tag matches the plugin version
+        run: |
+          v=$(jq -r .version plugins/memory/.claude-plugin/plugin.json)
+          [ "memory-v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME, plugin.json version $v"; exit 1; }
+
+  build:
+    needs: check
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # ubuntu-22.04 keeps the glibc floor at 2.35; a newer runner raises it.
+          # duck is DuckDB's platform name in extensions.duckdb.org paths.
+          - { os: linux, arch: amd64, duck: linux_amd64, runner: ubuntu-22.04 }
+          - { os: linux, arch: arm64, duck: linux_arm64, runner: ubuntu-22.04-arm }
+          - { os: darwin, arch: amd64, duck: osx_amd64, runner: macos-15-intel }
+          - { os: darwin, arch: arm64, duck: osx_arm64, runner: macos-latest }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: DuckDB extensions
+        run: |
+          mkdir -p build/ext
+          for e in fts httpfs quack; do
+            curl -fsSL --retry 3 "https://extensions.duckdb.org/$DUCKDB_VERSION/${{ matrix.duck }}/$e.duckdb_extension.gz" |
+              gunzip > "build/ext/$e.duckdb_extension"
+          done
+          ls -l build/ext
+      - run: CGO_ENABLED=1 MEMORY_EXT_DIR="$PWD/build/ext" go test ./cmd/memory/...
+      - name: Build
+        run: |
+          CGO_ENABLED=1 go build -trimpath -ldflags "-s -w" -o build/memory ./cmd/memory
+          file build/memory
+          mkdir -p dist
+          tar -cf "dist/memory_${{ matrix.os }}_${{ matrix.arch }}.tar" -C build memory ext
+      - uses: actions/upload-artifact@v7
+        with:
+          name: memory_${{ matrix.os }}_${{ matrix.arch }}
+          path: dist/*.tar
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: memory_*
+          merge-multiple: true
+      - name: Checksums and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          xz -9e -T0 dist/*.tar
+          cd dist && sha256sum -- *.tar.xz > checksums.txt && cd ..
+          [ "$(wc -l < dist/checksums.txt)" -eq 4 ] || { echo "expected 4 assets"; cat dist/checksums.txt; exit 1; }
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
