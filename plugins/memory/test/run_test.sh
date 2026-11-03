@@ -27,11 +27,12 @@ asset=memory_${os}_$arch.tar.gz
 mkstub() {
 	cat >"$1" <<'EOF'
 #!/bin/sh
-[ -n "${STUB_MARK-}" ] && echo "$*" >>"$STUB_MARK"
+[ -n "${STUB_MARK-}" ] && echo "$* dir=${MEMORY_DIR-} ext=${MEMORY_EXT_DIR-}" >>"$STUB_MARK"
 case "${STUB_MODE-ok}" in
 ok)
 	case "$1" in
 	context) cat >/dev/null; echo '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"stub memory"}}' ;;
+	lookup) cat >/dev/null; echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"stub lookup"}}' ;;
 	serve) exit 0 ;;
 	*) cat >/dev/null ;;
 	esac ;;
@@ -44,12 +45,20 @@ EOF
 	chmod +x "$1"
 }
 
-# A fake release dir for tag memory-v$ver with a good tarball and matching checksums.
+# A fake release dir for tag memory-v$ver with a good tarball (the binary plus the DuckDB
+# extensions it loads, in ext/) and matching checksums. NO_EXT=1 leaves ext/ out.
+exts="fts httpfs quack"
 mkrelease() {
 	rel=$1
 	mkdir -p "$rel/memory-v$ver" "$rel/work"
 	mkstub "$rel/work/memory"
-	tar -czf "$rel/memory-v$ver/$asset" -C "$rel/work" memory
+	if [ -n "${NO_EXT-}" ]; then
+		tar -czf "$rel/memory-v$ver/$asset" -C "$rel/work" memory
+	else
+		mkdir -p "$rel/work/ext"
+		for e in $exts; do echo "$e" >"$rel/work/ext/$e.duckdb_extension"; done
+		tar -czf "$rel/memory-v$ver/$asset" -C "$rel/work" memory ext
+	fi
 	(cd "$rel/memory-v$ver" && $sum "$asset" >checksums.txt)
 }
 
@@ -58,7 +67,7 @@ newcase() {
 	c=$tmp/$1
 	mkdir -p "$c/data" "$c/path"
 	: >"$c/mark"
-	unset MEMORY_BIN STUB_MODE
+	unset MEMORY_BIN STUB_MODE MEMORY_DIR MEMORY_EXT_DIR XDG_DATA_HOME NO_EXT
 	export CLAUDE_PLUGIN_ROOT=$root CLAUDE_PLUGIN_DATA=$c/data HOME=$c/home
 	export STUB_MARK=$c/mark STUB_PIDFILE=$c/pid MEMORY_HOOK_TIMEOUT=2
 	export MEMORY_RELEASE_URL=file://$c/no-such-release
@@ -104,6 +113,40 @@ if [ "$rc" -eq 0 ] && [ -x "$tmp/t2/data/bin/$ver/memory" ] && printf %s "$out" 
 	ok "good release installs and context reaches stdout"
 else
 	bad "good release installs and context reaches stdout" "rc=$rc installed=$([ -x "$tmp/t2/data/bin/$ver/memory" ] && echo yes || echo no) out=$out"
+fi
+missing=
+for e in $exts; do [ -f "$tmp/t2/data/bin/$ver/ext/$e.duckdb_extension" ] || missing="$missing $e"; done
+if [ -z "$missing" ]; then ok "install unpacks the DuckDB extensions next to the binary"; else bad "install unpacks the DuckDB extensions next to the binary" "missing:$missing"; fi
+# The launcher leaves MEMORY_DIR to the binary's own default and points it at the extensions
+# installed with this version.
+if grep -q "^context dir= ext=$tmp/t2/data/bin/$ver/ext\$" "$tmp/t2/mark"; then
+	ok "binary runs with its own state dir default and the installed extension dir"
+else
+	bad "binary runs with its own state dir default and the installed extension dir" "$(cat "$tmp/t2/mark")"
+fi
+
+# --- 2b. a tarball without the extensions is a failed install: nothing installed, nothing run
+newcase t2b
+NO_EXT=1 mkrelease "$tmp/t2b/rel"
+export MEMORY_RELEASE_URL=file://$tmp/t2b/rel
+hook t2b session-start
+expect_open "tarball without extensions (session-start)"
+if [ -e "$tmp/t2b/data/bin/$ver/memory" ]; then bad "tarball without extensions installs no binary" "binary present"; else ok "tarball without extensions installs no binary"; fi
+if [ -s "$tmp/t2b/mark" ]; then bad "tarball without extensions never executes" "stub ran"; else ok "tarball without extensions never executes"; fi
+
+# --- 2c. PreToolUse lookup: passes context through, and is wired in hooks.json
+newcase t2c
+mkstub "$tmp/t2c/memory"
+export MEMORY_BIN=$tmp/t2c/memory
+hook t2c lookup
+if [ "$rc" -eq 0 ] && printf %s "$out" | grep -q 'stub lookup'; then ok "lookup passes its context through"; else bad "lookup passes its context through" "rc=$rc out=$out"; fi
+export STUB_MODE=crash
+hook t2c lookup
+expect_open "lookup crash prints nothing"
+if jq -e '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|NotebookEdit") | .hooks[] | select(.command | endswith("run.sh\" lookup"))' "$root/hooks/hooks.json" >/dev/null 2>&1; then
+	ok "hooks.json runs lookup before Edit, Write and NotebookEdit"
+else
+	bad "hooks.json runs lookup before Edit, Write and NotebookEdit" "no matching PreToolUse entry"
 fi
 
 # --- 3. checksum mismatch: never execute, never install

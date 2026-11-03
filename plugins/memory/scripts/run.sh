@@ -31,9 +31,11 @@ log() {
 	fi
 }
 
-# The binary's state directory and the daemon socket directory. The socket needs a runtime dir;
-# systemd sets one on Linux, macOS has none, so fall back to a private per-user temp dir.
-export MEMORY_DIR="${MEMORY_DIR:-$HOME/.broodhall/memory}"
+# The installed binary loads the DuckDB extensions shipped in its own tarball; MEMORY_BIN (a
+# local build) keeps the binary's default. The state dir is the binary's choice (MEMORY_DIR,
+# else $XDG_DATA_HOME/memory, else ~/.local/share/memory). The daemon socket needs a runtime
+# dir; systemd sets one on Linux, macOS has none, so fall back to a private per-user temp dir.
+[ -z "${MEMORY_BIN-}" ] && export MEMORY_EXT_DIR="${MEMORY_EXT_DIR:-${dest%/*}/ext}"
 if [ -z "${XDG_RUNTIME_DIR-}" ]; then
 	XDG_RUNTIME_DIR=${TMPDIR:-/tmp}/memory-$(id -u)
 	mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null && chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null
@@ -62,15 +64,24 @@ install_bin() (
 	command -v curl >/dev/null 2>&1 || fail "curl not found"
 	asset=memory_${os}_$arch.tar.gz
 	base=${MEMORY_RELEASE_URL:-https://github.com/jj-scoll/broodhall/releases/download}
-	mkdir -p "$data/bin" && tmp=$(mktemp -d "$data/bin/.download.XXXXXX") || fail "cannot write $data"
+	if ! { mkdir -p "$data/bin" && tmp=$(mktemp -d "$data/bin/.download.XXXXXX"); }; then fail "cannot write $data"; fi
 	trap 'rm -rf "$tmp"' EXIT
-	curl -fsSL --connect-timeout 5 --max-time 60 -o "$tmp/$asset" "$base/memory-v$ver/$asset" &&
-		curl -fsSL --connect-timeout 5 --max-time 30 -o "$tmp/checksums.txt" "$base/memory-v$ver/checksums.txt" ||
+	# 75 s keeps the whole install inside the SessionStart hook's 90 s timeout.
+	if ! { curl -fsSL --connect-timeout 5 --max-time 75 -o "$tmp/$asset" "$base/memory-v$ver/$asset" &&
+		curl -fsSL --connect-timeout 5 --max-time 30 -o "$tmp/checksums.txt" "$base/memory-v$ver/checksums.txt"; }; then
 		fail "download of $asset failed"
+	fi
 	if command -v sha256sum >/dev/null 2>&1; then sum=sha256sum; else sum='shasum -a 256'; fi
 	(cd "$tmp" && grep "  $asset\$" checksums.txt | $sum -c - >/dev/null 2>&1) || fail "checksum mismatch or missing for $asset"
-	tar -xzf "$tmp/$asset" -C "$tmp" memory && mkdir -p "${dest%/*}" &&
-		mv -f "$tmp/memory" "$dest" || fail "unpack failed"
+	# The extensions go in first and the binary last, so an installed binary always has them.
+	tar -xzf "$tmp/$asset" -C "$tmp" memory ext >/dev/null 2>&1 || fail "unpack of $asset failed (it must hold memory and ext/)"
+	for e in fts httpfs quack; do
+		[ -f "$tmp/ext/$e.duckdb_extension" ] || fail "$asset has no ext/$e.duckdb_extension"
+	done
+	if ! { mkdir -p "${dest%/*}" && rm -rf "${dest%/*}/ext" && mv -f "$tmp/ext" "${dest%/*}/ext" &&
+		mv -f "$tmp/memory" "$dest"; }; then
+		fail "install into ${dest%/*} failed"
+	fi
 	exit 0
 )
 
