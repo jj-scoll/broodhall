@@ -1,0 +1,62 @@
+/* Green accent per scheme: light #0a7c5c, dark #3ddc97. */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #0a7c5c;
+  --md-primary-fg-color--light: #0f9a73;
+  --md-primary-fg-color--dark: #07604a;
+  --md-accent-fg-color: #0a7c5c;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #3ddc97;
+  --md-primary-fg-color--light: #6ee6b3;
+  --md-primary-fg-color--dark: #2bb87b;
+  --md-primary-bg-color: #06231a;
+  --md-primary-bg-color--light: #0b3a2a;
+  --md-accent-fg-color: #3ddc97;
+}
+
+/* "Why it exists" callout: !!! why "Why it exists" */
+:root {
+  --md-admonition-icon--why: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M11 18h2v-2h-2zm1-16A10 10 0 0 0 2 12a10 10 0 0 0 10 10 10 10 0 0 0 10-10A10 10 0 0 0 12 2m0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8m0-14a4 4 0 0 0-4 4h2a2 2 0 0 1 2-2 2 2 0 0 1 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5a4 4 0 0 0-4-4"/></svg>');
+}
+
+.md-typeset .admonition.why,
+.md-typeset details.why {
+  border-color: var(--md-accent-fg-color);
+}
+
+.md-typeset .why > .admonition-title,
+.md-typeset .why > summary {
+  background-color: color-mix(in srgb, var(--md-accent-fg-color) 12%, transparent);
+}
+
+/* Response badges: <span class="badge badge-block">BLOCK</span> (also -ask, -mask, -note).
+   Text and background are paired per scheme so each stays legible on light and slate. */
+.md-typeset .badge {
+  display: inline-block;
+  padding: 0.05em 0.5em;
+  border-radius: 0.2rem;
+  border: 1px solid currentColor;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+[data-md-color-scheme="default"] .badge-block { color: #8f1d1d; background: #fde8e8; }
+[data-md-color-scheme="default"] .badge-ask { color: #7a4a00; background: #fff1d6; }
+[data-md-color-scheme="default"] .badge-mask { color: #1d4f91; background: #e3eefc; }
+[data-md-color-scheme="default"] .badge-note { color: #3f4a46; background: #e8eeec; }
+
+[data-md-color-scheme="slate"] .badge-block { color: #ffb4b4; background: #4a1f1f; }
+[data-md-color-scheme="slate"] .badge-ask { color: #ffd98a; background: #4a3610; }
+[data-md-color-scheme="slate"] .badge-mask { color: #a9ccff; background: #1c3454; }
+[data-md-color-scheme="slate"] .badge-note { color: #c5d0cc; background: #2c3532; }
+
+.md-typeset .why > .admonition-title::before,
+.md-typeset .why > summary::before {
+  background-color: var(--md-accent-fg-color);
+  -webkit-mask-image: var(--md-admonition-icon--why);
+  mask-image: var(--md-admonition-icon--why);
+}

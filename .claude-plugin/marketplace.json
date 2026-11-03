@@ -1,6 +1,6 @@
 {
-  "name": "jj-scoll",
-  "description": "Claude Code plugins from jj-scoll/guardrails",
+  "name": "broodhall",
+  "description": "Claude Code plugins from jj-scoll/broodhall",
   "owner": {
     "name": "Jeff Scollick",
     "url": "https://github.com/jj-scoll"
@@ -9,7 +9,7 @@
     {
       "name": "guardrails",
       "source": "./plugins/guardrails",
-      "description": "Blocks destructive shell commands, asks before destructive git, settings edits and secret-file reads, masks secrets, and stops repeated or oversized Reads and retry loops.",
+      "description": "Blocks destructive shell commands, asks before destructive git and settings edits, masks Bash reads of secret files, blocks the Read tool on them and asks before writes to them, blocks oversized whole-file Reads, and notes re-reads and retry loops.",
       "category": "security"
     }
   ]

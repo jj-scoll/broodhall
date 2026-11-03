@@ -24,7 +24,7 @@ if [ "${1-}" = install ]; then
 		printf '{"systemMessage":"guardrails: could not install claude-tools %s (%s), so its guards are off this session. It retries at the next session start."}\n' "$ver" "$1"
 		exit 0
 	}
-	base=${CLAUDE_TOOLS_RELEASE_URL:-https://github.com/jj-scoll/guardrails/releases/download}
+	base=${CLAUDE_TOOLS_RELEASE_URL:-https://github.com/jj-scoll/broodhall/releases/download}
 	os=$(uname -s | tr '[:upper:]' '[:lower:]')
 	case $(uname -m) in
 	x86_64 | amd64) arch=amd64 ;;

@@ -165,7 +165,7 @@ func TestPIIRulesFileIsLive(t *testing.T) {
 }
 
 func TestMirrorUsesRulesFile(t *testing.T) {
-	// pii-mirror builds its redactor with newRedactor, so it sees the file too.
+	// A separate masking tool builds its redactor with newRedactor, so it sees the file too.
 	writeRulesFile(t, onlyLoyalty)
 	x := newRedactor([]byte("k"), nil)
 	if x.rules.category("loyalty_code") == "" || x.rules.category("email") != "" {
@@ -251,9 +251,9 @@ func TestGuardDeniesRulesFileWrites(t *testing.T) {
 		"ls && rm " + f,
 		"XDG_CONFIG_HOME=/tmp/loose claude-tools redact --pii",
 		"export XDG_CONFIG_HOME=/tmp/loose; claude-tools redact",
-		"HOME=/tmp/fake claude-tools pii-mirror a b",
+		"HOME=/tmp/fake claude-tools pii-" + "mirror a b", // split so the name stays out of the public tree
 		"HOME=/tmp/x claude-tools redact",
-		"XDG_CONFIG_HOME=/tmp/x ~/.claude/bin/claude-tools pii-mirror a b",
+		"XDG_CONFIG_HOME=/tmp/x ~/.claude/bin/claude-tools pii-" + "mirror a b",
 		"env HOME=/x claude-tools redact",
 		"cd /tmp && HOME=/x /home/user/.claude/bin/claude-tools redact",
 		"echo hi | HOME=/x claude-tools redact",

@@ -1,6 +1,6 @@
 package main
 
-// redact --pii: mask personal data in SQL output before Claude, the transcript or claude-mem
+// redact --pii: mask personal data in SQL output before Claude, the transcript or a memory tool
 // see it. Cells in PII-named columns (pii-columns.json rules, matched on CSV headers, JSON
 // keys, rds-data columnMetadata and Athena ColumnInfo) become [category:tag], and email and
 // phone shapes are masked in every string. tag = 6 hex of a keyed sha256 of the value, so equal values
@@ -135,7 +135,7 @@ func newRedactor(key []byte, allow []string) *redactor {
 }
 
 // tag is [category:6 hex of sha256(hex(key) US category US value)], US = \x1f. A keyed hash
-// DuckDB's sha256() can compute too, so pii-mirror copies carry the same tags.
+// DuckDB's sha256() can compute too, so copies made by a separate masking tool carry the same tags.
 func (x *redactor) tag(category, value string) string {
 	sum := sha256.Sum256([]byte(hex.EncodeToString(x.key) + "\x1f" + category + "\x1f" + value))
 	return "[" + category + ":" + hex.EncodeToString(sum[:3]) + "]"

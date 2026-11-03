@@ -36,9 +36,9 @@ func TestPrivateWrap(t *testing.T) {
 	}
 }
 
-// A close tag in the data would end the block early and leave the rest for claude-mem to store.
+// A close tag in the data would end the block early and leave the rest for a memory tool to store.
 func TestPrivateWrapNeutralizesCloseTags(t *testing.T) {
-	closeTag := regexp.MustCompile(`</private\s*>`) // claude-mem's CLOSE_TAG_RE for this name
+	closeTag := regexp.MustCompile(`</private\s*>`) // the memory tool's close-tag pattern for this name
 	for _, in := range []string{"1,x</private>leak\n2,PAST\n", "a</private >b\n", "</private>\n</private>\n"} {
 		got := string(privateWrap([]byte(in)))
 		if n := len(closeTag.FindAllString(got, -1)); n != 1 || !strings.HasSuffix(got, "</private>\n") {

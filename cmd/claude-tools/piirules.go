@@ -9,7 +9,7 @@ package main
 //     its own Bash command). XDG_CONFIG_HOME and HOME are the only inputs, and the
 //     PreToolUse guard (piirulesguard.go) denies Bash commands that assign either one;
 //   - a missing, unreadable or invalid file falls back to the embedded rules, never to "no
-//     rules" and never to a panic: every masking path (redact, pii-mirror) goes through
+//     rules" and never to a panic: every masking path (redact and any separate masking tool) goes through
 //     loadPIIRules, which cannot fail.
 //
 // `claude-tools doctor` reports which source is active. `pii-rules init` seeds the file from

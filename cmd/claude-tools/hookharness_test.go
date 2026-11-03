@@ -17,7 +17,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Setenv("HANDOFF_STATE_DIR", dir)
-	os.Setenv("CLAUDE_MEM_DATA_DIR", dir) // no settings.json: memd keeps claude-mem's default skip lists
+	os.Setenv("CLAUDE_MEM_DATA_DIR", dir) // no settings.json: memd keeps the default skip lists
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)

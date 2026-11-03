@@ -1,13 +1,13 @@
 {
   "name": "guardrails",
   "displayName": "Guardrails",
-  "version": "0.1.2",
-  "description": "Guards for Claude Code tool calls: blocks destructive shell commands, asks before destructive git, settings edits and secret-file reads, masks secrets in output, and stops repeated or oversized Reads and retry loops.",
+  "version": "0.2.0",
+  "description": "Guards for Claude Code tool calls: blocks destructive shell commands, asks before destructive git and settings edits, masks Bash reads of secret files, blocks the Read tool on them and asks before writes to them, blocks oversized whole-file Reads, and notes re-reads and retry loops.",
   "author": {
     "name": "Jeff Scollick",
     "url": "https://github.com/jj-scoll"
   },
-  "repository": "https://github.com/jj-scoll/guardrails",
+  "repository": "https://github.com/jj-scoll/broodhall",
   "license": "MIT",
   "keywords": ["guard", "safety", "hooks", "secrets", "git"],
   "userConfig": {

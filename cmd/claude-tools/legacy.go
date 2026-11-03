@@ -41,7 +41,7 @@ var (
 	hostDev      = regexp.MustCompile(`--privileged|(-v|--volume|--mount)[ =]([^ ]*source=)?/dev([:,/ ]|$)`)
 )
 
-const privilegedMsg = "BLOCKED: privileged container or host /dev mount. On this desktop it shares the real ttys and GPUs, so a systemd image grabs tty1 and kills the Hyprland session. For systemd-in-docker use: --tmpfs /run --tmpfs /run/lock --cgroupns=private -v /sys/fs/cgroup:/sys/fs/cgroup:rw (plus --cap-add SYS_ADMIN only if needed), and mask getty.target/systemd-logind in the image. Use a VM for anything needing real devices. Ask the user if they truly need --privileged."
+const privilegedMsg = "BLOCKED: privileged container or host /dev mount. On this desktop it shares the real ttys and GPUs, so a systemd image grabs tty1 and kills your desktop session. For systemd-in-docker use: --tmpfs /run --tmpfs /run/lock --cgroupns=private -v /sys/fs/cgroup:/sys/fs/cgroup:rw (plus --cap-add SYS_ADMIN only if needed), and mask getty.target/systemd-logind in the image. Use a VM for anything needing real devices. Ask the user if they truly need --privileged."
 
 // anyLine mirrors `echo "$CMD" | grep -qE re`: grep matches line by line, so `$` is a
 // line end and no match spans a newline.
@@ -72,7 +72,7 @@ func legacyRules(cmd string, skip map[string]bool, noWarn bool) decision {
 				Msg: fmt.Sprintf("BLOCKED: '%s' is a high-risk destructive operation. Confirm with the user before attempting this.", p)}
 		}
 	}
-	// Privileged / host-/dev containers (a systemd image took over tty1 and killed Hyprland,
+	// Privileged / host-/dev containers (a systemd image took over tty1 and killed the desktop session,
 	// 2026-10-07). Matches the command line only; a script that runs
 	// `docker run --privileged` internally slips past.
 	if anyLine(containerRun, cmd) && anyLine(hostDev, cmd) {

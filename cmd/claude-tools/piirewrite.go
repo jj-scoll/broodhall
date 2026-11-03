@@ -1,7 +1,7 @@
 package main
 
 // piiRewrite: the PreToolUse rewrite that runs SQL clients under `claude-tools redact --pii`
-// so client PII is masked before Claude, the transcript or claude-mem see the output. psql
+// so client PII is masked before Claude, the transcript or a memory tool see the output. psql
 // is forced to --csv and duckdb to -json, so the redactor knows the column names; --to then
 // restores the format the command asked for. Every duckdb call that runs SQL is wrapped: its
 // SQL may come from a file (-f, < q.sql) or a .duckdb holding client tables, which the

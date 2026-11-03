@@ -2,7 +2,7 @@ package main
 
 // raw-client-data: Python that reads client data prints it unmasked, because redact --pii
 // can only wrap SQL clients whose output names its columns. Client data is the S3 objects
-// clientDataS3RE matches and local parquet files; the masked mirror ~/.cache/pii-safe/ is
+// clientDataS3RE matches and local parquet files; a masked copy kept under ~/.cache/ is
 // fine. The user confirms each such run.
 
 import (
@@ -52,7 +52,7 @@ func rawClientDataRule(cmd string) decision {
 	}
 	masked := ""
 	if maskedCopyTool != "" {
-		masked = ", or a masked copy (" + maskedCopyTool + " writes ~/.cache/pii-safe/...)"
+		masked = ", or a masked copy (" + maskedCopyTool + " writes a masked copy under ~/.cache/)"
 	}
 	return decision{Ask: true, Rule: "raw-client-data",
 		Msg: "ASK: Python reading raw client data (" + ref + "): its output is not PII-masked. Prefer the duckdb CLI, whose output is masked" + masked + ". Confirm with the user before running it."}

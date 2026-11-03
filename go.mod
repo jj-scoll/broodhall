@@ -1,4 +1,4 @@
-module github.com/jj-scoll/guardrails
+module github.com/jj-scoll/broodhall
 
 go 1.27
 
