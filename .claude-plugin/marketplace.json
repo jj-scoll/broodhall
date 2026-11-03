@@ -11,6 +11,12 @@
       "source": "./plugins/guardrails",
       "description": "Blocks destructive shell commands, asks before destructive git and settings edits, masks Bash reads of secret files, blocks the Read tool on them and asks before writes to them, blocks oversized whole-file Reads, and notes re-reads and retry loops.",
       "category": "security"
+    },
+    {
+      "name": "memory",
+      "source": "./plugins/memory",
+      "description": "Persistent memory for Claude Code: indexes session transcripts into a local DuckDB, injects context at session start, and serves search tools over MCP. Fails open: a missing binary or a down daemon never blocks a session.",
+      "category": "productivity"
     }
   ]
 }

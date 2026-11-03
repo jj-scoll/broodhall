@@ -38,7 +38,7 @@ ok)
 crash) echo '{"decision":"block","reason":"partial"}'; echo "boom" >&2; exit 3 ;;
 hang) echo $$ >"$STUB_PIDFILE"; exec sleep 30 ;;
 daemon-down) cat >/dev/null; echo "memory: cannot reach daemon" >&2; exit 1 ;;
-serve-hangs) case "$1" in serve) exec sleep 30 ;; context) cat >/dev/null; echo '{"ctx":1}' ;; esac ;;
+serve-hangs) case "$1" in serve) echo $$ >"$STUB_PIDFILE.serve"; exec sleep 30 ;; context) cat >/dev/null; echo '{"ctx":1}' ;; esac ;;
 esac
 EOF
 	chmod +x "$1"
@@ -190,7 +190,7 @@ if [ "$rc" -eq 0 ] && [ "$secs" -le 4 ] && [ "$out" = '{"ctx":1}' ]; then
 else
 	bad "a long-running serve is detached and does not block session-start" "rc=$rc secs=$secs out=$out"
 fi
-pkill -f "sleep 30" 2>/dev/null
+[ -s "$tmp/t8/pid.serve" ] && kill "$(cat "$tmp/t8/pid.serve")" 2>/dev/null
 
 # --- 9. data directory not writable
 newcase t9
