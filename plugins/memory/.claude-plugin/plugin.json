@@ -1,0 +1,13 @@
+{
+  "name": "memory",
+  "displayName": "Memory",
+  "version": "0.1.0",
+  "description": "Persistent memory for Claude Code: a local daemon indexes your session transcripts into DuckDB, injects relevant context at session start, and serves search tools over MCP. Every hook fails open, so a missing binary or a down daemon never blocks a session.",
+  "author": {
+    "name": "Jeff Scollick",
+    "url": "https://github.com/jj-scoll"
+  },
+  "repository": "https://github.com/jj-scoll/broodhall",
+  "license": "MIT",
+  "keywords": ["memory", "context", "search", "duckdb", "mcp"]
+}
