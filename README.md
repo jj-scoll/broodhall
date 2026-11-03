@@ -20,6 +20,11 @@ sha256, and keeps it in `~/.claude/plugins/data/`. Linux and macOS, amd64 and ar
 If the download fails, the guards stay off for that session (you see a one-line notice) and
 tool calls run normally. They never block on a missing binary. The next session retries.
 
+Once installed, the guards fail closed: if the binary crashes, is killed or hangs, the tool
+call it was checking is blocked rather than let through unchecked. If a broken binary blocks
+every tool call, run `claude plugin disable guardrails@jj-scoll` in a terminal and start a
+new session.
+
 ## What it does
 
 | Hook | Behavior |

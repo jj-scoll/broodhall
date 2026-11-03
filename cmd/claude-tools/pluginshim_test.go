@@ -193,3 +193,34 @@ func TestPluginHooksUseKnownCommands(t *testing.T) {
 		t.Fatal("hooks.json has no hooks")
 	}
 }
+
+// The guards fail closed: a guard binary that crashes, is killed or hangs blocks the tool
+// call instead of letting it through unchecked. A missing binary still allows, because
+// run.sh exits 0 then. The other hooks (install, retry-breaker) fail open.
+func TestPluginGuardHooksFailClosed(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(pluginDir, "hooks/hooks.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Hooks map[string][]struct {
+			Hooks []struct{ Command, OnFailure string }
+		}
+	}
+	if err := json.Unmarshal(b, &f); err != nil {
+		t.Fatal(err)
+	}
+	for event, groups := range f.Hooks {
+		for _, g := range groups {
+			for _, h := range g.Hooks {
+				want := ""
+				if event == "PreToolUse" {
+					want = "block"
+				}
+				if h.OnFailure != want {
+					t.Errorf("%s hook %q: onFailure %q, want %q", event, h.Command, h.OnFailure, want)
+				}
+			}
+		}
+	}
+}
