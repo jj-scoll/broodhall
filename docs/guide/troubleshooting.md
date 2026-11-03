@@ -38,3 +38,35 @@ next session start retries. The reasons:
   allows every call.
 
 If you installed from the old `jj-scoll` marketplace, see [Moving from the old jj-scoll marketplace](install.md#moving-from-the-old-jj-scoll-marketplace).
+
+## memory does not start
+
+memory fails open, so a problem never blocks a session; it just leaves memory off. Look
+first at `memory.log` in the plugin data directory, where the launcher writes its notes.
+
+| Log line | Meaning |
+| --- | --- |
+| `unsupported OS` or `unsupported CPU` | memory runs on Linux and macOS, on amd64 and arm64. |
+| `curl not found` | Install `curl`. |
+| `xz not found (install xz-utils)` | On Linux the archive is `.tar.xz` and needs the `xz` program. |
+| `download of <file> failed` | `curl` could not fetch the archive (10 minute limit) or `checksums.txt` (30 seconds). |
+| `checksum mismatch or missing` | The archive did not match `checksums.txt`. It was not installed and is never run. |
+| `unpack of <file> failed` | `tar` could not unpack it, or it lacked the program or an extension. |
+| `install of <version> failed within the last hour; not retrying` | A failed install leaves a stamp, so an offline machine does not wait on the network at every start. Delete `bin/.fail-<version>` in the plugin data directory to retry now. |
+
+Other causes:
+
+- **First session.** The download runs in the background, so memory starts from the second
+  session. Wait for the download and start a new session.
+- **Alpine or another musl Linux.** The program needs glibc 2.35 or newer. It will not run
+  on musl.
+- **No notes appear.** The daemon writes notes by running `claude -p`. If `claude` is not on
+  the `PATH` of the daemon or is signed out, the tool calls stay queued and nothing is lost.
+  Fix the sign-in and they are processed. Check `memory.log` in the state directory
+  (`~/.local/share/memory/`).
+- **UI or Quack unavailable.** Ports `9495` and `9494` are fixed. If another program has one,
+  the daemon logs that it is not serving it and carries on. See
+  [UI and Quack](../memory/ui-and-quack.md).
+- **Two daemons.** Only one can run per state directory. A second exits at once.
+- **A changed setting has no effect.** The daemon reads its settings when it starts. Stop it
+  with `pkill -f 'memory serve'` and start a new session.

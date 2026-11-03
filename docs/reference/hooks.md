@@ -15,3 +15,23 @@ the third column. A dash means the field is absent from the entry.
 
 The entries with `onFailure: block` are the ones that fail closed. The `SessionStart` entry
 sets a timeout of 120 seconds.
+
+## memory
+
+The memory plugin registers two hooks in its own `hooks/hooks.json`, and an MCP server in
+`.mcp.json`. Each command runs the plugin's `scripts/run.sh` launcher with the argument in
+the third column.
+
+| Event | Matcher | Argument | Timeout |
+| --- | --- | --- | --- |
+| `SessionStart` | — | `session-start` | 15 s |
+| `PreToolUse` | <code>Edit&#124;Write&#124;NotebookEdit</code> | `lookup` | 5 s |
+
+`session-start` starts the daemon (`memory serve`) and prints the context block with
+`memory context`. If the binary is not installed yet, it starts a background install and
+prints nothing. `lookup` runs `memory lookup`. The MCP server `memory` runs
+`run.sh mcp`, which hands over to `memory mcp`.
+
+Neither hook has `onFailure: block`. The launcher always exits 0, prints nothing on any
+failure, and kills the program after `MEMORY_HOOK_TIMEOUT` seconds (3 by default), so every
+memory hook fails open.
