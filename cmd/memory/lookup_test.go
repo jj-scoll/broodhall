@@ -114,7 +114,7 @@ func TestLookupIgnoresReadAndBadInput(t *testing.T) {
 }
 
 func TestMemdLookupHangingSocketRespectsBudget(t *testing.T) {
-	dir := t.TempDir()
+	dir := shortSockDir(t)
 	sock := filepath.Join(dir, "s.sock")
 	l, err := net.Listen("unix", sock)
 	if err != nil {
@@ -250,7 +250,7 @@ func TestMemdLookupColdProjectKeyRespectsBudget(t *testing.T) {
 // fakeMemd serves canned replies on a temp unix socket.
 func fakeMemd(t *testing.T, h http.HandlerFunc) {
 	t.Helper()
-	dir := t.TempDir()
+	dir := shortSockDir(t)
 	l, err := net.Listen("unix", filepath.Join(dir, "memory.sock"))
 	if err != nil {
 		t.Fatal(err)

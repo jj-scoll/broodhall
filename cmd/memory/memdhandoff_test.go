@@ -277,11 +277,7 @@ func TestMemdHTTPContextClaimsHandoff(t *testing.T) {
 // mem context hands the hook input's source to the daemon, so memory can tell a compact from a
 // fresh start. The daemon here is a fake on a temp socket.
 func TestMemContextPassesSource(t *testing.T) {
-	dir, err := os.MkdirTemp("", "ctx")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := shortSockDir(t)
 	t.Setenv("XDG_RUNTIME_DIR", dir)
 	ln, err := net.Listen("unix", filepath.Join(dir, "memory.sock"))
 	if err != nil {

@@ -43,7 +43,7 @@ func serveDo(c *http.Client, method, path, body string) (int, string, error) {
 
 func TestMemdServeEndToEnd(t *testing.T) {
 	fastWorkers(t)
-	xdg := t.TempDir()
+	xdg := shortSockDir(t)
 	t.Setenv("XDG_RUNTIME_DIR", xdg)
 	dir := t.TempDir()
 	root := t.TempDir()
@@ -302,7 +302,7 @@ func freeLoopbackAddr(t *testing.T) string {
 
 // Quack failing to start (no extension dir) is logged; memory keeps serving.
 func TestMemdServeSurvivesQuackFailure(t *testing.T) {
-	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	t.Setenv("XDG_RUNTIME_DIR", shortSockDir(t))
 	t.Setenv("MEMORY_EXT_DIR", t.TempDir()) // no extensions: startQuack must fail
 	dir := t.TempDir()
 	// openMemdDB needs fts; give the empty ext dir a copy via the real one.
