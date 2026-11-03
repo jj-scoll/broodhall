@@ -1,5 +1,6 @@
-# The plugin's binary is the CGO_ENABLED=0 build, so CI tests that build on Linux and macOS
-# (macOS covers run.sh with its own sh, tar and shasum).
+# The guardrails binary is the CGO_ENABLED=0 build, so CI tests that build on Linux and macOS
+# (macOS covers run.sh with its own sh, tar and shasum). The memory binary needs cgo for DuckDB,
+# so it has its own job, and the guardrails job names its package instead of ./...
 name: ci
 
 on:
@@ -20,7 +21,29 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go vet ./...
-      - run: go test ./...
+      - run: go vet ./cmd/claude-tools/...
+      - run: go test ./cmd/claude-tools/...
+      - run: bash plugins/memory/test/run_test.sh
       - if: runner.os == 'Linux'
-        run: shellcheck -s sh plugins/guardrails/scripts/run.sh
+        run: shellcheck -s sh plugins/guardrails/scripts/run.sh plugins/memory/scripts/run.sh
+
+  memory:
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "1"
+      # Keep in step with release-memory.yml.
+      DUCKDB_VERSION: v2.0.0
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: DuckDB extensions
+        run: |
+          mkdir -p "$RUNNER_TEMP/ext"
+          for e in fts httpfs quack; do
+            curl -fsSL --retry 3 "https://extensions.duckdb.org/$DUCKDB_VERSION/linux_amd64/$e.duckdb_extension.gz" |
+              gunzip > "$RUNNER_TEMP/ext/$e.duckdb_extension"
+          done
+      - run: go vet ./cmd/memory/...
+      - run: MEMORY_EXT_DIR="$RUNNER_TEMP/ext" go test ./cmd/memory/...

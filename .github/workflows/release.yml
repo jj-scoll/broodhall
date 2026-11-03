@@ -21,7 +21,7 @@ jobs:
         run: |
           v=$(jq -r .version plugins/guardrails/.claude-plugin/plugin.json)
           [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME, plugin.json version $v"; exit 1; }
-      - run: CGO_ENABLED=0 go test ./...
+      - run: CGO_ENABLED=0 go test ./cmd/claude-tools/...
       - name: Build
         run: |
           for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
