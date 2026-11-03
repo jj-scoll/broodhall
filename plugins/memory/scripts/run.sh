@@ -76,7 +76,12 @@ install_bin() (
 		fail "download of $asset failed"
 	fi
 	if command -v sha256sum >/dev/null 2>&1; then sum=sha256sum; else sum='shasum -a 256'; fi
-	(cd "$tmp" && grep "  $asset\$" checksums.txt | $sum -c - >/dev/null 2>&1) || fail "checksum mismatch or missing for $asset"
+	# Compare the hashes directly: macOS shasum -c exits 0 on empty input, so piping a missing
+	# checksums.txt line into it would pass an unlisted asset.
+	want=$(grep "  $asset\$" "$tmp/checksums.txt" | cut -d' ' -f1)
+	got=$($sum "$tmp/$asset" | cut -d' ' -f1)
+	[ "${#want}" -eq 64 ] || fail "checksums.txt has no entry for $asset"
+	[ "$got" = "$want" ] || fail "checksum mismatch for $asset"
 	# The extensions go in first and the binary last, so an installed binary always has them.
 	tar -xJf "$tmp/$asset" -C "$tmp" memory ext >/dev/null 2>&1 || fail "unpack of $asset failed (it must hold memory and ext/)"
 	for e in fts httpfs quack; do
