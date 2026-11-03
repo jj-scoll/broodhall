@@ -28,7 +28,15 @@ jobs:
         run: shellcheck -s sh plugins/guardrails/scripts/run.sh plugins/memory/scripts/run.sh
 
   memory:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            ext_platform: linux_amd64
+          - os: macos-latest
+            ext_platform: osx_arm64
+    runs-on: ${{ matrix.os }}
     env:
       CGO_ENABLED: "1"
       # Keep in step with release-memory.yml.
@@ -39,10 +47,12 @@ jobs:
         with:
           go-version-file: go.mod
       - name: DuckDB extensions
+        env:
+          EXT_PLATFORM: ${{ matrix.ext_platform }}
         run: |
           mkdir -p "$RUNNER_TEMP/ext"
           for e in fts httpfs quack; do
-            curl -fsSL --retry 3 "https://extensions.duckdb.org/$DUCKDB_VERSION/linux_amd64/$e.duckdb_extension.gz" |
+            curl -fsSL --retry 3 "https://extensions.duckdb.org/$DUCKDB_VERSION/$EXT_PLATFORM/$e.duckdb_extension.gz" |
               gunzip > "$RUNNER_TEMP/ext/$e.duckdb_extension"
           done
       - run: go vet ./cmd/memory/...

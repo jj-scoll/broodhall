@@ -40,7 +40,7 @@ func httpSeedObs(t *testing.T, db *sql.DB, id int, project, title, path, source 
 }
 
 func TestMemdHTTPSocketMode(t *testing.T) {
-	sock := filepath.Join(t.TempDir(), "m.sock")
+	sock := filepath.Join(shortSockDir(t), "m.sock")
 	ln, err := listenSocket(sock)
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +71,7 @@ func TestMemdHTTPSocketMode(t *testing.T) {
 }
 
 func TestMemdHTTPListenSocketStale(t *testing.T) {
-	sock := filepath.Join(t.TempDir(), "m.sock")
+	sock := filepath.Join(shortSockDir(t), "m.sock")
 	// A stale socket: bound, then closed without unlinking.
 	l, err := net.Listen("unix", sock)
 	if err != nil {

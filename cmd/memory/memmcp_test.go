@@ -37,11 +37,7 @@ func mcpRun(t *testing.T, sock string, lines ...string) []map[string]any {
 // fakeMCPMemd serves handler on a fresh unix socket and returns its path.
 func fakeMCPMemd(t *testing.T, h http.Handler) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "mcp")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	dir := shortSockDir(t)
 	sock := filepath.Join(dir, "s.sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
@@ -195,8 +191,7 @@ func TestMemMCPForward(t *testing.T) {
 
 func TestMemMCPMemdDown(t *testing.T) {
 	hang := func() string {
-		dir, _ := os.MkdirTemp("", "mcp")
-		t.Cleanup(func() { os.RemoveAll(dir) })
+		dir := shortSockDir(t)
 		sock := filepath.Join(dir, "h.sock")
 		ln, err := net.Listen("unix", sock)
 		if err != nil {
