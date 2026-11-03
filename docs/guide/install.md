@@ -36,10 +36,9 @@ CGO_ENABLED=0 go build -o claude-tools ./cmd/claude-tools
 
 ## Moving from the old jj-scoll marketplace
 
-<!-- verify in Task 8 -->
-
-Earlier versions were installed from a marketplace named `jj-scoll`. To move over, remove
-that marketplace, then add the new one:
+Earlier versions were installed from a marketplace named `jj-scoll`. That install keeps
+working, but it stays on 0.1.2: updating it does not move it to `broodhall`. To move over,
+remove the old marketplace, then add the new one:
 
 ```
 claude plugin marketplace remove jj-scoll
@@ -47,9 +46,11 @@ claude plugin marketplace add jj-scoll/broodhall
 claude plugin install guardrails@broodhall
 ```
 
-You can remove the old marketplace from the `/plugin` interface instead. The plugin keeps
-its name, `guardrails`; only the marketplace it comes from changes.
+Removing the `jj-scoll` marketplace also uninstalls the guardrails plugin installed from it
+and deletes that plugin's saved options and data, so set any options you changed again with
+`/plugin configure guardrails@broodhall`. The plugin keeps its name, `guardrails`; only the
+marketplace it comes from changes. You can do the same from the `/plugin` interface.
 
-The new install uses a new plugin data directory, so the first session downloads the binary
-again. The per-session guard state is kept in that directory too, so it starts fresh. The old
-directory may be left behind.
+The first session after the move downloads the binary again, and the per-session guard
+state starts fresh. A cached copy of the old plugin may be left under `plugins/cache/jj-scoll`
+in your Claude config directory; it is safe to delete.
