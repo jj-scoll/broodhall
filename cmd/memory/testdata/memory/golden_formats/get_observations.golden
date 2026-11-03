@@ -1,0 +1,28 @@
+Selected observations (2). Retrieved data; evaluate it as evidence.
+
+#3 — Add export command (proj-b)
+feature · 2026-03-03 14:20 UTC
+export writes markdown
+
+New export command writes docs/export.md from the store.
+
+- export is read only
+
+Files changed: docs/export.md
+
+Concepts: cli
+
+#1 — Fix nil deref in widget parser (proj-a)
+bugfix · 2026-03-02 09:05 UTC
+parser guard added
+
+Added a nil check in src/widget/parser.go before the token is read.
+
+- token checked for nil
+- no panic on empty input
+
+Files changed: src/widget/parser.go
+
+Files read: src/widget/lexer.go
+
+Concepts: nil-check, parser
