@@ -5,8 +5,9 @@
 # memory. Diagnostics go to $data/memory.log. A binary whose checksum does not match is never
 # installed and never run.
 #
-#   run.sh session-start   install the binary if needed, start the daemon, print the context block
-#   run.sh install         install the binary if needed
+#   run.sh session-start   binary installed: start the daemon, print the context block;
+#                          not installed: start a background install and print nothing
+#   run.sh install         install the binary if needed (in the foreground)
 #   run.sh mcp             exec the MCP stdio server (exits 0 at once if there is no binary)
 #   run.sh <subcommand>    run `memory <subcommand>` with the hook's stdin, bounded by a timeout
 #
@@ -62,19 +63,22 @@ install_bin() (
 	*) fail "unsupported CPU $(uname -m)" ;;
 	esac
 	command -v curl >/dev/null 2>&1 || fail "curl not found"
-	asset=memory_${os}_$arch.tar.gz
+	# GNU tar unpacks .tar.xz through the xz program; macOS tar reads it natively.
+	[ "$os" = darwin ] || command -v xz >/dev/null 2>&1 || fail "xz not found (install xz-utils)"
+	asset=memory_${os}_$arch.tar.xz
 	base=${MEMORY_RELEASE_URL:-https://github.com/jj-scoll/broodhall/releases/download}
 	if ! { mkdir -p "$data/bin" && tmp=$(mktemp -d "$data/bin/.download.XXXXXX"); }; then fail "cannot write $data"; fi
 	trap 'rm -rf "$tmp"' EXIT
-	# 75 s keeps the whole install inside the SessionStart hook's 90 s timeout.
-	if ! { curl -fsSL --connect-timeout 5 --max-time 75 -o "$tmp/$asset" "$base/memory-v$ver/$asset" &&
+	# The install runs in the background (see bg_install), so a slow link only needs to finish
+	# within 10 minutes.
+	if ! { curl -fsSL --connect-timeout 5 --max-time 600 -o "$tmp/$asset" "$base/memory-v$ver/$asset" &&
 		curl -fsSL --connect-timeout 5 --max-time 30 -o "$tmp/checksums.txt" "$base/memory-v$ver/checksums.txt"; }; then
 		fail "download of $asset failed"
 	fi
 	if command -v sha256sum >/dev/null 2>&1; then sum=sha256sum; else sum='shasum -a 256'; fi
 	(cd "$tmp" && grep "  $asset\$" checksums.txt | $sum -c - >/dev/null 2>&1) || fail "checksum mismatch or missing for $asset"
 	# The extensions go in first and the binary last, so an installed binary always has them.
-	tar -xzf "$tmp/$asset" -C "$tmp" memory ext >/dev/null 2>&1 || fail "unpack of $asset failed (it must hold memory and ext/)"
+	tar -xJf "$tmp/$asset" -C "$tmp" memory ext >/dev/null 2>&1 || fail "unpack of $asset failed (it must hold memory and ext/)"
 	for e in fts httpfs quack; do
 		[ -f "$tmp/ext/$e.duckdb_extension" ] || fail "$asset has no ext/$e.duckdb_extension"
 	done
@@ -85,15 +89,31 @@ install_bin() (
 	exit 0
 )
 
-# start_daemon launches `memory serve` detached, with no inherited stdio so the hook's pipes
-# close. A second instance exits at once because the first holds the socket.
+# spawn runs a command detached, with no inherited stdio so the hook's pipes close.
+spawn() {
+	if command -v setsid >/dev/null 2>&1; then
+		setsid "$@" >>"$log" 2>&1 </dev/null &
+	else
+		nohup "$@" >>"$log" 2>&1 </dev/null &
+	fi
+}
+
+# start_daemon launches `memory serve` detached. A second instance exits at once because the
+# first holds the socket.
 start_daemon() {
 	[ -n "${MEMORY_NO_DAEMON-}" ] && return 0
-	if command -v setsid >/dev/null 2>&1; then
-		setsid "$bin" serve >>"$log" 2>&1 </dev/null &
-	else
-		nohup "$bin" serve >>"$log" 2>&1 </dev/null &
-	fi
+	spawn "$bin" serve
+}
+
+# bg_install starts the install detached and returns at once, so a slow download never holds
+# up a session; memory starts once it lands. The lock dir keeps two sessions from installing
+# at the same time. A lock older than 15 minutes belongs to a killed installer and is taken over.
+lock=$data/bin/.install-lock
+bg_install() {
+	mkdir -p "$data/bin" 2>/dev/null || { log "cannot write $data/bin; memory is off this session"; return 0; }
+	[ -n "$(find "$lock" -maxdepth 0 -mmin +15 2>/dev/null)" ] && rm -rf "$lock"
+	mkdir "$lock" 2>/dev/null || return 0
+	spawn sh "$0" install-locked
 }
 
 # run_bounded runs the binary with stdin from $in and stdout to $outf. A watchdog kills it
@@ -134,10 +154,17 @@ main() {
 	cat >"$in" 2>/dev/null
 	case $mode in
 	install) install_bin ;;
+	install-locked) # the detached child of bg_install, which took the lock
+		install_bin && start_daemon
+		rm -rf "$lock"
+		;;
 	session-start)
-		install_bin || return 0
-		start_daemon
-		emit context
+		if [ -x "$bin" ]; then
+			start_daemon
+			emit context
+		else
+			bg_install
+		fi
 		;;
 	"") log "usage: run.sh session-start|install|mcp|<subcommand>" ;;
 	*)

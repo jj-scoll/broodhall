@@ -1,5 +1,7 @@
 # Push a tag memory-v<version> matching plugins/memory/.claude-plugin/plugin.json to publish the
-# binaries plugins/memory/scripts/run.sh downloads: memory_<os>_<arch>.tar.gz and checksums.txt.
+# binaries plugins/memory/scripts/run.sh downloads: memory_<os>_<arch>.tar.xz and checksums.txt.
+# Build jobs upload a plain .tar (it keeps the exec bit through the artifact); publish packs
+# each with xz -9e on Linux, so the macOS runners need no xz.
 # Each tarball holds the binary and ext/, the signed DuckDB extensions it loads (fts, httpfs,
 # quack), so nothing is downloaded at runtime. DUCKDB_VERSION must match the DuckDB that
 # duckdb-go in go.mod links; the tests LOAD the extensions, so a mismatch fails the build.
@@ -60,11 +62,11 @@ jobs:
           CGO_ENABLED=1 go build -trimpath -ldflags "-s -w" -o build/memory ./cmd/memory
           file build/memory
           mkdir -p dist
-          tar -czf "dist/memory_${{ matrix.os }}_${{ matrix.arch }}.tar.gz" -C build memory ext
+          tar -cf "dist/memory_${{ matrix.os }}_${{ matrix.arch }}.tar" -C build memory ext
       - uses: actions/upload-artifact@v7
         with:
           name: memory_${{ matrix.os }}_${{ matrix.arch }}
-          path: dist/*.tar.gz
+          path: dist/*.tar
           if-no-files-found: error
 
   publish:
@@ -82,6 +84,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cd dist && sha256sum -- *.tar.gz > checksums.txt && cd ..
+          xz -9e -T0 dist/*.tar
+          cd dist && sha256sum -- *.tar.xz > checksums.txt && cd ..
           [ "$(wc -l < dist/checksums.txt)" -eq 4 ] || { echo "expected 4 assets"; cat dist/checksums.txt; exit 1; }
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes

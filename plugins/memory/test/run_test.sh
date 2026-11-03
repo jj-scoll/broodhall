@@ -21,7 +21,7 @@ bad() { fail=$((fail + 1)); printf 'FAIL %s: %s\n' "$1" "$2"; }
 if command -v sha256sum >/dev/null; then sum=sha256sum; else sum='shasum -a 256'; fi
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 case $(uname -m) in x86_64 | amd64) arch=amd64 ;; *) arch=arm64 ;; esac
-asset=memory_${os}_$arch.tar.gz
+asset=memory_${os}_$arch.tar.xz
 
 # A stub binary. STUB_MODE picks the behaviour; STUB_MARK records every execution.
 mkstub() {
@@ -53,11 +53,11 @@ mkrelease() {
 	mkdir -p "$rel/memory-v$ver" "$rel/work"
 	mkstub "$rel/work/memory"
 	if [ -n "${NO_EXT-}" ]; then
-		tar -czf "$rel/memory-v$ver/$asset" -C "$rel/work" memory
+		tar -cJf "$rel/memory-v$ver/$asset" -C "$rel/work" memory
 	else
 		mkdir -p "$rel/work/ext"
 		for e in $exts; do echo "$e" >"$rel/work/ext/$e.duckdb_extension"; done
-		tar -czf "$rel/memory-v$ver/$asset" -C "$rel/work" memory ext
+		tar -cJf "$rel/memory-v$ver/$asset" -C "$rel/work" memory ext
 	fi
 	(cd "$rel/memory-v$ver" && $sum "$asset" >checksums.txt)
 }
@@ -85,6 +85,12 @@ hook() {
 	secs=$((t1 - t0))
 }
 
+# settle <case>: wait (up to 15 s) for a background install to release its lock.
+settle() {
+	local i=0
+	while [ -d "$tmp/$1/data/bin/.install-lock" ] && [ $i -lt 30 ]; do sleep 0.5; i=$((i + 1)); done
+}
+
 expect_open() { # <name> : exit 0 and empty stdout
 	if [ "$rc" -ne 0 ]; then
 		bad "$1" "exit $rc, want 0"
@@ -99,21 +105,29 @@ expect_open() { # <name> : exit 0 and empty stdout
 newcase t1
 hook t1 session-start
 expect_open "binary missing and download fails (session-start)"
+settle t1
 hook t1 context
 expect_open "binary missing (context)"
 hook t1 mcp
 expect_open "binary missing (mcp)"
 
-# --- 2. positive control: download, verify, install, then context passes through
+# --- 2. positive control: the first session-start installs in the background and prints
+# nothing; the installer starts the daemon; the next session-start passes context through
 newcase t2
 mkrelease "$tmp/t2/rel"
 export MEMORY_RELEASE_URL=file://$tmp/t2/rel
 hook t2 session-start
-if [ "$rc" -eq 0 ] && [ -x "$tmp/t2/data/bin/$ver/memory" ] && printf %s "$out" | grep -q 'stub memory'; then
-	ok "good release installs and context reaches stdout"
+expect_open "first session-start returns at once while installing"
+settle t2
+if [ -x "$tmp/t2/data/bin/$ver/memory" ]; then ok "background install puts the binary in place"; else bad "background install puts the binary in place" "no binary; log: $(cat "$tmp/t2/data/memory.log" 2>/dev/null)"; fi
+if grep -q '^serve ' "$tmp/t2/mark"; then ok "background install starts the daemon"; else bad "background install starts the daemon" "mark: $(cat "$tmp/t2/mark")"; fi
+hook t2 session-start
+if [ "$rc" -eq 0 ] && printf %s "$out" | grep -q 'stub memory'; then
+	ok "next session-start passes context through"
 else
-	bad "good release installs and context reaches stdout" "rc=$rc installed=$([ -x "$tmp/t2/data/bin/$ver/memory" ] && echo yes || echo no) out=$out"
+	bad "next session-start passes context through" "rc=$rc out=$out"
 fi
+if jq -e '.hooks.SessionStart[0].hooks[0].timeout <= 15' "$root/hooks/hooks.json" >/dev/null 2>&1; then ok "SessionStart hook timeout is at most 15 s"; else bad "SessionStart hook timeout is at most 15 s" "$(jq -c '.hooks.SessionStart' "$root/hooks/hooks.json")"; fi
 missing=
 for e in $exts; do [ -f "$tmp/t2/data/bin/$ver/ext/$e.duckdb_extension" ] || missing="$missing $e"; done
 if [ -z "$missing" ]; then ok "install unpacks the DuckDB extensions next to the binary"; else bad "install unpacks the DuckDB extensions next to the binary" "missing:$missing"; fi
@@ -131,6 +145,7 @@ NO_EXT=1 mkrelease "$tmp/t2b/rel"
 export MEMORY_RELEASE_URL=file://$tmp/t2b/rel
 hook t2b session-start
 expect_open "tarball without extensions (session-start)"
+settle t2b
 if [ -e "$tmp/t2b/data/bin/$ver/memory" ]; then bad "tarball without extensions installs no binary" "binary present"; else ok "tarball without extensions installs no binary"; fi
 if [ -s "$tmp/t2b/mark" ]; then bad "tarball without extensions never executes" "stub ran"; else ok "tarball without extensions never executes"; fi
 
@@ -156,6 +171,7 @@ echo "0000000000000000000000000000000000000000000000000000000000000000  $asset" 
 export MEMORY_RELEASE_URL=file://$tmp/t3/rel
 hook t3 session-start
 expect_open "checksum mismatch (session-start)"
+settle t3
 if [ -e "$tmp/t3/data/bin/$ver/memory" ]; then bad "checksum mismatch installs nothing" "binary present"; else ok "checksum mismatch installs nothing"; fi
 if [ -s "$tmp/t3/mark" ]; then bad "checksum mismatch never executes the binary" "stub ran: $(cat "$tmp/t3/mark")"; else ok "checksum mismatch never executes the binary"; fi
 hook t3 context
@@ -168,6 +184,7 @@ echo "deadbeef  some_other_asset.tar.gz" >"$tmp/t3b/rel/memory-v$ver/checksums.t
 export MEMORY_RELEASE_URL=file://$tmp/t3b/rel
 hook t3b session-start
 expect_open "checksums.txt lacks the asset"
+settle t3b
 if [ -s "$tmp/t3b/mark" ]; then bad "unlisted asset never executes" "stub ran"; else ok "unlisted asset never executes"; fi
 
 # --- 4. unsupported platform: stub uname, and curl must not be called
@@ -186,6 +203,7 @@ chmod +x "$tmp/t4/path/uname" "$tmp/t4/path/curl"
 old_path=$PATH
 PATH=$tmp/t4/path:$PATH
 hook t4 session-start
+settle t4
 PATH=$old_path
 expect_open "unsupported platform"
 if [ -e "$tmp/t4/curl-called" ]; then bad "unsupported platform skips the download" "curl was called"; else ok "unsupported platform skips the download"; fi
@@ -243,13 +261,52 @@ export CLAUDE_PLUGIN_DATA=$tmp/t9/ro/nested
 mkrelease "$tmp/t9/rel"
 export MEMORY_RELEASE_URL=file://$tmp/t9/rel
 hook t9 session-start
+settle t9
 expect_open "data dir not writable"
 chmod 700 "$tmp/t9/ro"
 
 # --- 10. diagnostics go to a log or stderr, never stdout (covered above); a failure leaves a trace
 newcase t10
 hook t10 session-start
+settle t10
 if [ -s "$tmp/t10/stderr" ] || [ -s "$tmp/t10/data/memory.log" ]; then ok "failure leaves a diagnostic in stderr or the log"; else bad "failure leaves a diagnostic in stderr or the log" "nothing written"; fi
+
+# A curl stub for the next cases: records each call, then sleeps CURL_SLEEP seconds and fails.
+mkcurl() {
+	mkdir -p "$1"
+	cat >"$1/curl" <<EOF
+#!/bin/sh
+echo curl >>"$1/curl-called"
+sleep \${CURL_SLEEP:-0}
+exit 1
+EOF
+	chmod +x "$1/curl"
+}
+
+# --- 11. a slow download does not hold up session-start
+newcase t11
+mkcurl "$tmp/t11/path"
+old_path=$PATH
+PATH=$tmp/t11/path:$PATH CURL_SLEEP=4 hook t11 session-start
+PATH=$old_path
+expect_open "slow download (session-start)"
+if [ "$secs" -le 1 ]; then ok "session-start returns before a slow download finishes (${secs}s)"; else bad "session-start returns before a slow download finishes" "took ${secs}s"; fi
+settle t11
+
+# --- 12. an install in progress is not started twice; a stale lock is taken over
+newcase t12
+mkcurl "$tmp/t12/path"
+mkdir -p "$tmp/t12/data/bin/.install-lock"
+old_path=$PATH
+PATH=$tmp/t12/path:$PATH hook t12 session-start
+sleep 1
+if [ -e "$tmp/t12/path/curl-called" ]; then bad "a held install lock starts no second download" "curl was called"; else ok "a held install lock starts no second download"; fi
+touch -t 202001010000 "$tmp/t12/data/bin/.install-lock"
+PATH=$tmp/t12/path:$PATH hook t12 session-start
+PATH=$old_path
+settle t12
+if [ -e "$tmp/t12/path/curl-called" ]; then ok "a stale install lock is taken over"; else bad "a stale install lock is taken over" "curl was never called"; fi
+if [ -d "$tmp/t12/data/bin/.install-lock" ]; then bad "the installer releases its lock" "lock still held"; else ok "the installer releases its lock"; fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
