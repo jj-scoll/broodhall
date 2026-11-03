@@ -299,7 +299,7 @@ func memWorkStateWrite(db *sql.DB, args map[string]any) (string, error) {
 		return "", err
 	}
 	if list == wsHandoffList {
-		return fmt.Sprintf("Saved the handoff in %s. The next session here is shown it once.", project), nil
+		return fmt.Sprintf("Handoff stored for %s; the next session there sees it once, at startup.", project), nil
 	}
 
 	lists, err := workStateFoldRows(db, project)
@@ -310,15 +310,15 @@ func memWorkStateWrite(db *sql.DB, args map[string]any) (string, error) {
 	if userScope {
 		scope = "all projects"
 	}
-	head := fmt.Sprintf("Saved to %q in %s.", list, scope)
+	head := fmt.Sprintf("Entry added to list %q (%s).", list, scope)
 	var lines []string
 	if l := lists[list]; l != nil {
 		lines = wsRenderList(list, l, false, time.Now())
 	}
 	if len(lines) == 0 {
-		return head + " Nothing in it is open now.", nil
+		return head + " No items are left open.", nil
 	}
-	return wsTruncate(head+" Still open in it:", lines, wsReplyBudget), nil
+	return wsTruncate(head+" Still open:", lines, wsReplyBudget), nil
 }
 
 // memWorkStateRead lists the project's open to-dos and state, or one list.
@@ -369,9 +369,9 @@ func memWorkStateReadAt(db *sql.DB, args map[string]any, now time.Time) (string,
 		in = fmt.Sprintf(" in %q", list)
 	}
 	if closed {
-		return fmt.Sprintf("Nothing recorded%s for %s.", in, project), nil
+		return fmt.Sprintf("No work state recorded%s for %s.", in, project), nil
 	}
-	return fmt.Sprintf("Nothing open%s for %s. Pass includeClosed to see closed items.", in, project), nil
+	return fmt.Sprintf("No open items%s for %s; set includeClosed to include finished ones.", in, project), nil
 }
 
 // wsClosedStatus reports whether a status value marks done or dropped work.
@@ -481,7 +481,7 @@ func wsTruncate(head string, lines []string, max int) string {
 	cur := head
 	for i, ln := range lines {
 		left := len(lines) - i
-		more := fmt.Sprintf("\n- ...%d more line%s; read them with %s", left, plural(left), wsMoreLinesSuffix)
+		more := fmt.Sprintf("\n- ...%d more line%s; %s shows them", left, plural(left), wsMoreLinesSuffix)
 		next := cur + "\n" + ln
 		extra := 0
 		if i < len(lines)-1 {

@@ -3,20 +3,20 @@ Found 5 result(s) matching "" (4 obs, 1 sessions, 0 prompts)
 ### Mar 3, 2026
 
 **docs/export.md**
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
+| ID | Time | Kind | Title | Read |
+|----|------|------|-------|------|
 | #3 | 2:20 PM | ◆ | Add export command | ~30 |
 
 ### Mar 2, 2026
 
 **General**
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
+| ID | Time | Kind | Title | Read |
+|----|------|------|-------|------|
 | #4 | 9:20 AM | ✓ | Parser fuzz target added | ~19 |
 | #2 | 9:05 AM | ○ | Lexer tokens are cached | ~18 |
 | #S1 | 9:10 AM | 🎯 | Harden the widget parser | - |
 
 **src/widget/parser.go**
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
+| ID | Time | Kind | Title | Read |
+|----|------|------|-------|------|
 | #1 | 9:05 AM | ● | Fix nil deref in widget parser | ~42 |

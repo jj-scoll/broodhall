@@ -94,7 +94,7 @@ func memdHandler(db *sql.DB) http.Handler {
 		if name == "session_start_context" {
 			project := startContextProject(args)
 			if project == "" {
-				writeText(w, 400, `session_start_context: "project" or "projects" is required`)
+				writeText(w, 400, `session_start_context needs a "project" or "projects" argument`)
 				return
 			}
 			out = buildContext(db, project, time.Now())

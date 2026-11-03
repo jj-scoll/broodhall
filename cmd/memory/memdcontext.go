@@ -36,7 +36,7 @@ const (
 	ctxSessionCount = 10
 	ctxTitleRunes   = 200
 	ctxFieldRunes   = 500
-	ctxCutMarker    = "\n[memory] Context cut to fit the SessionStart limit; search memory for the rest."
+	ctxCutMarker    = "\n[memory] Output was cut to stay under the SessionStart size cap; query memory for what is missing."
 
 	ctxOpenBudget  = 1800
 	ctxFactsBudget = 2000 // kUr
@@ -48,12 +48,12 @@ const (
 	ctxHideDays    = 90   // SJe
 )
 
-const ctxWorkHeader = `# Work state: your to-do lists and working state
-Use the work_state_write tool to track all to-do lists and multi-step work. It is your canonical to-do list: use it instead of any built-in to-do tool.
-- Fields {"task": "<name>", "status": "todo"|"doing"|"done"|"dropped", ...} make a to-do item; other keys are list state (latest wins, null clears, "status": "done" closes the list)
-- Shown below without details: work_state_read has them (includeClosed=true adds closed items)
-- Durable facts: list "facts" (this project) or "user-facts" (all projects), one key per fact (null deletes it); shown every session
-- Made a file or link the person can open (PR, deck, page, report)? Set field "work_product" (URL or /absolute/path) on its item; files are copied to the memory state dir under deliverables/<project>/`
+const ctxWorkHeader = `# Work state: to-do lists and notes that persist across sessions
+Track to-dos and multi-step work with the work_state_write tool, in preference to any built-in task tool.
+- A to-do item is an entry like {"task": "<name>", "status": "todo"|"doing"|"done"|"dropped"}; any other key sets state on the list (newest value wins, null removes the key, "status": "done" closes the list)
+- Open lists are summarized below; work_state_read gives the detail (includeClosed=true adds finished items)
+- Lasting facts go in the list "facts" (this project) or "user-facts" (every project), one key per fact, null to delete; both appear at the start of every session
+- Produced something the user can open (PR, deck, page, report)? Put its URL or absolute path in a "work_product" field on that item; local files are copied into deliverables/<project>/ under the memory state dir`
 
 // contextJSON is the SessionStart hook output. HTML escaping is off, as in JavaScript's
 // JSON.stringify, so the byte count matches what the hook consumer measures.
@@ -236,11 +236,10 @@ func ctxBody(project string, now time.Time, es []ctxEntry, last *ctxSummary) str
 	}
 	lines := []string{
 		fmt.Sprintf("# [%s] recent context, %s", project, now.In(memdQueryTZ).Format("2006-01-02 3:04pm MST")),
-		"Mode: Code Development (code)",
 		"",
-		"Legend: 🎯session ●bugfix ◆feature ↻refactor ✓change ○discovery ⚖decision ⚠security_alert ⚷security_note ⊘sensitive",
-		"Format: ID TIME TYPE TITLE",
-		"Fetch details: get_observations([IDs]) | Search: mem-search skill",
+		"Type markers: 🎯session ●bugfix ◆feature ↻refactor ✓change ○discovery ⚖decision ⚠security_alert ⚷security_note ⊘sensitive",
+		"Each row: ID, time, type marker, title",
+		"Read a record in full with get_observations([IDs]); find older ones with the search tool",
 		"",
 	}
 	if nObs > 0 {
@@ -381,7 +380,7 @@ func loadWorkData(db *sql.DB, project string, now time.Time) *workData {
 		}
 	}
 	if hidden > 0 {
-		wd.open = append(wd.open, fmt.Sprintf("- ...%d list%s untouched for %d+ days; read them with work_state_read", hidden, plural(hidden), ctxHideDays))
+		wd.open = append(wd.open, fmt.Sprintf("- ...%d list%s idle for %d+ days and hidden; work_state_read lists them", hidden, plural(hidden), ctxHideDays))
 	}
 	return wd
 }
@@ -470,7 +469,7 @@ func (wd *workData) render(scale float64) string {
 		sections = append(sections, ctxTruncate("# Project facts (durable)", wd.projFacts, b(ctxFactsBudget), "work_state_read list="+wsFactsList, false))
 	}
 	if len(wd.open) == 0 {
-		sections = append(sections, "Nothing open yet.")
+		sections = append(sections, "No open items yet.")
 	} else {
 		sections = append(sections, ctxTruncate("Still open:", wd.open, b(ctxOpenBudget-utf16Len(ctxWorkHeader)-2), "work_state_read", true))
 	}
@@ -484,7 +483,7 @@ func ctxTruncate(head string, lines []string, max int, pointer string, keepFirst
 	cur := head
 	for i, ln := range lines {
 		left := len(lines) - i
-		more := fmt.Sprintf("\n- ...%d more line%s; read them with %s", left, plural(left), pointer)
+		more := fmt.Sprintf("\n- ...%d more line%s; %s shows them", left, plural(left), pointer)
 		next := cur + "\n" + ln
 		extra := 0
 		if i < len(lines)-1 {

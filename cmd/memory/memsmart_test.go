@@ -149,7 +149,7 @@ func TestMemSmartOtherLanguages(t *testing.T) {
 	}
 	txt := filepath.Join(dir, "n.txt")
 	os.WriteFile(txt, []byte("hi"), 0o644)
-	if got, err := smartOutline(map[string]any{"file_path": txt}); err != nil || !strings.Contains(got, "Could not parse") {
+	if got, err := smartOutline(map[string]any{"file_path": txt}); err != nil || !strings.Contains(got, "Cannot parse") {
 		t.Errorf("unsupported: %q %v", got, err)
 	}
 }
