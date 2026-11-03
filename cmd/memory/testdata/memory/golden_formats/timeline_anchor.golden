@@ -4,21 +4,21 @@
 ### Mar 2, 2026
 
 **src/widget/parser.go**
-| ID | Time | T | Title | Tokens |
-|----|------|---|-------|--------|
+| ID | Time | Kind | Title | Tokens |
+|----|------|------|-------|--------|
 | #1 | 9:05 AM | ● | Fix nil deref in widget parser | ~17 |
 
 **💬 User Prompt #1** (Mar 2, 9:05 AM)
 > please fix the widget parser crash
 
 **General**
-| ID | Time | T | Title | Tokens |
-|----|------|---|-------|--------|
+| ID | Time | Kind | Title | Tokens |
+|----|------|------|-------|--------|
 | #2 | 9:05 AM | ○ | Lexer tokens are cached <- **ANCHOR** | ~12 |
 
 **🎯 #S1** Harden the widget parser (Mar 2, 9:10 AM)
 
 **General**
-| ID | Time | T | Title | Tokens |
-|----|------|---|-------|--------|
+| ID | Time | Kind | Title | Tokens |
+|----|------|------|-------|--------|
 | #4 | 9:20 AM | ✓ | Parser fuzz target added | ~12 |

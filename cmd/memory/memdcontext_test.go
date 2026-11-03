@@ -186,7 +186,7 @@ func TestMemdContextStaleLists(t *testing.T) {
 	ins("stale", 30, `{"task":"c","status":"doing"}`)
 	ins("ancient", 100, `{"task":"d","status":"todo"}`)
 	block := buildContext(db, "p", ctxNow)
-	for _, want := range []string{"- fresh", "- stale: 2 open, stale 30d", "- ...1 list untouched for 90+ days; read them with work_state_read"} {
+	for _, want := range []string{"- fresh", "- stale: 2 open, stale 30d", "- ...1 list idle for 90+ days and hidden; work_state_read lists them"} {
 		if !strings.Contains(block, want) {
 			t.Errorf("missing %q in\n%s", want, block)
 		}
@@ -343,7 +343,7 @@ func TestMemdContextShrinkPathKeepsFirstItem(t *testing.T) {
 	wd := &workData{open: []string{"- list: s, updated 1 minute ago", "  - [todo] first-item, updated 1 minute ago", "  - [todo] second-item, updated 1 minute ago"}}
 	got := wd.render(0)
 	if !strings.Contains(got, "- list: s, updated 1 minute ago") || strings.Contains(got, "second-item") ||
-		!strings.Contains(got, "- ...2 more lines; read them with work_state_read") {
+		!strings.Contains(got, "- ...2 more lines; work_state_read shows them") {
 		t.Errorf("scale 0 must keep the first line and a pointer:\n%s", got)
 	}
 }

@@ -144,7 +144,7 @@ func TestMemWorkStateRoundTrip(t *testing.T) {
 	proj := projectKey(dir)
 
 	out := wsWrite(t, db, dir, "release", map[string]any{"task": "tag build", "status": "todo", "owner": "sam"})
-	want := "Saved to \"release\" in " + proj + ". Still open in it:\n" +
+	want := "Entry added to list \"release\" (" + proj + "). Still open:\n" +
 		"- release\n" +
 		"  - [todo] tag build (owner=sam), updated 1 minute ago"
 	if out != want {
@@ -195,7 +195,7 @@ func TestMemWorkStateWriteClosesLastItem(t *testing.T) {
 	dir := t.TempDir()
 	wsWrite(t, db, dir, "x", map[string]any{"task": "a", "status": "todo"})
 	out := wsWrite(t, db, dir, "x", map[string]any{"task": "a", "status": "done"})
-	want := "Saved to \"x\" in " + projectKey(dir) + ". Nothing in it is open now."
+	want := "Entry added to list \"x\" (" + projectKey(dir) + "). No items are left open."
 	if out != want {
 		t.Errorf("reply = %q, want %q", out, want)
 	}
@@ -205,11 +205,11 @@ func TestMemWorkStateFactsAndUserFacts(t *testing.T) {
 	db, _ := openTestMemd(t)
 	d1, d2 := t.TempDir(), t.TempDir()
 	out := wsWrite(t, db, d1, "Facts", map[string]any{"db": "duckdb"}) // reserved names are matched case-insensitively and stored lowercase
-	if !strings.HasPrefix(out, "Saved to \"facts\" in "+projectKey(d1)+". Still open in it:\n- facts: db=duckdb, updated ") {
+	if !strings.HasPrefix(out, "Entry added to list \"facts\" ("+projectKey(d1)+"). Still open:\n- facts: db=duckdb, updated ") {
 		t.Errorf("facts reply = %q", out)
 	}
 	out = wsWrite(t, db, d1, "user-facts", map[string]any{"editor": "vim"})
-	if !strings.HasPrefix(out, `Saved to "user-facts" in all projects. Still open in it:`) {
+	if !strings.HasPrefix(out, `Entry added to list "user-facts" (all projects). Still open:`) {
 		t.Errorf("user-facts reply = %q", out)
 	}
 	// R33: a task key in a durable list is an ordinary fact key
@@ -274,7 +274,7 @@ func TestMemWorkStateWriteTruncatesLongList(t *testing.T) {
 	for i := 0; i < 40; i++ {
 		out = wsWrite(t, db, dir, "big", map[string]any{"task": "task number " + strings.Repeat("z", 60) + string(rune('A'+i%26)) + string(rune('a'+i/26)), "status": "todo"})
 	}
-	if len(out) > 1800 || !strings.Contains(out, "more line") || !strings.HasSuffix(out, "read them with work_state_read") {
+	if len(out) > 1800 || !strings.Contains(out, "more line") || !strings.HasSuffix(out, "work_state_read shows them") {
 		t.Errorf("reply not truncated (len %d):\n%s", len(out), out)
 	}
 }

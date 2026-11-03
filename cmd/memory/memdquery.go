@@ -655,14 +655,14 @@ func memSearch(db *sql.DB, args map[string]any) (string, error) {
 	}
 	limit, ok := qInt(args, "limit", memdQueryDefaultLimit)
 	if !ok {
-		return "", fmt.Errorf("limit must be a non-negative integer")
+		return "", fmt.Errorf("limit must be an integer of 0 or more")
 	}
 	if limit == 0 {
 		limit = memdQueryDefaultLimit
 	}
 	offset, ok := qInt(args, "offset", 0)
 	if !ok {
-		return "", fmt.Errorf("offset must be a non-negative integer")
+		return "", fmt.Errorf("offset must be an integer of 0 or more")
 	}
 	doObs, doSess, doPrompts, types := resolveCategories(args)
 	f.types = types
@@ -761,7 +761,7 @@ func memSearch(db *sql.DB, args map[string]any) (string, error) {
 			byLabel[l] = append(byLabel[l], it)
 		}
 		for _, l := range labels {
-			out = append(out, "**"+l+"**", "| ID | Time | T | Title | Read |", "|----|------|---|-------|------|")
+			out = append(out, "**"+l+"**", "| ID | Time | Kind | Title | Read |", "|----|------|------|-------|------|")
 			prev := ""
 			for _, it := range byLabel[l] {
 				clock := fmtClock(it.created)
@@ -838,7 +838,7 @@ func memTimeline(db *sql.DB, args map[string]any) (string, error) {
 	default:
 		n, ok := qNumID(v)
 		if !ok {
-			return "The observation anchor must be a positive whole number", nil
+			return "anchor must be a positive observation ID", nil
 		}
 		numAnchor = n
 	}
@@ -1185,7 +1185,7 @@ func renderTimeline(items []tlItem, anchorID int64, anchorKey string) []string {
 					if open {
 						out = append(out, "")
 					}
-					out = append(out, "**"+l+"**", "| ID | Time | T | Title | Tokens |", "|----|------|---|-------|--------|")
+					out = append(out, "**"+l+"**", "| ID | Time | Kind | Title | Tokens |", "|----|------|------|-------|--------|")
 					label, hasLabel, open, prevClock = l, true, true, ""
 				}
 				clock := fmtClock(it.created)
@@ -1297,7 +1297,7 @@ func memGetObservations(db *sql.DB, args map[string]any) (string, error) {
 	}
 	limit, ok := qInt(args, "limit", 0)
 	if !ok {
-		return "", fmt.Errorf("limit must be a non-negative integer")
+		return "", fmt.Errorf("limit must be an integer of 0 or more")
 	}
 	dir := "DESC"
 	if qStr(args, "orderBy") == "date_asc" {

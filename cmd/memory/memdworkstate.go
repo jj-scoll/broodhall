@@ -310,15 +310,15 @@ func memWorkStateWrite(db *sql.DB, args map[string]any) (string, error) {
 	if userScope {
 		scope = "all projects"
 	}
-	head := fmt.Sprintf("Saved to %q in %s.", list, scope)
+	head := fmt.Sprintf("Entry added to list %q (%s).", list, scope)
 	var lines []string
 	if l := lists[list]; l != nil {
 		lines = wsRenderList(list, l, false, time.Now())
 	}
 	if len(lines) == 0 {
-		return head + " Nothing in it is open now.", nil
+		return head + " No items are left open.", nil
 	}
-	return wsTruncate(head+" Still open in it:", lines, wsReplyBudget), nil
+	return wsTruncate(head+" Still open:", lines, wsReplyBudget), nil
 }
 
 // memWorkStateRead lists the project's open to-dos and state, or one list.
@@ -481,7 +481,7 @@ func wsTruncate(head string, lines []string, max int) string {
 	cur := head
 	for i, ln := range lines {
 		left := len(lines) - i
-		more := fmt.Sprintf("\n- ...%d more line%s; read them with %s", left, plural(left), wsMoreLinesSuffix)
+		more := fmt.Sprintf("\n- ...%d more line%s; %s shows them", left, plural(left), wsMoreLinesSuffix)
 		next := cur + "\n" + ln
 		extra := 0
 		if i < len(lines)-1 {

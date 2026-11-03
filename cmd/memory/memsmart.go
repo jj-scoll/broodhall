@@ -545,7 +545,7 @@ func (g *smartGate) resolve(arg string) (string, error) {
 		real = abs // missing file: containment is still judged on the lexical path
 	}
 	if !g.inside(real) {
-		return "", fmt.Errorf("Error: access denied: %q resolves outside the workspace (%s); smart_* tools only read files within the current project", arg, g.root)
+		return "", fmt.Errorf("Error: access denied: %q points outside the workspace (%s); the smart_* tools only read files inside the current project", arg, g.root)
 	}
 	if g.protectedPath(abs) || g.protectedPath(real) {
 		return "", fmt.Errorf("Error: access denied: %q is a protected secret file; smart_* tools do not read it", arg)

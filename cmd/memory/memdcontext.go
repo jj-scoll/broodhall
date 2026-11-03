@@ -36,7 +36,7 @@ const (
 	ctxSessionCount = 10
 	ctxTitleRunes   = 200
 	ctxFieldRunes   = 500
-	ctxCutMarker    = "\n[memory] Context cut to fit the SessionStart limit; search memory for the rest."
+	ctxCutMarker    = "\n[memory] Output was cut to stay under the SessionStart size cap; query memory for what is missing."
 
 	ctxOpenBudget  = 1800
 	ctxFactsBudget = 2000 // kUr
@@ -380,7 +380,7 @@ func loadWorkData(db *sql.DB, project string, now time.Time) *workData {
 		}
 	}
 	if hidden > 0 {
-		wd.open = append(wd.open, fmt.Sprintf("- ...%d list%s untouched for %d+ days; read them with work_state_read", hidden, plural(hidden), ctxHideDays))
+		wd.open = append(wd.open, fmt.Sprintf("- ...%d list%s idle for %d+ days and hidden; work_state_read lists them", hidden, plural(hidden), ctxHideDays))
 	}
 	return wd
 }
@@ -483,7 +483,7 @@ func ctxTruncate(head string, lines []string, max int, pointer string, keepFirst
 	cur := head
 	for i, ln := range lines {
 		left := len(lines) - i
-		more := fmt.Sprintf("\n- ...%d more line%s; read them with %s", left, plural(left), pointer)
+		more := fmt.Sprintf("\n- ...%d more line%s; %s shows them", left, plural(left), pointer)
 		next := cur + "\n" + ln
 		extra := 0
 		if i < len(lines)-1 {
