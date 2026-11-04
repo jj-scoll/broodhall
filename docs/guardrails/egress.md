@@ -74,7 +74,7 @@ personal data here.
 
 ## Turning it off
 
-Add `egress` to `disabled_guards` (or to `CLAUDE_TOOLS_OFF`, a comma-separated list). The
+Add `egress` to `disabled_guards` (or to `GUARDRAILS_OFF`, a comma-separated list). The
 plugin's default list is empty, so this guard is on until you
 change it. To keep it on and stop it asking about your own addresses, set
 `allowed_email_domains` instead. See [Options](options.md).

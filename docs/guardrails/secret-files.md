@@ -34,9 +34,9 @@ These files, plus the ones you add:
 `~/.ssh/id_rsa`, `id_ecdsa`, `id_ed25519` (and the `_sk` variants), `~/.netrc`, `~/.pgpass`,
 `~/.docker/config.json`, `~/.config/gh/hosts.yml`, `~/.claude/.credentials.json`,
 the same credentials file in a second Claude config directory, one more tool's config file, and
-`~/.local/state/claude-tools/pii-key`.
+`~/.local/state/guardrails/pii-key`.
 
-Add a path or glob per line to `~/.config/claude-tools/secret-paths` (`~` allowed, `#`
+Add a path or glob per line to `~/.config/guardrails/secret-paths` (`~` allowed, `#`
 comments). That list adds to the defaults, and the list file is protected too. See
 [Options](options.md).
 

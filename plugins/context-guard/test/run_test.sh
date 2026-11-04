@@ -32,7 +32,7 @@ fresh() {
 	cfg=$tmp/$1
 	mkdir -p "$cfg"
 	export CLAUDE_CONFIG_DIR=$cfg
-	unset HANDOFF_STATE_DIR CLAUDE_TOOLS_BIN
+	unset HANDOFF_STATE_DIR CLAUDE_TOOLS_BIN GUARDRAILS_BIN
 }
 data() { printf '%s/plugins/data/%s' "$cfg" "$1"; }
 
@@ -85,6 +85,12 @@ eq "CLAUDE_TOOLS_BIN runs that binary" \
 	"args=autoclear --claim s1 state=$(data guardrails-broodhall)"
 eq "a CLAUDE_TOOLS_BIN that is not executable gives nothing" \
 	"$(CLAUDE_TOOLS_BIN=$tmp/nope sh "$run_sh" autoclear --claim s1)" ""
+eq "GUARDRAILS_BIN runs that binary" \
+	"$(GUARDRAILS_BIN=$tmp/mybuild/guardrails sh "$run_sh" autoclear --claim s1)" \
+	"args=autoclear --claim s1 state=$(data guardrails-broodhall)"
+eq "GUARDRAILS_BIN beats CLAUDE_TOOLS_BIN" \
+	"$(GUARDRAILS_BIN=$tmp/mybuild/guardrails CLAUDE_TOOLS_BIN=$tmp/nope sh "$run_sh" autoclear --claim s1)" \
+	"args=autoclear --claim s1 state=$(data guardrails-broodhall)"
 
 fresh nostate
 mkstub "$tmp/mybuild/guardrails"

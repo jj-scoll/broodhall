@@ -72,6 +72,9 @@ func TestSettingsDiffWeakened(t *testing.T) {
 		"guard env added": {func(m map[string]any) {
 			m["env"].(map[string]any)["CLAUDE_TOOLS_SECRET_PATHS"] = "/dev/null"
 		}, "env CLAUDE_TOOLS_SECRET_PATHS changed"},
+		"new-name guard env added": {func(m map[string]any) {
+			m["env"].(map[string]any)["GUARDRAILS_OFF"] = "pii,egress"
+		}, "env GUARDRAILS_OFF changed"},
 		"file deleted": {nil, "hook removed: PreToolUse [Bash] claude-tools pre-tool-use"},
 	}
 	for name, c := range cases {

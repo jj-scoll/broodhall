@@ -118,7 +118,7 @@ Not covered:
 The two halves differ.
 
 - The destructive local commands and the skipped-hook asks are the `git` family. Add `git` to `disabled_guards` (or to
-  `CLAUDE_TOOLS_OFF`, a comma-separated list) and they run without asking. There is no
+  `GUARDRAILS_OFF`, a comma-separated list) and they run without asking. There is no
   separate switch for the skipped-hook asks. The plugin's
   default list is empty, so they ask until you change it.
 - The force-push block cannot be turned off.

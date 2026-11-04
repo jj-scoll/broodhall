@@ -22,11 +22,12 @@ claude plugin marketplace remove broodhall
 
 guardrails keeps a few files outside its data directory. Uninstalling does not remove them.
 
-- `~/.local/state/claude-tools/` (or `$XDG_STATE_HOME/claude-tools/`): `pii-key`, the key for
+- `~/.local/state/guardrails/` (or `$XDG_STATE_HOME/guardrails/`): `pii-key`, the key for
   [PII](../guardrails/pii.md) tags, and `config-gate/`, the
   [config gate](../guardrails/config-gate.md) snapshots.
-- `~/.config/claude-tools/` (or `$XDG_CONFIG_HOME/claude-tools/`): `secret-paths` and
+- `~/.config/guardrails/` (or `$XDG_CONFIG_HOME/guardrails/`): `secret-paths` and
   `pii-columns.json`, if you created them.
+- The same files under `claude-tools/` in place of `guardrails/`, from before the rename.
 
 Delete those directories to remove them.
 

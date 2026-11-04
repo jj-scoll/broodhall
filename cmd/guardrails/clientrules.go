@@ -3,10 +3,10 @@ package main
 // Client-specific rule data, supplied by the user. Nothing is configured by default, so
 // raw-client-data asks only for Python reading local parquet files and exempts no path.
 // The plugin options client_data_buckets and masked_copy_dirs reach the binary as
-// CLAUDE_TOOLS_CLIENT_BUCKETS and CLAUDE_TOOLS_MASKED_DIRS (run.sh sets them).
+// GUARDRAILS_CLIENT_BUCKETS and GUARDRAILS_MASKED_DIRS (run.sh sets them; the CLAUDE_TOOLS_
+// names are read when the new ones are unset).
 
 import (
-	"os"
 	"regexp"
 	"strings"
 )
@@ -22,9 +22,9 @@ func init() { loadClientRules() }
 
 // loadClientRules reads the user's client rules from the environment.
 func loadClientRules() {
-	clientDataS3RE = clientBucketRegexp(os.Getenv("CLAUDE_TOOLS_CLIENT_BUCKETS"))
+	clientDataS3RE = clientBucketRegexp(settingEnv("CLIENT_BUCKETS"))
 	maskedCopyDirs = maskedCopyDirs[:0:0]
-	for _, d := range parseList(os.Getenv("CLAUDE_TOOLS_MASKED_DIRS")) {
+	for _, d := range parseList(settingEnv("MASKED_DIRS")) {
 		// "~/x/" and "/home/u/x/" name the same place; the command text may use either.
 		if d = strings.TrimPrefix(d, "~"); d != "" && d != "/" {
 			maskedCopyDirs = append(maskedCopyDirs, d)

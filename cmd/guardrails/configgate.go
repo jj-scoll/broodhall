@@ -7,7 +7,8 @@ package main
 //
 //   - Exit 2 (the session keeps its current settings) when the change weakens a guard: the
 //     guardrails plugin disabled or dropped from enabledPlugins; a family added to the plugin's
-//     disabled_guards option; a CLAUDE_TOOLS_* env var (CLAUDE_TOOLS_OFF among them) changed;
+//     disabled_guards option; a GUARDRAILS_* or CLAUDE_TOOLS_* env var (GUARDRAILS_OFF among
+//     them) changed;
 //     a PreToolUse or PermissionRequest hook added, since it can allow or rewrite a call the
 //     guards ask about; a PreToolUse, PermissionRequest or ConfigChange hook, or any
 //     onFailure:"block" hook, removed; onFailure:"block" dropped; disableAllHooks set;
@@ -53,11 +54,7 @@ func configGate(args []string) int {
 		fmt.Fprintln(os.Stderr, "config-gate:", err)
 		return 2
 	}
-	dir := os.Getenv("XDG_STATE_HOME")
-	if dir == "" {
-		dir = filepath.Join(os.Getenv("HOME"), ".local", "state")
-	}
-	return configGateRun(data, filepath.Join(dir, "claude-tools", "config-gate"), os.Stderr)
+	return configGateRun(data, userPath(stateBase(), "config-gate"), os.Stderr)
 }
 
 var proposalRE = regexp.MustCompile(`^(.+)\.proposed-[0-9a-f]{8}$`)
@@ -308,7 +305,7 @@ func settingsDiff(old, next []byte) (weakened, egress []string, err error) {
 		}
 	}
 	for _, k := range envKeys(a.Env, b.Env) {
-		if strings.HasPrefix(k, "CLAUDE_TOOLS_") && fmt.Sprint(a.Env[k]) != fmt.Sprint(b.Env[k]) {
+		if (strings.HasPrefix(k, "GUARDRAILS_") || strings.HasPrefix(k, "CLAUDE_TOOLS_")) && fmt.Sprint(a.Env[k]) != fmt.Sprint(b.Env[k]) {
 			weakened = append(weakened, "env "+k+" changed")
 		}
 	}

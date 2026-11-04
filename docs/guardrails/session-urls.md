@@ -61,5 +61,5 @@ link, or rewrites the commit, and tries again.
 ## Turning it off
 
 The family is `session-url`. The plugin's default list is empty, so it is on. To turn it
-off, add `session-url` to the `disabled_guards` option (or to `CLAUDE_TOOLS_OFF`, a
+off, add `session-url` to the `disabled_guards` option (or to `GUARDRAILS_OFF`, a
 comma-separated list). See [Options](options.md).
