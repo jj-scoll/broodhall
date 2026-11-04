@@ -6,6 +6,7 @@
 //	memory context  SessionStart hook: prints the project's memory context
 //	memory lookup   PreToolUse hook: attaches what memory knows about a file to Edit/Write
 //	memory mcp      MCP stdio server that forwards tool calls to the daemon
+//	memory cost     token cost at list prices and why the big cache writes happened
 package main
 
 import (
@@ -23,18 +24,19 @@ var commands = map[string]func(args []string) int{
 	"context": memContext,
 	"lookup":  func([]string) int { return memLookup(os.Stdin, os.Stdout) },
 	"mcp":     func([]string) int { return memMCP(os.Stdin, os.Stdout, memdSockPath()) },
+	"cost":    func(args []string) int { return memCostTo(args, memdSockPath(), os.Stdout, os.Stderr) },
 }
 
 func main() { os.Exit(run(os.Args[1:], os.Stderr)) }
 
 func run(args []string, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: memory <serve|context|lookup|mcp>")
+		fmt.Fprintln(stderr, "usage: memory <serve|context|lookup|mcp|cost>")
 		return 2
 	}
 	cmd, ok := commands[args[0]]
 	if !ok {
-		fmt.Fprintf(stderr, "memory: unknown subcommand %q (want %s)\n", args[0], "serve|context|lookup|mcp")
+		fmt.Fprintf(stderr, "memory: unknown subcommand %q (want %s)\n", args[0], "serve|context|lookup|mcp|cost")
 		return 2
 	}
 	return cmd(args[1:])
