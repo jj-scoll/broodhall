@@ -79,6 +79,10 @@ func decide(env *guardEnv, cmd string) decision {
 				Msg: "ASK: " + bWhat + ". A failing hook or a signing error is the repository's own check; fix the cause, or confirm with the user before skipping it."}
 		}
 	}
+	// Code that comes off the network and runs unread: the user confirms (downloadexec.go).
+	if d := downloadExecRule(cmd); d.Ask {
+		return d
+	}
 	// Python reading raw client data prints it unmasked: the user confirms.
 	if d := rawClientDataRule(cmd); d.Ask && !env.Off["raw-client-data"] {
 		return d

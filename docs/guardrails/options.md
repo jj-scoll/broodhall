@@ -24,7 +24,8 @@ The five family names, and what each one controls:
 | `session-url` | The block on a commit, push or PR that carries a session link. See [Session URLs](session-urls.md). |
 
 Core blocks have no switch. [Bash core](bash-core.md), the `git push --force` block,
-[Settings files](settings-files.md) and [Secret files](secret-files.md) stay on whatever
+[Download and run](download-exec.md), [Settings files](settings-files.md) and
+[Secret files](secret-files.md) stay on whatever
 this option says. [Nudges](nudges.md), [Read limits](read-limits.md) and
 [Retry loops](retry-loops.md) have no family name either.
 
