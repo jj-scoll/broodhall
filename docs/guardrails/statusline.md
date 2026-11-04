@@ -26,9 +26,31 @@ line of its report, to see the exact path.
 ```
 
 The path changes with the plugin version, because each version installs into its own
-directory. After an update, run `doctor` and fix the path, or copy the binary to a stable
-place such as `~/.claude/bin/` and point `command` there. A copied binary does not update
-itself.
+directory. To keep working across updates, let the command pick the newest installed
+version each time it runs:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "sh -c 'c=${CLAUDE_CONFIG_DIR:-$HOME/.claude}; b=$(ls -d \"$c\"/plugins/data/guardrails-broodhall/bin/*/claude-tools 2>/dev/null | sort -V | tail -1); [ -z \"$b\" ] || exec \"$b\" statusline'",
+    "refreshInterval": 30
+  }
+}
+```
+
+- The data directory is named `guardrails-<marketplace>`; change `guardrails-broodhall` if
+  you installed from a marketplace with another name.
+- `CLAUDE_CONFIG_DIR` is honored, so one shared `settings.json` works for several accounts,
+  each finding the binary under its own config directory.
+- With no binary installed (before the first session downloads it), the command prints
+  nothing and exits 0.
+- Add flags after `statusline`, for example
+  `statusline -account-default personal -account .claude-work=work`.
+- Tested on Linux with GNU `sort`. macOS `sort -V` is not verified.
+
+Or copy the binary to a stable place such as `~/.claude/bin/` and point `command` there. A
+copied binary does not update itself.
 
 !!! note "Not verified"
     Whether `${CLAUDE_PLUGIN_ROOT}` or `${CLAUDE_PLUGIN_DATA}` expand inside a user
