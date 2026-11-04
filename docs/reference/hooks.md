@@ -19,9 +19,14 @@ the third column. A dash means the field is absent from the entry.
 | `PostToolUseFailure` | `Bash` | `retry-breaker` | — |
 | `PreCompact` | — | `compact-guard` | — |
 
-The entries with `onFailure: block` are the ones that fail closed. The `install` entry sets a
-timeout of 120 seconds. `config-gate` at `SessionStart` only takes a snapshot; `session-env`
-does nothing unless the [`aws_session_tag`](../guardrails/options.md#aws_session_tag) option is on.
+The entries with `onFailure: block` fail closed when the binary crashes or hangs. Those same
+subcommands (`pre-tool-use`, `read-dedup`, `large-read-guard`, `config-gate`) also fail closed
+when the binary is not installed: `run.sh` exits 2 with a message on stderr, unless the
+[`fail_open`](../guardrails/options.md#fail_open) option is on. Every other entry exits 0
+silently then, so a missing binary never blocks a stop or a compaction. The `install` entry
+sets a timeout of 120 seconds and never blocks. `config-gate` at `SessionStart` only takes a
+snapshot; `session-env` does nothing unless the
+[`aws_session_tag`](../guardrails/options.md#aws_session_tag) option is on.
 
 ## memory
 

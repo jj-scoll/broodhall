@@ -3,14 +3,16 @@
 After you install, start a new session. At session start the plugin checks for the binary
 for its version and downloads it if it is missing, as described on the
 [Install](install.md) page. A failed download shows a one-line notice that starts
-`guardrails: could not install claude-tools`, and the guards are off until the next session.
+`guardrails: could not install claude-tools`. Until the binary installs, tool calls are blocked
+with a message that says how to retry; the notice and the [`fail_open`](../guardrails/options.md#fail_open)
+option cover the alternative. The next session start tries again.
 
 ## Defaults
 
-Three guard families are off by default: `pii`, `raw-client-data` and `session-url`. The
-rest are on, and the core blocks (recursive delete of `/`, `~`, `$HOME`, and a few
-top-level directories such as `/home`, `git push --force`, `dd if=`, fork bombs) cannot be turned off. See
-[Options](../guardrails/options.md) to change this.
+Every guard family is on by default. The core blocks (recursive delete of `/`, `~`, `$HOME`, and a few
+top-level directories such as `/home`, `git push --force`, `dd if=`, fork bombs) cannot be turned off,
+and `disabled_guards` turns the optional families off. See
+[Options](../guardrails/options.md).
 
 ## See it work
 

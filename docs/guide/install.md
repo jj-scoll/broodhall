@@ -41,8 +41,10 @@ download is a `claude-tools_<os>_<arch>.tar.gz` of about 1.7 MB that unpacks to 
 about 4 MB. It is checked against the release's `checksums.txt` by sha256, then kept in the
 plugin's data directory under `bin/<version>/`, so a version is downloaded once.
 
-If the download fails, the guards stay off for that session and you see a one-line notice.
-Tool calls run normally. The next session start tries again.
+If the download fails, you see a one-line notice and the guards fail closed: tool calls are
+blocked, with a message that says how to retry, until the binary installs. The next session
+start tries again. To work unguarded meanwhile, turn on the
+[`fail_open`](../guardrails/options.md#fail_open) option.
 
 ### memory
 
