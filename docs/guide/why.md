@@ -16,8 +16,7 @@ answer in one of four ways.
 ## What it says back
 
 Each reply below is the exact text the guard binary returned for that command, captured from
-a binary built from the exported source, with the plugin's default disabled families
-(`pii`, `raw-client-data`, `session-url`) off.
+a binary built from the exported source, with every guard family on (the plugin default).
 
 ### BLOCK
 
@@ -68,9 +67,10 @@ SLOW_OP: `docker build` detected. Only run this if there is a concrete reason (e
 - **Fails closed once installed.** The hooks that gate tool calls are configured with
   `onFailure: block`. If the guard binary fails while checking a call, Claude Code blocks
   that call rather than letting it through unchecked.
-- **Never blocks on a missing binary.** If the binary was never downloaded, the launcher
-  reads the call and exits 0, which allows it. A failed download turns the guards off for
-  that session and shows a one-line notice. It does not stop your work.
+- **Blocks on a missing binary, unless you opt out.** If the binary was never downloaded,
+  the launcher exits 2 with a message that says what failed, how to retry and how to opt
+  out, so no call runs unchecked. Turn on the `fail_open` option to let calls through
+  unguarded instead. A failed download never stops the session start itself.
 - **One static binary.** The hooks are a single Go program with no runtime dependencies. It
   is downloaded once per plugin version and checked against a published sha256 before it is
   used.
