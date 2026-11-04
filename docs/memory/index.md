@@ -52,7 +52,9 @@ on [Privacy and redaction](privacy.md).
    folder keeps summaries while the daemon is stopped, and the same compaction is never
    stored twice. A file that cannot be read as a summary moves to `compactions/rejected/`,
    which is never read back and is cleared after 7 days. The summary is filed under
-   `CLAUDE_PROJECT_DIR` when it is set, else the hook's working directory. The context block
+   `CLAUDE_PROJECT_DIR` when it is set, else the hook's working directory. (A raw copy saved
+   by the launcher when the program is missing or fails does not carry `CLAUDE_PROJECT_DIR`,
+   so it is filed by the working directory.) The context block
    that follows a compaction leaves out that session's own summary, because Claude Code
    already put it in the conversation.
 7. **Tools.** An MCP server named `memory` gives Claude 11 tools, listed below.

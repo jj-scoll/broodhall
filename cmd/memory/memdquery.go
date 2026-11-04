@@ -1338,7 +1338,7 @@ func memGetObservations(db *sql.DB, args map[string]any) (string, error) {
 	}
 	if len(obs) == 0 {
 		if sumOut != "" {
-			return sumOut, nil
+			return memdHC(sumOut, memdCapObservations), nil
 		}
 		return "None of those IDs match an observation.", nil
 	}
