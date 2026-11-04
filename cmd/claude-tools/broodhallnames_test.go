@@ -157,7 +157,7 @@ func TestMarketplaceRTKEntry(t *testing.T) {
 	if err := json.Unmarshal(b, &mkt); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{"source": "git-subdir", "url": "jj-scoll/rtk", "path": "claude-plugin", "ref": "develop"}
+	want := map[string]string{"source": "git-subdir", "url": "https://github.com/jj-scoll/rtk.git", "path": "claude-plugin", "ref": "develop"}
 	for _, p := range mkt.Plugins {
 		if p.Name != "rtk" {
 			continue
