@@ -15,6 +15,7 @@ bin=${CLAUDE_TOOLS_BIN:-$dest}
 # falls back to the same env var outside the plugin, then to plugin.json's default.
 export CLAUDE_TOOLS_OFF="${CLAUDE_PLUGIN_OPTION_DISABLED_GUARDS-${CLAUDE_TOOLS_OFF-pii,raw-client-data,session-url}}"
 export CLAUDE_TOOLS_PII_ALLOW="${CLAUDE_PLUGIN_OPTION_ALLOWED_EMAIL_DOMAINS-${CLAUDE_TOOLS_PII_ALLOW-}}"
+export HANDOFF_TOKENS="${CLAUDE_PLUGIN_OPTION_HANDOFF_TOKENS-${HANDOFF_TOKENS-}}"
 # Per-session guard state stays with this user's plugin data, not in a shared /tmp dir.
 export HANDOFF_STATE_DIR="${HANDOFF_STATE_DIR-$data}"
 

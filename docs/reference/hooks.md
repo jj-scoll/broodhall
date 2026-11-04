@@ -12,6 +12,8 @@ the third column. A dash means the field is absent from the entry.
 | `PreToolUse` | `Read` | `large-read-guard` | `block` |
 | `PostToolUse` | `Bash` | `retry-breaker` | — |
 | `PostToolUseFailure` | `Bash` | `retry-breaker` | — |
+| `Stop` | — | `gate` | — |
+| `PreCompact` | — | `compact-guard` | — |
 
 The entries with `onFailure: block` are the ones that fail closed. The `SessionStart` entry
 sets a timeout of 120 seconds.

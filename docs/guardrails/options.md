@@ -1,6 +1,6 @@
 # Options
 
-Two plugin options, two files under `~/.config/claude-tools/`, and one environment variable.
+Three plugin options, two files under `~/.config/claude-tools/`, and one environment variable.
 
 Set the plugin options with `/plugin configure guardrails@broodhall`, or from `/config`.
 
@@ -46,6 +46,17 @@ Outside the plugin the same list is read from `CLAUDE_TOOLS_PII_ALLOW`.
   domain and its subdomains. The domain of `git config --global user.email` always matches.
 - In the [PII](pii.md) mask, only full addresses stay readable (and your git address). An
   `@domain` entry has no effect there.
+
+## `handoff_tokens`
+
+| | |
+| --- | --- |
+| Title | Handoff threshold (tokens) |
+| Default | empty |
+| Description | Context size at which the Stop gate asks Claude, once per session, to write a handoff. Leave empty for 80% of CLAUDE_CODE_AUTO_COMPACT_WINDOW (240000 for the default 300000 window). |
+
+Outside the plugin the same number is read from `HANDOFF_TOKENS`. A value that is not a
+whole number counts as empty. See [Handoff gate](handoff-gate.md).
 
 ## `~/.config/claude-tools/secret-paths`
 

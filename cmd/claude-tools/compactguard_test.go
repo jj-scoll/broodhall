@@ -1,0 +1,94 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func compactPayload(session, trigger string) string {
+	return fmt.Sprintf(`{"session_id":%q,"trigger":%q}`, session, trigger)
+}
+
+func TestCompactGuardBlocksFirstManualCompactAfterOne(t *testing.T) {
+	gateEnv(t)
+	// First compaction of the session, manual or auto, is never blocked.
+	if code, _, _ := runHook(t, compactGuard, compactPayload("s1", "manual")); code != 0 {
+		t.Fatalf("first manual compact: exit %d, want 0", code)
+	}
+	// An auto-compact after that is never blocked either.
+	if code, _, _ := runHook(t, compactGuard, compactPayload("s1", "auto")); code != 0 {
+		t.Fatalf("auto compact: exit %d, want 0", code)
+	}
+	// The next manual compact is blocked once, with a pointer at the handoff skill.
+	code, _, stderr := runHook(t, compactGuard, compactPayload("s1", "manual"))
+	if code != 2 {
+		t.Fatalf("third compact: exit %d, want 2", code)
+	}
+	for _, want := range []string{"memory:handoff", "/clear", "/compact again"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr lacks %q: %s", want, stderr)
+		}
+	}
+	// Asking again goes through.
+	if code, _, _ := runHook(t, compactGuard, compactPayload("s1", "manual")); code != 0 {
+		t.Errorf("repeat manual compact: exit %d, want 0", code)
+	}
+	// Another session starts from zero.
+	if code, _, _ := runHook(t, compactGuard, compactPayload("s2", "manual")); code != 0 {
+		t.Errorf("fresh session: exit %d, want 0", code)
+	}
+}
+
+func TestCompactGuardNeverBlocksAuto(t *testing.T) {
+	gateEnv(t)
+	for i := 0; i < 3; i++ {
+		if code, _, _ := runHook(t, compactGuard, compactPayload("s", "auto")); code != 0 {
+			t.Fatalf("auto compact %d: exit %d, want 0", i, code)
+		}
+	}
+}
+
+func TestCompactGuardRearmsTheGate(t *testing.T) {
+	gateEnv(t)
+	tr := writeTranscript(t, usageLine(250_000))
+	if _, out, _ := runHook(t, gate, stopPayload("s", tr, false)); out == "" {
+		t.Fatal("gate did not fire")
+	}
+	if _, out, _ := runHook(t, gate, stopPayload("s", tr, false)); out != "" {
+		t.Fatal("gate fired twice before a compaction")
+	}
+	runHook(t, compactGuard, compactPayload("s", "auto"))
+	if _, out, _ := runHook(t, gate, stopPayload("s", tr, false)); out == "" {
+		t.Error("gate did not re-arm after a compaction")
+	}
+}
+
+func TestCompactGuardIgnoresBadInput(t *testing.T) {
+	gateEnv(t)
+	for _, in := range []string{"not json", compactPayload("../evil", "manual"), compactPayload("", "manual")} {
+		if code, _, _ := runHook(t, compactGuard, in); code != 0 {
+			t.Errorf("input %q: exit %d, want 0", in, code)
+		}
+	}
+	// Nothing was written for them.
+	if entries, _ := os.ReadDir(filepath.Join(os.Getenv("HANDOFF_STATE_DIR"), "claude-handoff")); len(entries) != 0 {
+		t.Errorf("state written for bad input: %v", entries)
+	}
+}
+
+func TestCompactGuardCountFileTolerance(t *testing.T) {
+	gateEnv(t)
+	dir := filepath.Join(os.Getenv("HANDOFF_STATE_DIR"), "claude-handoff")
+	os.MkdirAll(dir, 0o755)
+	// A garbled counter reads as zero, so a manual compact is allowed.
+	os.WriteFile(filepath.Join(dir, "s.compacts"), []byte("banana\n"), 0o644)
+	if code, _, _ := runHook(t, compactGuard, compactPayload("s", "manual")); code != 0 {
+		t.Errorf("garbled counter: exit %d, want 0", code)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "s.compacts")); string(b) != "1\n" {
+		t.Errorf("counter = %q, want 1", b)
+	}
+}
