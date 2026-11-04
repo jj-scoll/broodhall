@@ -31,7 +31,7 @@ mkstub() {
 	cat >"$1" <<'EOF'
 #!/bin/sh
 [ "${1-}" = doctor ] && exit 0
-echo "args=$* off=${CLAUDE_TOOLS_OFF-unset} allow=${CLAUDE_TOOLS_PII_ALLOW-unset} stdin=$(cat)"
+echo "args=$* off=${CLAUDE_TOOLS_OFF-unset} allow=${CLAUDE_TOOLS_PII_ALLOW-unset} observe=${CLAUDE_TOOLS_OBSERVE-unset} stdin=$(cat)"
 exit 3
 EOF
 	chmod +x "$1"
@@ -55,7 +55,7 @@ newcase() {
 	c=$tmp/$1
 	mkdir -p "$c/data" "$c/home"
 	unset CLAUDE_TOOLS_BIN CLAUDE_TOOLS_OFF CLAUDE_TOOLS_FAIL_OPEN CLAUDE_TOOLS_PII_ALLOW
-	unset CLAUDE_PLUGIN_OPTION_FAIL_OPEN CLAUDE_PLUGIN_OPTION_DISABLED_GUARDS CLAUDE_PLUGIN_OPTION_ALLOWED_EMAIL_DOMAINS
+	unset CLAUDE_TOOLS_OBSERVE CLAUDE_PLUGIN_OPTION_OBSERVE CLAUDE_PLUGIN_OPTION_FAIL_OPEN CLAUDE_PLUGIN_OPTION_DISABLED_GUARDS CLAUDE_PLUGIN_OPTION_ALLOWED_EMAIL_DOMAINS
 	export CLAUDE_PLUGIN_ROOT=$root CLAUDE_PLUGIN_DATA=$c/data HOME=$c/home
 	export CLAUDE_TOOLS_RELEASE_URL=file://$c/no-such-release
 }
@@ -90,6 +90,10 @@ CLAUDE_TOOLS_OFF=pii CLAUDE_TOOLS_BIN=$c/stub hook pre-tool-use
 case $out in *"off=pii "*) ok "CLAUDE_TOOLS_OFF env still overrides" ;; *) bad "CLAUDE_TOOLS_OFF env still overrides" "$out" ;; esac
 CLAUDE_PLUGIN_OPTION_DISABLED_GUARDS=egress CLAUDE_TOOLS_OFF=pii CLAUDE_TOOLS_BIN=$c/stub hook pre-tool-use
 case $out in *"off=egress "*) ok "disabled_guards option beats env" ;; *) bad "disabled_guards option beats env" "$out" ;; esac
+CLAUDE_TOOLS_BIN=$c/stub hook pre-tool-use
+case $out in *"observe= "*) ok "observe defaults to empty (off)" ;; *) bad "observe defaults to empty (off)" "$out" ;; esac
+CLAUDE_PLUGIN_OPTION_OBSERVE=true CLAUDE_TOOLS_OBSERVE=false CLAUDE_TOOLS_BIN=$c/stub hook pre-tool-use
+case $out in *"observe=true "*) ok "observe option beats env" ;; *) bad "observe option beats env" "$out" ;; esac
 grep -q '"default": "pii' "$root/.claude-plugin/plugin.json" && bad "plugin.json default" "disabled_guards still defaults to a family list"
 
 # --- no binary: fail closed --------------------------------------------------------------

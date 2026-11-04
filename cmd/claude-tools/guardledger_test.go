@@ -133,3 +133,16 @@ func TestGuardsQuietCommandWritesNoLedger(t *testing.T) {
 		t.Errorf("events = %q, want none", eventList(evs))
 	}
 }
+
+func TestSummaryAndReceiptCountObserved(t *testing.T) {
+	t.Setenv("HANDOFF_STATE_DIR", t.TempDir())
+	logGuardEvent("w", "would-ask", "git-stash")
+	logGuardEvent("w", "would-block", "session-url")
+	if got := guardSummary("w"); got != "guards 1 would ask · 1 would block" {
+		t.Errorf("guardSummary = %q", got)
+	}
+	evs, _ := newGuardEvents("w")
+	if got := receiptLine(evs); got != "guards · would ask 1 (git-stash) · would block 1 (session-url)" {
+		t.Errorf("receiptLine = %q", got)
+	}
+}

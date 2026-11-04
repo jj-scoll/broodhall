@@ -21,7 +21,7 @@ type guardEvent struct{ Kind, Rule string }
 
 func guardLedger(session string) string { return filepath.Join(stateDir(), session+".events") }
 
-// logGuardEvent records one event. kind is mask, ask, block or nudge.
+// logGuardEvent records one event. kind is mask, ask, block or nudge, or would-ask or would-block for a decision observe mode let through (observe.go).
 func logGuardEvent(session, kind, rule string) {
 	if !safeSession.MatchString(session) {
 		return
@@ -57,7 +57,7 @@ func guardSummary(session string) string {
 		}
 	}
 	var parts []string
-	for _, k := range []struct{ kind, word string }{{"mask", "masked"}, {"ask", "asked"}, {"block", "blocked"}, {"nudge", "nudged"}} {
+	for _, k := range []struct{ kind, word string }{{"mask", "masked"}, {"ask", "asked"}, {"block", "blocked"}, {"nudge", "nudged"}, {"would-ask", "would ask"}, {"would-block", "would block"}} {
 		if n[k.kind] > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", n[k.kind], k.word))
 		}

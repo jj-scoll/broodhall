@@ -48,11 +48,11 @@ func receiptLine(evs []guardEvent) string {
 		rule, _, _ := strings.Cut(e.Rule, ":")
 		byKind[e.Kind][rule]++
 	}
-	if len(byKind["mask"])+len(byKind["ask"])+len(byKind["block"]) == 0 && len(evs) < 3 {
+	if len(byKind["mask"])+len(byKind["ask"])+len(byKind["block"])+len(byKind["would-ask"])+len(byKind["would-block"]) == 0 && len(evs) < 3 {
 		return ""
 	}
 	parts := []string{"guards"}
-	for _, k := range []struct{ kind, label string }{{"mask", "masked"}, {"ask", "asked"}, {"block", "blocked"}, {"nudge", "nudged"}} {
+	for _, k := range []struct{ kind, label string }{{"mask", "masked"}, {"ask", "asked"}, {"block", "blocked"}, {"nudge", "nudged"}, {"would-ask", "would ask"}, {"would-block", "would block"}} {
 		rules := byKind[k.kind]
 		if len(rules) == 0 {
 			continue
