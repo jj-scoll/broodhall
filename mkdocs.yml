@@ -60,6 +60,8 @@ nav:
       - Write handoff: guardrails/write-handoff.md
       - Receipt: guardrails/receipt.md
       - Options: guardrails/options.md
+  - Context guard:
+      - Overview: context-guard/index.md
   - Memory:
       - Overview: memory/index.md
       - Privacy and redaction: memory/privacy.md

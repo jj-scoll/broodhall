@@ -40,7 +40,7 @@ func init() { commands["doctor"] = doctorCmd }
 // hooks.json minus install.
 var guardSubcommands = map[string]bool{
 	"pre-tool-use": true, "read-dedup": true, "large-read-guard": true, "retry-breaker": true,
-	"config-gate": true, "session-env": true, "receipt": true, "gate": true, "compact-guard": true,
+	"config-gate": true, "session-env": true, "receipt": true, "gate": true, "compact-guard": true, "autoclear": true,
 }
 
 // doctorEnv is what doctor looks at. PluginRoot is empty when the binary runs outside a

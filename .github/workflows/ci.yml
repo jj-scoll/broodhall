@@ -41,7 +41,21 @@ jobs:
       - run: bash plugins/guardrails/test/run_test.sh
       - run: bash plugins/guardrails/test/install_test.sh
       - if: runner.os == 'Linux'
-        run: shellcheck -s sh plugins/guardrails/scripts/run.sh plugins/memory/scripts/run.sh
+        run: shellcheck -s sh plugins/guardrails/scripts/run.sh plugins/memory/scripts/run.sh plugins/context-guard/scripts/run.sh
+      - if: runner.os == 'Linux'
+        run: bash plugins/context-guard/test/run_test.sh
+
+  # context-guard is a hooks module (hooks/context-guard.mjs); `claude plugin test` runs its
+  # tests/*.test.ts in Claude Code's own test host, offline and without a login. Keep the
+  # version in step with the minimum Claude Code the plugin README names. The runner's own
+  # Node and npm install it.
+  context-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: npm install --global @anthropic-ai/claude-code@2.1.317
+      - run: claude plugin test plugins/context-guard
+      - run: claude plugin validate plugins/context-guard --strict
 
   memory:
     strategy:

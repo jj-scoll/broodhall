@@ -1,8 +1,10 @@
 package main
 
 // gate (Stop hook): once per session (re-armed by compact-guard on each compaction), when
-// the context passes the handoff threshold, block the stop once and ask Claude to write a
-// handoff with the memory plugin's handoff skill before it ends the turn.
+// the context passes the handoff threshold, block the stop once and ask Claude for only
+// what the transcript cannot show: the handoff file name, its Next Steps and Open Questions,
+// in <cwd>/.handoff-next-<session>.md. autoclear then has write-handoff write the handoff
+// from the transcript. With HANDOFF_AUTOCLEAR=0 the message promises no clear.
 //
 // Threshold: HANDOFF_TOKENS, else 80% of CLAUDE_CODE_AUTO_COMPACT_WINDOW (default 300000),
 // so the handoff lands before auto-compact. Context size is the latest assistant usage in
@@ -114,8 +116,13 @@ func gate(args []string) int {
 	if os.MkdirAll(state, 0o755) != nil || touch(mark) != nil {
 		return 0
 	}
-	reason := fmt.Sprintf("Context is at %d tokens (handoff threshold %d). Before ending this turn, run the memory:handoff skill to write a handoff for this work, then end the turn with one line saying the handoff is written. The next session in this project is shown it once at its start, so the user can /clear and continue. If the user is not present, keep working: auto-compact will carry the facts forward, and this gate re-arms after it.",
-		tokens, threshold)
+	next := in.Cwd + "/.handoff-next-" + in.SessionID + ".md"
+	tail := "Once the handoff is written (about two minutes) the session clears itself into a successor, and a prompt typed meanwhile is carried over. If it does not and the user is present, they can run /clear once the handoff file exists. Otherwise keep working: auto-compact will carry the facts forward, and this gate re-arms after it."
+	if os.Getenv("HANDOFF_AUTOCLEAR") == "0" {
+		tail = "Once the handoff is written (about two minutes) the user can run /clear and continue from it; this session will not clear itself. If the user is not present, keep working: auto-compact will carry the facts forward, and this gate re-arms after it."
+	}
+	reason := fmt.Sprintf("Context is at %d tokens (handoff threshold %d). When this turn ends, a background writer produces the handoff from this session's transcript; from you it needs only what the transcript cannot show. Before ending this turn, use Write to create %s containing: a first line 'file: <handoff file name>' (the HANDOFF*.md you continued from, if any; else HANDOFF.md if %s has no other HANDOFF*.md; else HANDOFF-<topic>-<YYYY-MM-DD>.md), then '## Next Steps' (ordered, concrete actions with paths and commands, the first one startable at once) and '## Open Questions'. Do not write the handoff yourself. Then end the turn with one line saying the handoff is being written and naming the file. %s",
+		tokens, threshold, next, in.Cwd, tail)
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")

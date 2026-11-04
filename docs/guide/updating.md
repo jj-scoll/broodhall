@@ -3,6 +3,7 @@
 ```
 claude plugin update guardrails@broodhall
 claude plugin update memory@broodhall
+claude plugin update context-guard@broodhall
 ```
 
 Restart Claude Code to apply the update. At the next session start the plugin finds no
