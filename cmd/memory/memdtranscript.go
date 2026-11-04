@@ -17,6 +17,7 @@ type memdEvent struct {
 	ToolUseID, ToolName, Input, Output, PromptText string
 	At                                             time.Time
 	Observer, Sub                                  bool
+	Usage                                          *memdUsage // Kind "usage" only
 }
 
 // memdFileState is the per-file state parseMemdLines carries between calls. Observer and Sub
@@ -26,6 +27,7 @@ type memdEvent struct {
 type memdFileState struct {
 	Pending       map[string]*memdEvent
 	Observer, Sub bool
+	Reset         string // "clear" or "compact" until the next main-thread response takes it
 }
 
 // parseMemdLines parses one batch of transcript lines in order. The caller keeps one
@@ -58,6 +60,9 @@ func parseMemdLines(path, account string, lines [][]byte, st *memdFileState) (ev
 		}
 		if truthy(d.get("isSidechain")) {
 			st.Sub = true
+		}
+		if u := usageFromLine(path, d, st); u != nil {
+			events = append(events, memdEvent{Kind: "usage", SessionID: u.SessionID, At: u.At, Usage: u})
 		}
 		msg := d.getObj("message")
 		if msg == nil {

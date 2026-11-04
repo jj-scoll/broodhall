@@ -34,6 +34,19 @@ func memdSockPath() string {
 // memGet does GET path (request URI, query included) on the unix socket sock. One deadline of
 // budget covers dial, request and read. Any status but 200 is an error.
 func memGet(sock, path string, budget time.Duration) ([]byte, error) {
+	status, body, err := memGetStatus(sock, path, budget)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("memory: %d %s", status, http.StatusText(status))
+	}
+	return body, nil
+}
+
+// memGetStatus is memGet without the status check: it returns the status and body of any
+// response, and an error only when the daemon could not be reached or read.
+func memGetStatus(sock, path string, budget time.Duration) (int, []byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 	cl := &http.Client{Transport: &http.Transport{
@@ -44,21 +57,18 @@ func memGet(sock, path string, budget time.Duration) ([]byte, error) {
 	}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://memory"+path, nil)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	resp, err := cl.Do(req)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("memory: %s", resp.Status)
-	}
-	return body, nil
+	return resp.StatusCode, body, nil
 }
 
 // memdProjectKey is projectKey; a var so tests can stand in a slow one.

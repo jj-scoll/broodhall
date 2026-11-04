@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -40,6 +41,8 @@ var memdTools = map[string]func(db *sql.DB, args map[string]any) (string, error)
 //	GET  /context?project=P[&source=S] 200, exactly contextJSON's bytes (SessionStart hook output);
 //	                                   claims the project's unshown handoff (not for source=resume)
 //	GET  /by-file?path=F[&project=P]   200, <= 3 observations touching F, <= 1500 bytes; empty body if none
+//	GET  /cost[?days=N&include_sidechain=1&min_cache=N&top=N]
+//	                                   200, the plain-text usage cost report (`memory cost`)
 //	POST /tool/{name}                  JSON object of arguments in, tool text out
 //
 // POST /tool status mapping, which the MCP server maps to isError: 200 is a normal result;
@@ -76,6 +79,34 @@ func memdHandler(db *sql.DB) http.Handler {
 			return
 		}
 		writeText(w, 200, body)
+	})
+	mux.HandleFunc("GET /cost", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		o := costOpts{Days: 7, MinCache: 20000, Top: 10, Sidechain: q.Get("include_sidechain") == "1", Now: time.Now()}
+		for name, dst := range map[string]*int{"days": &o.Days, "top": &o.Top} {
+			if v := q.Get(name); v != "" {
+				n, err := strconv.Atoi(v)
+				if err != nil || n < 0 {
+					writeText(w, 400, "Error: "+name+" must be a non-negative integer")
+					return
+				}
+				*dst = n
+			}
+		}
+		if v := q.Get("min_cache"); v != "" {
+			n, err := strconv.ParseInt(v, 10, 64)
+			if err != nil || n < 0 {
+				writeText(w, 400, "Error: min_cache must be a non-negative integer")
+				return
+			}
+			o.MinCache = n
+		}
+		out, err := buildCostReport(db, o)
+		if err != nil {
+			writeText(w, 500, err.Error())
+			return
+		}
+		writeText(w, 200, out)
 	})
 	mux.HandleFunc("POST /tool/{name}", func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("name")

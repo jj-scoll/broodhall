@@ -216,6 +216,31 @@ CREATE TABLE IF NOT EXISTS import_watermarks (
 	table_name VARCHAR PRIMARY KEY,
 	last_id    BIGINT NOT NULL DEFAULT 0
 );
+-- One row per API response (message.id + requestId): a response is written to the transcript
+-- once per content block, so the same key repeats. The cache_creation 5m/1h split is NULL
+-- when the transcript has no cache_creation object. reset_kind is 'clear' or 'compact' when
+-- the response is the first one after that boundary in the transcript.
+CREATE TABLE IF NOT EXISTS api_usage (
+	message_id                     VARCHAR NOT NULL,
+	request_id                     VARCHAR NOT NULL DEFAULT '',
+	session_id                     VARCHAR NOT NULL DEFAULT '',
+	project                        VARCHAR NOT NULL DEFAULT '',
+	cwd                            VARCHAR NOT NULL DEFAULT '',
+	ts                             TIMESTAMP NOT NULL,
+	model                          VARCHAR NOT NULL DEFAULT '',
+	is_sidechain                   BOOLEAN NOT NULL DEFAULT false,
+	is_observer                    BOOLEAN NOT NULL DEFAULT false,
+	agent_id                       VARCHAR NOT NULL DEFAULT '',
+	input_tokens                   BIGINT NOT NULL DEFAULT 0,
+	output_tokens                  BIGINT NOT NULL DEFAULT 0,
+	cache_creation_input_tokens    BIGINT NOT NULL DEFAULT 0,
+	cache_creation_5m_input_tokens BIGINT,
+	cache_creation_1h_input_tokens BIGINT,
+	cache_read_input_tokens        BIGINT NOT NULL DEFAULT 0,
+	service_tier                   VARCHAR NOT NULL DEFAULT '',
+	reset_kind                     VARCHAR NOT NULL DEFAULT '',
+	PRIMARY KEY (message_id, request_id)
+);
 `
 
 // Index options verified in the Task 2 spike: incremental maintenance, no stemming or
@@ -238,6 +263,10 @@ func memdMigrate(db *sql.DB) error {
 		if _, err := db.Exec(`ALTER TABLE observation_files ADD COLUMN IF NOT EXISTS ` + c + ` VARCHAR`); err != nil {
 			return fmt.Errorf("memory schema: add observation_files.%s: %w", c, err)
 		}
+	}
+	// A /clear or compaction marker seen but not yet taken by a response, kept across restarts.
+	if _, err := db.Exec(`ALTER TABLE transcript_offsets ADD COLUMN IF NOT EXISTS reset_kind VARCHAR DEFAULT ''`); err != nil {
+		return fmt.Errorf("memory schema: add transcript_offsets.reset_kind: %w", err)
 	}
 	if _, err := db.Exec(memdSearchSchema); err != nil {
 		return fmt.Errorf("memory search schema: %w", err)

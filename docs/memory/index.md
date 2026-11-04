@@ -66,6 +66,37 @@ on [Privacy and redaction](privacy.md).
 The three `smart_` tools run inside the MCP process, stay inside the project directory, and
 refuse credential files.
 
+## Token cost and cache misses
+
+The daemon also records the token counts of every Claude response in the transcripts: model,
+input, output, cache writes (split into 5-minute and 1-hour when the transcript has it) and
+cache reads, with the session, project and time. No text is stored. A response appears in a
+transcript once per content block, so rows are keyed by `message.id` plus `requestId` and
+counted once. The first start reads your existing transcripts once to fill in history.
+
+`memory cost` prints a short report at API list prices: totals per day and per session, and
+the turns with a large cache write, each tied to a likely cause.
+
+```sh
+sh "<plugin dir>/scripts/run.sh" cost --days 7
+```
+
+| Cause | Rule |
+| --- | --- |
+| (c) first/clear/compact | No earlier response in the thread, or the first after `/clear` or a compaction. |
+| (a) idle | The gap since the previous response was longer than the cache lifetime: 5 minutes, or 1 hour when the previous write was all 1-hour. Without the 5m/1h split it assumes 5 minutes. |
+| (b) model switch | The model changed. The cache is per model. |
+| (d) unexplained | Warm cache, same model: new content, or something else changed the prefix. |
+
+Rules apply in that order, except that idle ranks above a model switch, since the entry had
+expired either way. Transcript times are when a block was written, not when the request
+started, so gaps near 5 minutes or 1 hour can be off. Subagent and observer turns are left
+out unless you pass `--include-sidechain`. Other flags: `--days N` (0 for all time),
+`--min-cache N` (tokens that count as large, default 20000), `--top N`.
+
+Prices are a dated table in `cmd/memory/memdcost.go`. Models not in it count as $0 and are
+named in the report.
+
 ## Stale notes
 
 A note about a file is wrong once the file changes. When the daemon stores a note, it also

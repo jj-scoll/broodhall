@@ -153,6 +153,14 @@ main() {
 		log "mcp: no binary at $bin"
 		return 0
 	fi
+	# `cost` is run by a person at a terminal: no hook payload on stdin (a terminal never sends
+	# EOF) and no hook watchdog.
+	if [ "$mode" = cost ]; then
+		shift
+		[ -x "$bin" ] && exec "$bin" cost "$@"
+		echo "memory: not installed yet; start a Claude Code session first" >&2
+		return 0
+	fi
 	tmpd=$(mktemp -d "${TMPDIR:-/tmp}/memory-hook.XXXXXX" 2>/dev/null) || { log "no temp dir"; cat >/dev/null; return 0; }
 	trap 'rm -rf "$tmpd"' EXIT
 	in=$tmpd/in outf=$tmpd/out
