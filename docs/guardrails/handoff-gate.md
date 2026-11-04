@@ -117,3 +117,18 @@ the plugin's data directory: `<id>.gate`, `<id>.autoclear`, `<id>.rearm`, `<id>.
 `HANDOFF_STATE_DIR` to move the base directory (`claude-handoff` is added under it); the gate,
 autoclear and context-guard must all see the same one. A failure to read or write these files
 never blocks anything.
+
+### Progress markers
+
+Four more files exist only so the [status line](statusline.md#the-handoff-segment) can show
+where the chain is. Nothing else reads them.
+
+| File | Written | Holds | Removed |
+| --- | --- | --- | --- |
+| `<id>.writing` | When the writer starts | Start time, epoch seconds | When the writer exits (success or failure) |
+| `<id>.failed` | When the writer fails | Nothing; its age is the time of failure | When the next writer starts |
+| `<id>.written` | With `HANDOFF_AUTOCLEAR=0`, once the handoff is written | The handoff path | When the next writer starts |
+| `<id>.cleared` | When context-guard reports `--done ... ok` (the claim is renamed to it) | The handoff path, then the old transcript path | When the next writer starts |
+
+A writer that is killed leaves `<id>.writing` behind; the status line ignores one older than
+15 minutes.

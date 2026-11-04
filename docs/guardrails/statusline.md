@@ -107,11 +107,32 @@ Line 2:
 | `reqs` | Cache requests and misses. |
 | `five`, `reset` | 5-hour rate-limit use and the time to its reset. |
 | `week` | 7-day rate-limit use. |
+| `handoff` | Progress of the [auto-handoff](handoff-gate.md) for this session, only while it applies. See below. |
 | `guards` | What the guards masked, asked about, blocked or noted this session. |
 | `drift` | A warning when the last 60 tool calls repeat one read, command or edit. |
 
 On a narrow terminal (`$COLUMNS`) the lowest-value segments drop first. `dir` and `model`
 never drop.
+
+### The handoff segment
+
+Shown only while the [handoff chain](handoff-gate.md#the-chain) is doing something for the
+session in the payload (`session_id`), and briefly after. With no state it prints nothing. It
+stats a few small files in the handoff state directory and never reads the transcript.
+Turn it off by leaving `handoff` out of `-segments`.
+
+| Text | Colour | Means |
+| --- | --- | --- |
+| `handoff: next-steps` | cyan | The gate blocked the stop; Claude is writing the next-steps file. Shown for up to 10 minutes. |
+| `handoff: writing 23s` | cyan | The background writer is running, with the time since it started. |
+| `handoff: clear armed` | amber | The handoff is written; context-guard has not yet taken the clear. |
+| `handoff: clearing` | cyan | context-guard claimed the clear and is running it. |
+| `handoff: cleared → HANDOFF.md` | green | The clear ran. Shown for 2 minutes. |
+| `handoff: failed (see writer.log)` | red | The writer failed. Shown for 2 minutes; `writer.log` has the reason. |
+| `handoff: written → HANDOFF.md, run /clear` | amber | `HANDOFF_AUTOCLEAR=0`: nothing clears itself. Shown for 10 minutes. |
+
+A `writing` marker older than 15 minutes is taken for a dead writer and ignored. A new gate
+mark newer than the last writer start shows `next-steps` in place of an earlier outcome.
 
 ## Examples
 
