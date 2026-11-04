@@ -13,6 +13,9 @@ claude plugin install memory@broodhall
 
 The two plugins are independent. Install either or both.
 
+The [context-guard](../context-guard/index.md) plugin needs guardrails. It declares that as a
+dependency, so `claude plugin install context-guard@broodhall` installs guardrails too.
+
 Or inside a session, use the `/plugin` command and add the same marketplace and plugin.
 Start a new session afterwards.
 

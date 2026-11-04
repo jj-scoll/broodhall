@@ -10,6 +10,7 @@
   "repository": "https://github.com/jj-scoll/broodhall",
   "license": "MIT",
   "keywords": ["context", "handoff", "clear", "hooks"],
+  "dependencies": ["guardrails"],
   "userConfig": {
     "warn_tokens": {
       "type": "number",
