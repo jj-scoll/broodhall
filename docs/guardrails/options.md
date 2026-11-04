@@ -1,6 +1,6 @@
 # Options
 
-Three plugin options, two files under `~/.config/claude-tools/`, and one environment variable.
+Five plugin options, two files under `~/.config/claude-tools/`, and one environment variable.
 
 Set the plugin options with `/plugin configure guardrails@broodhall`, or from `/config`.
 
@@ -57,6 +57,52 @@ Outside the plugin the same list is read from `CLAUDE_TOOLS_PII_ALLOW`.
 
 Outside the plugin the same number is read from `HANDOFF_TOKENS`. A value that is not a
 whole number counts as empty. See [Handoff gate](handoff-gate.md).
+
+## `rtk`
+
+| | |
+| --- | --- |
+| Title | Rewrite commands with RTK |
+| Default | off |
+| Description | Off by default. When on, the pre-tool-use hook runs `rtk hook claude` after its own checks and applies RTK's token-saving command rewrite. Needs RTK installed. Do not also install RTK's own Claude Code hook. |
+
+RTK rewrites shell commands such as `git status` into
+`rtk git status`, whose output is shorter. With this option on, the guardrails hook calls
+`rtk hook claude` itself.
+
+**Do not also install RTK's own Claude Code hook.** Claude Code runs the hooks for one tool
+call in parallel and keeps the command from whichever finishes last. A second RTK hook
+could overwrite the PII mask or the secret-file mask with a plain RTK rewrite. With the
+option on, one hook decides the order:
+
+1. Every guard reads the command as typed. A block or an ask ends the call, and rtk never
+   sees it.
+2. A secret-file mask or a PII wrap, if one applies, becomes the new command, and rtk is
+   not run for it.
+3. Otherwise rtk may rewrite the command. A guard's note still reaches Claude next to
+   rtk's rewrite.
+
+A command that points git at another place with `-C`, `--git-dir` or `--work-tree` is never
+rewritten. `rtk git -C dir status` would hide `dir` from any guard that reads the git
+target, such as a worktree-isolation check, so those commands run as typed.
+
+If the option is on and rtk cannot be found, the guards run as usual, the command is not
+rewritten, and the hook prints one note on stderr per session. It never blocks. A rtk
+that fails, or runs for more than 5 seconds, is treated the same way, without a note.
+rtk's own deny (exit code 2) is passed through as a block.
+
+Outside the plugin, set `CLAUDE_TOOLS_RTK=1`.
+
+## `rtk_command`
+
+| | |
+| --- | --- |
+| Title | RTK command or path |
+| Default | empty |
+| Description | The rtk executable to run when the rtk option is on. Empty means `rtk` from PATH. |
+
+Use this when rtk is not on the PATH that Claude Code's hooks see, for example
+`/opt/tools/bin/rtk`. Outside the plugin it is read from `CLAUDE_TOOLS_RTK_CMD`.
 
 ## `~/.config/claude-tools/secret-paths`
 
