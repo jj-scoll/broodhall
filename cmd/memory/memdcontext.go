@@ -111,6 +111,13 @@ func buildContext(db *sql.DB, project string, now time.Time) string {
 // only then is the handoff text itself shortened (the guard trims the body and
 // leaves the handoff, and counts bytes, not UTF-16 units).
 func buildContextWith(db *sql.DB, project string, now time.Time, h *handoffEntry) string {
+	return buildContextExcluding(db, project, now, h, "")
+}
+
+// buildContextExcluding also leaves out the compaction summaries of excludeSession (when not
+// empty): after a compaction Claude Code already holds that session's summary in the
+// conversation, so showing it again only spends tokens.
+func buildContextExcluding(db *sql.DB, project string, now time.Time, h *handoffEntry, excludeSession string) string {
 	wd := loadWorkData(db, project, now)
 	obs, err := qObsQuery(db, `SELECT `+obsCols+` FROM observations WHERE project = ?
 		ORDER BY created_at DESC, id DESC LIMIT ?`, project, ctxObsCount)
@@ -123,7 +130,7 @@ func buildContextWith(db *sql.DB, project string, now time.Time, h *handoffEntry
 	} else {
 		newStaleChecker().markStale(obs)
 	}
-	sums, err := loadCtxSummaries(db, project)
+	sums, err := loadCtxSummaries(db, project, excludeSession)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "memory context: summaries: %v\n", err)
 		sums = nil
@@ -204,9 +211,11 @@ func ctxCut(block string) string {
 	return clipBytes(block, lo) + ctxCutMarker
 }
 
-func loadCtxSummaries(db *sql.DB, project string) ([]ctxSummary, error) {
+func loadCtxSummaries(db *sql.DB, project, excludeSession string) ([]ctxSummary, error) {
 	rows, err := db.Query(`SELECT id, request, investigated, learned, completed, next_steps, notes, created_at
-		FROM summaries WHERE project = ? ORDER BY created_at DESC, id DESC LIMIT ?`, project, ctxSessionCount)
+		FROM summaries WHERE project = ?
+		AND (? = '' OR id NOT IN (SELECT summary_id FROM compactions WHERE session_id = ?))
+		ORDER BY created_at DESC, id DESC LIMIT ?`, project, excludeSession, excludeSession, ctxSessionCount)
 	if err != nil {
 		return nil, err
 	}

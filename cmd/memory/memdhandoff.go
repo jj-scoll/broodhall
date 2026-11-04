@@ -196,9 +196,19 @@ func claimHandoff(db *sql.DB, project, source string, now time.Time) (string, er
 // buildStartContext is the SessionStart hook's block: buildContext with the claimed handoff first.
 // A claim error is logged and the block goes out without one.
 func buildStartContext(db *sql.DB, project, source string, now time.Time) string {
+	return buildStartContextFor(db, project, source, "", now)
+}
+
+// buildStartContextFor also takes the session id from the hook: on source "compact" that
+// session's own compaction summaries are left out (see buildContextExcluding).
+func buildStartContextFor(db *sql.DB, project, source, sessionID string, now time.Time) string {
 	e, err := takeHandoff(db, project, source, now)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "memory context: handoff: %v\n", err)
 	}
-	return buildContextWith(db, project, now, e)
+	exclude := ""
+	if source == "compact" {
+		exclude = sessionID
+	}
+	return buildContextExcluding(db, project, now, e, exclude)
 }

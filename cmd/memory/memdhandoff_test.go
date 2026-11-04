@@ -298,6 +298,7 @@ func TestMemContextPassesSource(t *testing.T) {
 	for _, tt := range []struct{ input, want string }{
 		{`{"cwd":"/work/p","source":"compact"}`, "project=p&source=compact"},
 		{`{"cwd":"/work/p"}`, "project=p"},
+		{`{"cwd":"/work/p","source":"compact","session_id":"sess a/1"}`, "project=p&source=compact&session_id=sess+a%2F1"},
 	} {
 		r, w, err := os.Pipe()
 		if err != nil {

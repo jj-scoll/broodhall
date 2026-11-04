@@ -30,6 +30,26 @@ Each of the three is masked first (below), then cut to its first 6,000 and last 
 characters if it is longer. The cut happens after masking, so it cannot expose half of a
 secret. Session summaries use the same command and the same masking.
 
+Compaction summaries are not sent anywhere. The `memory` program masks them before it writes
+them to the `compactions/` folder in the state directory, and the daemon masks them again
+before they are stored. Only masked text reaches the database or Claude.
+
+Some files can hold the summary unmasked. The same text is already in your Claude Code
+transcript. The first three are in the `compactions/` folder and are mode 0600:
+
+- `compactions/raw-*.json`: the hook launcher saves the raw payload when the `memory` program
+  is not installed yet, fails, or is stopped for taking too long. The daemon masks it when it
+  reads it and then deletes the file. The file stays while the daemon is not running, or if
+  the database returns an error.
+- `compactions/rejected/`: a file the daemon cannot use (for example a session id with odd
+  characters) is moved here as it is, so it can still hold unmasked text. Nothing in this
+  folder is ever stored or shown. The daemon deletes entries older than 7 days.
+- `compactions/.*.tmp`: a half-written file left by a hook that was stopped. The daemon
+  deletes these after 1 hour, while it is running.
+- `memory-hook.*/in` in your temporary directory: the launcher copies the payload of every
+  hook there (the folder is mode 0700) and removes it when the hook ends. If the hook is
+  killed hard, the copy stays until the system cleans the temporary directory.
+
 Tools in the skip list are never sent. By default these are `listmcpresourcestool`,
 `slashcommand`, `skill`, `todowrite` and `askuserquestion`. You can change the list, and add
 a pattern that skips matching Bash commands, in [Options](options.md).

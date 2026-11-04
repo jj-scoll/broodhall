@@ -43,8 +43,22 @@ on [Privacy and redaction](privacy.md).
    looks the file up and, if memory knows something about it, adds a short note (at most
    1,500 bytes) to the tool call. It stays silent for files under 1,500 bytes, for
    subagents, and when the lookup takes longer than 150 ms. It never blocks the call.
-6. **Tools.** An MCP server named `memory` gives Claude 11 tools, listed below.
-7. **UI.** The daemon serves a local web page on `127.0.0.1:9495`. See
+6. **Compaction summaries.** When Claude Code compacts a session (`/compact` or automatic),
+   a PostCompact hook runs `memory compact-capture`. It masks secrets in the summary and
+   writes it to `compactions/` in the state directory, and never opens the database. The
+   daemon reads that folder every few seconds and stores each summary as a session summary
+   titled "Context compaction (manual)" or "(auto)". `search` finds it, and
+   `get_observations` with its `S<n>` ID (for example `S12`) returns the full text. The
+   folder keeps summaries while the daemon is stopped, and the same compaction is never
+   stored twice. A file that cannot be read as a summary moves to `compactions/rejected/`,
+   which is never read back and is cleared after 7 days. The summary is filed under
+   `CLAUDE_PROJECT_DIR` when it is set, else the hook's working directory. (A raw copy saved
+   by the launcher when the program is missing or fails does not carry `CLAUDE_PROJECT_DIR`,
+   so it is filed by the working directory.) The context block
+   that follows a compaction leaves out that session's own summary, because Claude Code
+   already put it in the conversation.
+7. **Tools.** An MCP server named `memory` gives Claude 11 tools, listed below.
+8. **UI.** The daemon serves a local web page on `127.0.0.1:9495`. See
    [UI and Quack](ui-and-quack.md).
 
 ## The 11 tools
