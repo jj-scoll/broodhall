@@ -456,6 +456,35 @@ func TestObserverSystemPromptIsStable(t *testing.T) {
 	}
 }
 
+// The daemon serves every account, so MEMORY_OBSERVER_CONFIG_DIR pins the account the
+// observer's claude runs as: exactly one CLAUDE_CONFIG_DIR, that one. Unset, the daemon's own
+// CLAUDE_CONFIG_DIR is passed on unchanged.
+func TestObserverCmdConfigDir(t *testing.T) {
+	t.Setenv("MEMORY_DIR", t.TempDir())
+	t.Setenv("CLAUDE_CONFIG_DIR", "/home/u/.claude")
+	configDirs := func() []string {
+		cmd, err := observerCmd(context.Background(), observerArgv("S", "J"), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, e := range cmd.Env {
+			if strings.HasPrefix(e, "CLAUDE_CONFIG_DIR=") {
+				got = append(got, e)
+			}
+		}
+		return got
+	}
+	t.Setenv("MEMORY_OBSERVER_CONFIG_DIR", "")
+	if got := configDirs(); len(got) != 1 || got[0] != "CLAUDE_CONFIG_DIR=/home/u/.claude" {
+		t.Errorf("unset: CLAUDE_CONFIG_DIR entries = %v, want the inherited one", got)
+	}
+	t.Setenv("MEMORY_OBSERVER_CONFIG_DIR", "/home/u/.claude-work")
+	if got := configDirs(); len(got) != 1 || got[0] != "CLAUDE_CONFIG_DIR=/home/u/.claude-work" {
+		t.Errorf("set: CLAUDE_CONFIG_DIR entries = %v, want only /home/u/.claude-work", got)
+	}
+}
+
 func TestObserverCmd(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("MEMORY_DIR", dir)

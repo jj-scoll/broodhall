@@ -237,21 +237,27 @@ func parseUsageLines(path string, lines [][]byte, st *memdFileState) []memdUsage
 
 const usageBackfillChunk = 5000
 
-// BackfillUsage reads every transcript under the roots from the start and upserts its usage
-// rows, once: import_watermarks keeps table api_usage at memdUsageBackfillVersion afterwards.
+// usageWatermarkKey is the import_watermarks row recording that root's usage history was read.
+func usageWatermarkKey(root string) string { return "api_usage:" + filepath.Clean(root) }
+
+// BackfillUsage reads every transcript under each root from the start and upserts its usage
+// rows, once per root: import_watermarks keeps usageWatermarkKey(root) at
+// memdUsageBackfillVersion afterwards, so a root added later (another account) is still read.
 // The tailer starts old files at their end, so this is the only reader of history. A failing
-// file leaves the watermark unset, so the next start tries again; rows are upserts either way.
+// file leaves its root's watermark unset, so the next start tries again; rows are upserts
+// either way.
 func (t *memdTailer) BackfillUsage(ctx context.Context) error {
-	var done int64
-	err := t.db.QueryRow(`SELECT last_id FROM import_watermarks WHERE table_name = 'api_usage'`).Scan(&done)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("usage watermark: %w", err)
-	}
-	if done >= memdUsageBackfillVersion {
-		return nil
-	}
 	var firstErr error
 	for root := range t.roots {
+		var done int64
+		err := t.db.QueryRow(`SELECT last_id FROM import_watermarks WHERE table_name = ?`, usageWatermarkKey(root)).Scan(&done)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("usage watermark: %w", err)
+		}
+		if done >= memdUsageBackfillVersion {
+			continue
+		}
+		var rootErr error
 		filepath.WalkDir(root, func(path string, d fs.DirEntry, werr error) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -259,23 +265,29 @@ func (t *memdTailer) BackfillUsage(ctx context.Context) error {
 			if werr != nil || d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
 				return nil
 			}
-			if err := t.backfillFile(path); err != nil && firstErr == nil {
-				firstErr = fmt.Errorf("usage backfill %s: %w", path, err)
+			if err := t.backfillFile(path); err != nil && rootErr == nil {
+				rootErr = fmt.Errorf("usage backfill %s: %w", path, err)
 			}
 			return nil
 		})
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if rootErr != nil {
+			if firstErr == nil {
+				firstErr = rootErr
+			}
+			continue
+		}
+		if err := withWrite(func() error {
+			_, err := t.db.Exec(`INSERT INTO import_watermarks (table_name, last_id) VALUES (?, ?)
+ON CONFLICT (table_name) DO UPDATE SET last_id = excluded.last_id`, usageWatermarkKey(root), memdUsageBackfillVersion)
+			return err
+		}); err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if firstErr != nil {
-		return firstErr
-	}
-	return withWrite(func() error {
-		_, err := t.db.Exec(`INSERT INTO import_watermarks (table_name, last_id) VALUES ('api_usage', ?)
-ON CONFLICT (table_name) DO UPDATE SET last_id = excluded.last_id`, memdUsageBackfillVersion)
-		return err
-	})
+	return firstErr
 }
 
 func (t *memdTailer) backfillFile(path string) error {

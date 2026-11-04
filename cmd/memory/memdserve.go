@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -43,10 +44,45 @@ func claudeConfigDir() string {
 	return filepath.Join(home, ".claude")
 }
 
-// defaultMemdRoots maps transcript root -> account. The one root is the config dir's
-// projects dir, account "default".
+// defaultMemdRoots maps transcript root -> account: the projects dir of every Claude config
+// dir, so one daemon (whichever account starts it) fills one database for all accounts. The
+// config dirs are $MEMORY_CONFIG_DIRS (a path list) when set, else CLAUDE_CONFIG_DIR (or
+// ~/.claude) plus every ~/.claude* dir holding a projects dir. The account is the dir's base
+// name without its leading dot. A dir reached twice through a symlink is tailed once, under
+// its ~/.claude* spelling, so the key (and the stored offsets under it) does not depend on
+// which account started the daemon. A relative entry is ignored.
 func defaultMemdRoots() map[string]string {
-	return map[string]string{filepath.Join(claudeConfigDir(), "projects"): "default"}
+	var dirs []string
+	if env := os.Getenv("MEMORY_CONFIG_DIRS"); env != "" {
+		dirs = filepath.SplitList(env)
+	} else {
+		home, _ := os.UserHomeDir()
+		matches, _ := filepath.Glob(filepath.Join(home, ".claude*"))
+		for _, m := range matches {
+			if fi, err := os.Stat(filepath.Join(m, "projects")); err == nil && fi.IsDir() {
+				dirs = append(dirs, m)
+			}
+		}
+		dirs = append(dirs, claudeConfigDir())
+	}
+	roots := map[string]string{}
+	seen := map[string]bool{}
+	for _, d := range dirs {
+		if !filepath.IsAbs(d) {
+			continue
+		}
+		d = filepath.Clean(d)
+		real := d
+		if r, err := filepath.EvalSymlinks(d); err == nil {
+			real = r
+		}
+		if seen[real] {
+			continue
+		}
+		seen[real] = true
+		roots[filepath.Join(d, "projects")] = strings.TrimPrefix(filepath.Base(d), ".")
+	}
+	return roots
 }
 
 // memdServe runs the daemon on state dir dir, tailing roots (transcript root -> account),

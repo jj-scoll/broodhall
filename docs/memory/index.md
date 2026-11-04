@@ -28,10 +28,11 @@ on [Privacy and redaction](privacy.md).
 
 1. **Daemon.** `memory serve` runs in the background. The SessionStart hook starts it. A
    second copy exits at once, because the first holds the socket.
-2. **Transcript tailing.** The daemon watches `projects/` under your Claude config directory
-   (`~/.claude/projects`, or `$CLAUDE_CONFIG_DIR/projects`) and reads new transcript lines as
-   they are written. No hook is needed on each tool call. Secrets are masked as the lines
-   are read.
+2. **Transcript tailing.** The daemon watches `projects/` under every Claude config directory
+   (`~/.claude`, each other `~/.claude*` directory that has a `projects/`, and
+   `$CLAUDE_CONFIG_DIR`) and reads new transcript lines as they are written. So one database
+   holds all your accounts, whichever account started the daemon. No hook is needed on each
+   tool call. Secrets are masked as the lines are read.
 3. **Observations.** Each tool call is queued, and a worker asks Claude to write one
    structured note about it: a type, a title, the facts, and the files read or changed. A
    second worker writes a summary of each session. If `claude` is missing or signed out, the
