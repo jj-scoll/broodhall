@@ -39,6 +39,6 @@ This exact command has now failed 3 times this session. Exploration budget: stop
 
 ## Turning it off
 
-You cannot. Retry loops have no family name in `disabled_guards`, and none of the five
-families (`pii`, `raw-client-data`, `session-url`, `egress`, `git`) controls them. The note
+You cannot. Retry loops have no family name in `disabled_guards`, and none of the six
+families (`pii`, `raw-client-data`, `session-url`, `egress`, `git`, `sweep`) controls them. The note
 never blocks. You can disable the plugin. See [Options](options.md).

@@ -39,7 +39,7 @@ func init() { commands["doctor"] = doctorCmd }
 // them makes the guard run twice. TestDoctorGuardListMatchesPluginHooks keeps it equal to
 // hooks.json minus install.
 var guardSubcommands = map[string]bool{
-	"pre-tool-use": true, "read-dedup": true, "large-read-guard": true, "retry-breaker": true,
+	"pre-tool-use": true, "read-dedup": true, "large-read-guard": true, "retry-breaker": true, "record-edit": true,
 	"config-gate": true, "session-env": true, "receipt": true, "gate": true, "compact-guard": true, "autoclear": true,
 }
 

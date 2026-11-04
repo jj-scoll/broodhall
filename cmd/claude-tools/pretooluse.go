@@ -56,6 +56,14 @@ func decide(env *guardEnv, cmd string) decision {
 	if d := settingsGuard(env, cmd); d.Ask {
 		return d
 	}
+	// A sweeping git command that would take in another live session's uncommitted change.
+	if !env.Off["sweep"] {
+		if cmds, ok := parseShell(cmd); ok {
+			if d := sweepGuard(env, cmds); d.Ask && !env.observed(d) {
+				return d
+			}
+		}
+	}
 	// Destructive git verbs: the user confirms each one.
 	var rule, what string
 	if cmds, ok := parseShell(cmd); ok {
@@ -214,7 +222,8 @@ func preToolUseRun(data []byte, self string, rtk func([]byte) ([]byte, []byte, i
 		}
 		return 0
 	}
-	env := &guardEnv{Now: time.Now(), Session: in.SessionID, Cwd: in.Cwd, Home: home, XDGConfig: xdg, State: newFileState(in.SessionID), GitUnpushed: gitUnpushed, Off: off, Observe: observe}
+	env := &guardEnv{Now: time.Now(), Session: in.SessionID, Cwd: in.Cwd, Home: home, XDGConfig: xdg, State: newFileState(in.SessionID), GitUnpushed: gitUnpushed, Off: off, Observe: observe,
+		OtherEdits: func(self string, now time.Time) []otherSession { return liveOtherSessions(self, now, sweepWindow) }, GitStatus: gitStatusOf}
 	d := decide(env, in.ToolInput.Command)
 	switch {
 	case d.Ask:
