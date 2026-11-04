@@ -107,8 +107,8 @@ func teamInit(out, errw io.Writer, args []string) int {
 			"A plugin set to true here is force-enabled and users cannot turn it off.\n")
 	} else {
 		user := "~/.claude/settings.json"
-		if os.Getenv("CLAUDE_CONFIG_DIR") != "" {
-			user = filepath.Join(claudeConfigDir(), "settings.json")
+		if cfg := os.Getenv("CLAUDE_CONFIG_DIR"); cfg != "" {
+			user = filepath.Join(cfg, "settings.json")
 		}
 		fmt.Fprint(errw, "Merge this into .claude/settings.json and commit it. Each teammate accepts the folder trust prompt once,\n"+
 			"then Claude Code registers the marketplace and installs the plugins that live in this repository. For your own machine, merge it into "+user+".\n")

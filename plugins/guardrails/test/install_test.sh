@@ -137,6 +137,7 @@ mkrelease "$tmp/t6/rel"
 export CLAUDE_TOOLS_RELEASE_URL=file://$tmp/t6/rel
 mkdir -p "$tmp/t6/path"
 while IFS= read -r d; do # one PATH entry per line, so entries with spaces stay whole
+	[ -n "$d" ] || continue
 	for f in "$d"/*; do
 		n=${f##*/}
 		[ "$n" = curl ] || [ -e "$tmp/t6/path/$n" ] || ln -s "$f" "$tmp/t6/path/$n" 2>/dev/null
@@ -146,16 +147,34 @@ out=$(printf '{"source":"startup"}' | PATH=$tmp/t6/path sh "$run_sh" install 2>"
 rc=$?
 if [ "$rc" -eq 0 ] && [ ! -e "$(bin t6)" ] && printf %s "$out" | grep -q 'curl not found'; then ok "with no curl the notice says curl not found"; else bad "with no curl the notice says curl not found" "rc=$rc out=$out"; fi
 
-# --- 7. a data dir it cannot create: the notice says cannot write, at once, not another install
-newcase t7
-mkdir -p "$tmp/t7/ro"
-chmod 555 "$tmp/t7/ro"
-export CLAUDE_PLUGIN_DATA=$tmp/t7/ro/data
-start=$(date +%s)
-install t7
-took=$(($(date +%s) - start))
-chmod 755 "$tmp/t7/ro"
-if [ "$rc" -eq 0 ] && [ "$took" -lt 5 ] && printf %s "$out" | grep -q 'cannot write' && ! printf %s "$out" | grep -q 'another install'; then ok "an unwritable data dir says cannot write"; else bad "an unwritable data dir says cannot write" "rc=$rc took=${took}s out=$out"; fi
+# --- 7. a data dir it cannot create, or a bin/ it cannot write: the notice says cannot write,
+# at once, not another install. Root ignores the modes, so the case is skipped there.
+for variant in uncreatable readonly-bin; do
+	newcase "t7$variant"
+	c=$tmp/t7$variant
+	if [ "$(id -u)" -eq 0 ]; then
+		ok "an unwritable data dir ($variant) says cannot write (skipped as root)"
+		continue
+	fi
+	if [ "$variant" = uncreatable ]; then
+		ro=$c/ro
+		mkdir -p "$ro"
+		export CLAUDE_PLUGIN_DATA=$ro/data
+	else
+		ro=$c/data/bin
+		mkdir -p "$ro"
+	fi
+	chmod 555 "$ro"
+	start=$(date +%s)
+	install "t7$variant"
+	took=$(($(date +%s) - start))
+	chmod 755 "$ro"
+	if [ "$rc" -eq 0 ] && [ "$took" -lt 5 ] && printf %s "$out" | grep -q 'cannot write' && ! printf %s "$out" | grep -q 'another install'; then
+		ok "an unwritable data dir ($variant) says cannot write"
+	else
+		bad "an unwritable data dir ($variant) says cannot write" "rc=$rc took=${took}s out=$out"
+	fi
+done
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
