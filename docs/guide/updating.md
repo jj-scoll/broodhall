@@ -15,6 +15,26 @@ are off for that session with a one-line notice, and the next session start retr
 The launcher never removes a previous version's binary, so old ones stay in `bin/` until you
 delete them.
 
+## Between the update and the download
+
+Claude Code runs a hook event's commands in parallel, and `/reload-plugins` switches to the
+new version without a session start, so the new version can run before its binary exists.
+That does not block your tool calls:
+
+- guardrails runs the newest binary already installed for another version until the new one
+  lands. The guard that found the binary missing starts the download itself, so a
+  `/reload-plugins` needs no session start. Two installers at once are safe: one holds a lock
+  and the other waits for it.
+- With no binary at all (a first install), the guard starts the download and waits up to 25
+  seconds for it (`GUARDRAILS_INSTALL_WAIT`). If it does not land, the call is blocked as
+  before, unless `fail_open` is on, and the message says whether the install is running or
+  failed. After a failed install the guards wait 5 minutes before they try again, and
+  `run.sh install` retries at once.
+- memory's MCP server (`run.sh mcp`) serves from the newest installed older binary, or waits
+  up to 25 seconds for the install (`MEMORY_MCP_WAIT`). It does not exit while the download is
+  running, because Claude Code would then skip the server for about 15 minutes. The server only
+  forwards each request to the daemon, so an older server and a newer daemon work together.
+
 ## Versioning
 
 guardrails, memory and context-guard share one version. Every release moves all three to the

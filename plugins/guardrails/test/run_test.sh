@@ -122,12 +122,13 @@ hook install
 case $out in *"could not install guardrails $ver (download of guardrails_${os}_$arch.tar.gz failed)"*) ok "install failure names guardrails and its asset" ;; *) bad "install failure names guardrails and its asset" "$out" ;; esac
 case $out in *claude-tools*) bad "install failure has no claude-tools" "$out" ;; *) ok "install failure has no claude-tools" ;; esac
 
-# An older version's binary, under the old name, is not this version's binary.
+# An older version's binary, under the old name, is not this version's binary: a guard still
+# runs it while this version installs (see the version-bump section below).
 newcase old-version-old-name
 mkdir -p "$c/data/bin/0.0.1"
 mkstub "$c/data/bin/0.0.1/claude-tools"
 hook pre-tool-use
-expect_blocked "only an older version's claude-tools: pre-tool-use blocks"
+if [ "$rc" = 3 ] && case $out in *"args=pre-tool-use"*) true ;; *) false ;; esac; then ok "only an older version's claude-tools: pre-tool-use runs it"; else bad "only an older version's claude-tools: pre-tool-use runs it" "rc=$rc out=$out err=$err"; fi
 
 newcase missing-optout-option
 CLAUDE_PLUGIN_OPTION_FAIL_OPEN=true hook pre-tool-use
@@ -249,6 +250,178 @@ mkstub "$cfg/plugins/data/guardrails-old/bin/0.0.1/claude-tools"
 mkstub "$cfg/plugins/data/guardrails/bin/$ver/guardrails"
 out=$(unset CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA && CLAUDE_CONFIG_DIR=$cfg sh "$c/checkout/plugins/guardrails/scripts/run.sh" version </dev/null 2>&1)
 case $out in *"args=version"*) ok "terminal run from a checkout skips a dir with only another version's claude-tools" ;; *) bad "terminal run from a checkout skips a dir with only another version's claude-tools" "out=$out" ;; esac
+
+# --- a version bump: this version's binary is not downloaded yet ---------------------------
+# Failure A1: SessionStart runs `install` and `config-gate` in parallel, so the fail-closed
+# config-gate ran before the download finished and blocked. Failure A2: /reload-plugins moves
+# the session to the new version without firing SessionStart, so nothing downloads it and every
+# PreToolUse blocked. Contract: a guard runs the newest binary already installed for another
+# version while this version installs, starts that install itself, and with no binary at all
+# waits (bounded) for the install instead of blocking at once.
+
+# mkid <path> <label>: a stub binary that says which one it is.
+mkid() {
+	mkdir -p "${1%/*}"
+	cat >"$1" <<EOF
+#!/bin/sh
+[ "\${1-}" = doctor ] && exit 0
+echo "from=$2 args=\$* observe=\${CLAUDE_TOOLS_OBSERVE-} stdin=\$(cat)"
+exit 3
+EOF
+	chmod +x "$1"
+}
+
+# mkslowcurl <dir> <seconds>: a curl on PATH that logs its arguments, sleeps, then runs the real one.
+mkslowcurl() {
+	realcurl=$(command -v curl)
+	mkdir -p "$1"
+	cat >"$1/curl" <<EOF
+#!/bin/sh
+echo "\$*" >>"$1/curl.log"
+sleep $2
+exec $realcurl "\$@"
+EOF
+	chmod +x "$1/curl"
+}
+
+waitfor() { # <path> : wait up to 10 s for an executable
+	w=0
+	while [ ! -x "$1" ] && [ "$w" -lt 100 ]; do sleep 0.1; w=$((w + 1)); done
+}
+
+ran_stub() { [ "$rc" = 3 ] && case $out in *"args=$1"*) true ;; *) false ;; esac; }
+
+# A2: no SessionStart. The old version's binary runs the guard and the guard starts the install.
+newcase bump-reload
+mkrelease "$c/rel"
+mkid "$c/data/bin/0.0.1/guardrails" old1
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+hook pre-tool-use
+if ran_stub pre-tool-use && case $out in *"from=old1"*"stdin={\"tool_name\":\"Bash\"}"*) true ;; *) false ;; esac; then ok "version bump: pre-tool-use runs the older installed binary, not a block"; else bad "version bump: pre-tool-use runs the older installed binary, not a block" "rc=$rc out=$out err=$err"; fi
+waitfor "$c/data/bin/$ver/guardrails"
+if [ -x "$c/data/bin/$ver/guardrails" ]; then ok "version bump: the guard starts the install on its own (no SessionStart)"; else bad "version bump: the guard starts the install on its own (no SessionStart)" "no binary after 10 s; log: $(cat "$c/data/install.log" 2>/dev/null)"; fi
+grep -q '  guardrails$' "$c/data/bin/$ver/guardrails.sha256" 2>/dev/null && ok "background install records the sha256" || bad "background install records the sha256" "no record"
+i=0; while [ -d "$c/data/bin/.install-lock" ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+hook pre-tool-use
+if ran_stub pre-tool-use && case $out in *"from=old1"*) false ;; *) true ;; esac; then ok "once installed, the guard runs this version's binary"; else bad "once installed, the guard runs this version's binary" "rc=$rc out=$out"; fi
+[ ! -d "$c/data/bin/.install-lock" ] && ok "install lock is released" || bad "install lock is released" "still held"
+for sub in read-dedup large-read-guard config-gate; do
+	newcase "bump-$sub"
+	mkid "$c/data/bin/0.0.1/guardrails" old1
+	hook "$sub"
+	if ran_stub "$sub"; then ok "version bump: $sub runs the older installed binary"; else bad "version bump: $sub runs the older installed binary" "rc=$rc out=$out err=$err"; fi
+done
+
+# The newest installed version wins, compared as numbers; prerelease and empty dirs are skipped.
+newcase bump-newest
+for v in 0.2.0 0.9.0 0.10.0; do mkid "$c/data/bin/$v/guardrails" "v$v"; done
+mkid "$c/data/bin/0.11.0-rc1/guardrails" rc
+mkdir -p "$c/data/bin/9.9.9"
+hook pre-tool-use
+case $out in *"from=v0.10.0 "*) ok "version bump: the newest installed version is picked by number" ;; *) bad "version bump: the newest installed version is picked by number" "rc=$rc out=$out err=$err" ;; esac
+newcase bump-not-executable
+mkdir -p "$c/data/bin/0.0.1"
+printf '#!/bin/sh\nexit 3\n' >"$c/data/bin/0.0.1/guardrails"
+hook pre-tool-use
+expect_blocked "version bump: a non-executable older binary is not used"
+
+# Options still apply to the fallback binary.
+newcase bump-observe
+mkid "$c/data/bin/0.0.1/guardrails" old1
+CLAUDE_PLUGIN_OPTION_OBSERVE=true hook pre-tool-use
+case $out in *"observe=true"*) ok "version bump: observe mode reaches the older binary" ;; *) bad "version bump: observe mode reaches the older binary" "$out" ;; esac
+
+# Hooks that are not guards do not start installs.
+newcase bump-nonguard
+mkrelease "$c/rel"
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+hook receipt
+sleep 1
+[ ! -e "$c/data/bin/$ver/guardrails" ] && [ ! -d "$c/data/bin/.install-lock" ] && ok "no binary: a non-guard hook starts no install" || bad "no binary: a non-guard hook starts no install" "installed or locked"
+
+# A1: config-gate races `install`, and no older binary exists, so it waits for the download.
+newcase bump-race
+mkrelease "$c/rel"
+mkslowcurl "$c/path" 2
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+PATH=$c/path:$PATH sh "$run_sh" install </dev/null >"$c/inst.out" 2>&1 &
+instpid=$!
+sleep 0.5
+PATH=$c/path:$PATH hook config-gate
+if ran_stub config-gate; then ok "SessionStart race: config-gate waits for the install instead of blocking"; else bad "SessionStart race: config-gate waits for the install instead of blocking" "rc=$rc out=$out err=$err"; fi
+wait "$instpid"
+[ ! -s "$c/inst.out" ] && ok "SessionStart race: install itself stays silent" || bad "SessionStart race: install itself stays silent" "$(cat "$c/inst.out")"
+
+# A2 with nothing older installed: the guard starts the install and waits for it.
+newcase bump-fresh-reload
+mkrelease "$c/rel"
+mkslowcurl "$c/path" 1
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+PATH=$c/path:$PATH hook pre-tool-use
+if ran_stub pre-tool-use; then ok "no binary at all: pre-tool-use installs and then runs the guard"; else bad "no binary at all: pre-tool-use installs and then runs the guard" "rc=$rc out=$out err=$err"; fi
+
+# With no binary at all and a failing download the guard still blocks, says the install failed,
+# and does not retry the download for every tool call.
+newcase bump-fresh-fails
+mkslowcurl "$c/path" 0
+PATH=$c/path:$PATH hook pre-tool-use
+expect_blocked "no binary at all, download fails: pre-tool-use blocks"
+case $err in *"last install failed"*) ok "failed install: the message says the install failed" ;; *) bad "failed install: the message says the install failed" "$err" ;; esac
+[ -e "$c/data/bin/.fail-$ver" ] && ok "failed install leaves a stamp" || bad "failed install leaves a stamp" "no stamp"
+tries=$(grep -c 'tar.gz' "$c/path/curl.log")
+PATH=$c/path:$PATH hook pre-tool-use
+expect_blocked "failed install: the next call blocks at once"
+[ "$(grep -c 'tar.gz' "$c/path/curl.log")" = "$tries" ] && ok "failed install: the next call does not download again" || bad "failed install: the next call does not download again" "downloads before $tries, after $(grep -c 'tar.gz' "$c/path/curl.log")"
+PATH=$c/path:$PATH hook install
+[ "$(grep -c 'tar.gz' "$c/path/curl.log")" -gt "$tries" ] && ok "failed install: run.sh install always retries" || bad "failed install: run.sh install always retries" "no download"
+
+# An install in flight that does not finish in time: the guard blocks and says it is installing.
+newcase bump-inflight
+sleep 30 &
+holder=$!
+mkdir -p "$c/data/bin/.install-lock"
+echo "$holder" >"$c/data/bin/.install-lock/pid"
+GUARDRAILS_INSTALL_WAIT=1 hook pre-tool-use
+kill "$holder" 2>/dev/null
+expect_blocked "install in flight past the wait: pre-tool-use blocks"
+case $err in *"Installing it in the background"*) ok "install in flight: the message says it is installing" ;; *) bad "install in flight: the message says it is installing" "$err" ;; esac
+
+# fail_open still allows silently, and still starts the install.
+newcase bump-failopen
+mkrelease "$c/rel"
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+CLAUDE_PLUGIN_OPTION_FAIL_OPEN=true hook pre-tool-use
+expect_silent_allow "no binary + fail_open: allows silently"
+waitfor "$c/data/bin/$ver/guardrails"
+[ -x "$c/data/bin/$ver/guardrails" ] && ok "no binary + fail_open: the install still starts" || bad "no binary + fail_open: the install still starts" "no binary"
+
+# Two installers at once download once and leave one intact binary.
+newcase concurrent-install
+mkrelease "$c/rel"
+mkslowcurl "$c/path" 1
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+PATH=$c/path:$PATH sh "$run_sh" install </dev/null >"$c/o1" 2>&1 &
+p1=$!
+PATH=$c/path:$PATH sh "$run_sh" install </dev/null >"$c/o2" 2>&1 &
+p2=$!
+wait "$p1" "$p2"
+[ "$(grep -c 'tar.gz' "$c/path/curl.log")" = 1 ] && ok "two concurrent installs download once" || bad "two concurrent installs download once" "downloads: $(grep -c 'tar.gz' "$c/path/curl.log")"
+[ ! -s "$c/o1" ] && [ ! -s "$c/o2" ] && [ -x "$c/data/bin/$ver/guardrails" ] && ok "two concurrent installs both succeed silently" || bad "two concurrent installs both succeed silently" "o1=$(cat "$c/o1") o2=$(cat "$c/o2")"
+(cd "$c/data/bin/$ver" && printf '%s\n' "$($sum guardrails | cut -d' ' -f1)  guardrails" | cmp -s - guardrails.sha256) && ok "the sha256 record matches the installed binary" || bad "the sha256 record matches the installed binary" "$(cat "$c/data/bin/$ver/guardrails.sha256")"
+ls -A "$c/data/bin" | grep -q '^\.download\.' && bad "no download temp dirs left behind" "$(ls -A "$c/data/bin")" || ok "no download temp dirs left behind"
+
+# A lock whose process is gone does not hold anything up.
+newcase dead-lock
+mkrelease "$c/rel"
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+mkdir -p "$c/data/bin/.install-lock"
+sh -c 'echo $$' >"$c/data/bin/.install-lock/pid"
+hook install
+[ "$rc" = 0 ] && [ -x "$c/data/bin/$ver/guardrails" ] && ok "a lock held by a dead process is taken over" || bad "a lock held by a dead process is taken over" "rc=$rc out=$out"
+
+# Let any detached installer finish before the sandbox is removed.
+w=0
+while [ -n "$(find "$tmp" -name .install-lock 2>/dev/null)" ] && [ "$w" -lt 100 ]; do sleep 0.1; w=$((w + 1)); done
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

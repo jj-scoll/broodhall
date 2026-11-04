@@ -13,6 +13,14 @@
 # The binary was named claude-tools before the rename; the CLAUDE_TOOLS_* variables keep that
 # name. Each plugin version downloads its own release, so older versions still fetch
 # claude-tools_<os>_<arch>.tar.gz from their own tags.
+#
+# A version bump. Claude Code runs a hook event's commands in parallel, and /reload-plugins
+# switches to a new version without a SessionStart, so a guard can run before this version's
+# binary is downloaded. It then does not block just for that: it runs the newest binary already
+# installed for another version (any bin/<x.y.z>/guardrails or claude-tools that is executable)
+# and starts this version's install in the background. With no binary at all (a first install)
+# it starts the install and waits up to GUARDRAILS_INSTALL_WAIT seconds (default 25) for it,
+# then blocks as before if it did not land.
 # shellcheck disable=SC2015 # `a && b || fail`: fail when any step fails, which is intended
 set -u
 root=${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
@@ -36,12 +44,18 @@ if [ -z "$data" ]; then
 		;;
 	esac
 fi
-dest=$data/bin/$ver/guardrails
 # Main can advertise a version whose release predates the rename until the next release ships:
 # the launcher before the rename installed that version's binary as claude-tools, so use it.
-[ -x "$dest" ] || [ ! -x "${dest%/*}/claude-tools" ] || dest=${dest%/*}/claude-tools
-bin=${CLAUDE_TOOLS_BIN:-$dest}
+pick_dest() {
+	dest=$data/bin/$ver/guardrails
+	[ -x "$dest" ] || [ ! -x "${dest%/*}/claude-tools" ] || dest=${dest%/*}/claude-tools
+	curbin=${CLAUDE_TOOLS_BIN:-$dest}
+}
+pick_dest
+
 export CLAUDE_PLUGIN_ROOT="$root"
+# A detached installer finds the same data dir, however this run found it.
+export CLAUDE_PLUGIN_DATA="$data"
 
 # userConfig options reach hooks as CLAUDE_PLUGIN_OPTION_<KEY>. An option the user never set
 # falls back to the same env var outside the plugin, then to plugin.json's default.
@@ -64,18 +78,48 @@ true | TRUE | True | 1 | yes) fail_open=1 ;;
 *) fail_open= ;;
 esac
 
-if [ "${1-}" = install ]; then
-	doctor() { "$bin" doctor -hook || true; exit 0; }
-	[ -x "$bin" ] && doctor
+# One installer at a time: the lock dir $data/bin/.install-lock belongs to the process whose pid
+# is in $lock/pid (a lock with no pid file yet counts as held). A lock whose process is gone, or
+# that is older than 15 minutes, is taken over. A failed install leaves a stamp, and the guards
+# do not start another install for 5 minutes (`run.sh install` always tries).
+lock=$data/bin/.install-lock
+stamp=$data/bin/.fail-$ver
+log=$data/install.log
+wait_s=${GUARDRAILS_INSTALL_WAIT:-25}
+
+lock_live() {
+	[ -d "$lock" ] || return 1
+	[ -z "$(find "$lock" -maxdepth 0 -mmin +15 2>/dev/null)" ] || return 1
+	p=$(cat "$lock/pid" 2>/dev/null)
+	[ -z "$p" ] || kill -0 "$p" 2>/dev/null
+}
+take_lock() {
+	mkdir -p "$data/bin" 2>/dev/null || return 1
+	lock_live || rm -rf "$lock"
+	mkdir "$lock" 2>/dev/null
+}
+recent_failure() { [ -n "$(find "$stamp" -mmin -5 2>/dev/null)" ]; }
+
+# say_fail prints the SessionStart notice for a failed install; the install never stops the session.
+say_fail() {
+	if [ -n "$fail_open" ]; then
+		effect="so its guards are off this session (fail_open is set)"
+	else
+		effect="so tool calls are blocked until it installs (set the fail_open option to allow them unguarded)"
+	fi
+	printf '{"systemMessage":"guardrails: could not install guardrails %s (%s), %s. It retries at the next session start."}\n' "$ver" "$1" "$effect"
+}
+
+# install_bin downloads, verifies and unpacks this version's binary. It runs in a subshell (the
+# parentheses) so its cleanup trap and exits stay local; a failure prints say_fail's notice,
+# leaves the failure stamp and returns 1.
+install_bin() (
 	fail() {
-		if [ -n "$fail_open" ]; then
-			effect="so its guards are off this session (fail_open is set)"
-		else
-			effect="so tool calls are blocked until it installs (set the fail_open option to allow them unguarded)"
-		fi
-		printf '{"systemMessage":"guardrails: could not install guardrails %s (%s), %s. It retries at the next session start."}\n' "$ver" "$1" "$effect"
-		exit 0
+		touch "$stamp" 2>/dev/null
+		say_fail "$1"
+		exit 1
 	}
+	dest=$data/bin/$ver/guardrails # where an install puts it
 	base=${CLAUDE_TOOLS_RELEASE_URL:-https://github.com/jj-scoll/broodhall/releases/download}
 	os=$(uname -s | tr '[:upper:]' '[:lower:]')
 	case $(uname -m) in
@@ -86,7 +130,7 @@ if [ "${1-}" = install ]; then
 	asset=guardrails_${os}_$arch.tar.gz want=$asset member=guardrails
 	mkdir -p "$data/bin" && tmp=$(mktemp -d "$data/bin/.download.XXXXXX") || fail "cannot write $data"
 	trap 'rm -rf "$tmp"' EXIT
-	# A release made before the rename has only claude-tools_<os>_<arch>.tar.gz (see dest above).
+	# A release made before the rename has only claude-tools_<os>_<arch>.tar.gz (see pick_dest).
 	{ curl -fsSL --max-time 60 -o "$tmp/$asset" "$base/v$ver/$asset" || {
 		asset=claude-tools_${os}_$arch.tar.gz member=claude-tools
 		curl -fsSL --max-time 60 -o "$tmp/$asset" "$base/v$ver/$asset"
@@ -99,24 +143,132 @@ if [ "${1-}" = install ]; then
 	line=$(grep "  $asset\$" "$tmp/checksums.txt")
 	[ -n "$line" ] || fail "no checksum for $asset in checksums.txt"
 	(cd "$tmp" && printf '%s\n' "$line" | $sum -c - >/dev/null 2>&1) || fail "checksum mismatch"
-	tar -xzf "$tmp/$asset" -C "$tmp" "$member" && mkdir -p "${dest%/*}" &&
-		mv -f "$tmp/$member" "$dest" || fail "unpack failed"
+	tar -xzf "$tmp/$asset" -C "$tmp" "$member" || fail "unpack failed"
 	# What doctor compares the binary with later: the unpacked file's hash, taken after the
-	# archive passed the release checksum.
-	$sum "$dest" | sed 's|  .*|  guardrails|' >"$dest.sha256"
+	# archive passed the release checksum. It is written before the binary moves into place, so
+	# a binary that exists always has its record.
+	mkdir -p "${dest%/*}" && $sum "$tmp/$member" | sed 's|  .*|  guardrails|' >"$dest.sha256" &&
+		mv -f "$tmp/$member" "$dest" || fail "unpack failed"
+	rm -f "$stamp"
+	exit 0
+)
+
+# spawn runs a command detached, with no inherited stdio so the hook's pipes close.
+spawn() {
+	if command -v setsid >/dev/null 2>&1; then
+		setsid "$@" >>"$log" 2>&1 </dev/null &
+	else
+		nohup "$@" >>"$log" 2>&1 </dev/null &
+	fi
+}
+
+# start_install makes sure an install of this version is running in the background. It returns 0
+# when one is running (started here or already in flight) and 1 when none is: a recent failure,
+# or a data dir it cannot write.
+start_install() {
+	mkdir -p "$data/bin" 2>/dev/null || return 1
+	recent_failure && ! lock_live && return 1
+	take_lock || { lock_live; return; }
+	spawn sh "$0" install-locked
+	return 0
+}
+
+# wait_install waits up to $wait_s seconds for the running install to finish.
+wait_install() {
+	n=$wait_s
+	while [ "$n" -gt 0 ] && lock_live; do
+		sleep 1
+		n=$((n - 1))
+	done
+	pick_dest
+}
+
+case ${1-} in
+install-locked) # the detached child of start_install, which took the lock
+	echo $$ >"$lock/pid" 2>/dev/null
+	install_bin
+	rm -rf "$lock"
+	exit 0
+	;;
+install)
+	doctor() { "$curbin" doctor -hook || true; exit 0; }
+	[ -x "$curbin" ] && doctor
+	if ! take_lock; then # another installer is running: wait for it instead of racing it
+		n=90
+		while [ "$n" -gt 0 ] && lock_live; do
+			sleep 1
+			n=$((n - 1))
+		done
+		pick_dest
+		[ -x "$curbin" ] && doctor
+		take_lock || { say_fail "another install is running"; exit 0; }
+	fi
+	echo $$ >"$lock/pid" 2>/dev/null
+	trap 'rm -rf "$lock"' EXIT
+	install_bin || exit 0
+	pick_dest
 	doctor
+	;;
+esac
+
+# newest_installed prints the highest-numbered x.y.z version's binary, other than this
+# version's, that is executable. Prerelease-style directory names are skipped.
+newest_installed() {
+	for d in "$data"/bin/[0-9]*.[0-9]*.[0-9]*; do
+		v=${d##*/}
+		[ "$v" = "$ver" ] && continue
+		case $v in *[!0-9.]*) continue ;; esac
+		for n in guardrails claude-tools; do
+			if [ -x "$d/$n" ]; then
+				printf '%s %s\n' "$v" "$d/$n"
+				break
+			fi
+		done
+	done | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1 | cut -d' ' -f2-
+}
+
+guard=
+case ${1-} in pre-tool-use | read-dedup | large-read-guard | config-gate) guard=1 ;; esac
+
+bin=$curbin
+state=failed # installing: an install is running and may land; failed: none is
+if [ ! -x "$bin" ] && [ -z "${CLAUDE_TOOLS_BIN-}" ]; then
+	older=$(newest_installed)
+	if [ -n "$older" ]; then
+		bin=$older
+		[ -n "$guard" ] && start_install
+	elif [ -n "$guard" ]; then
+		start_install && state=installing
+	fi
 fi
 
 if [ ! -x "$bin" ]; then
-	cat >/dev/null
-	case ${1-} in
-	pre-tool-use | read-dedup | large-read-guard | config-gate) ;;
-	*) exit 0 ;;
-	esac
-	[ -n "$fail_open" ] && exit 0
+	if [ -z "$guard" ] || [ -n "$fail_open" ]; then
+		cat >/dev/null
+		exit 0
+	fi
+	if [ "$state" = installing ] && input=$(mktemp "${TMPDIR:-/tmp}/guardrails-in.XXXXXX"); then
+		cat >"$input"
+		wait_install
+		if [ -x "$curbin" ]; then
+			"$curbin" "$@" <"$input"
+			rc=$?
+			rm -f "$input"
+			exit $rc
+		fi
+		rm -f "$input"
+		! recent_failure || state=failed
+	else
+		cat >/dev/null
+		[ "$state" = installing ] && wait_install
+	fi
 	{
-		printf 'guardrails: BLOCKED: the guard binary guardrails %s is not installed (%s), so this tool call was not checked.\n' "$ver" "$bin"
-		printf 'Retry: start a new session (SessionStart downloads it), or run: sh "%s/scripts/run.sh" install\n' "$root"
+		printf 'guardrails: BLOCKED: the guard binary guardrails %s is not installed (%s), so this tool call was not checked.\n' "$ver" "$curbin"
+		if [ "$state" = installing ]; then
+			printf 'Installing it in the background now: run the tool call again in a minute. To install by hand: sh "%s/scripts/run.sh" install\n' "$root"
+		else
+			printf 'The last install failed. Retry now with: sh "%s/scripts/run.sh" install (it says why it failed)\n' "$root"
+		fi
 		printf 'Opt out: set the guardrails option fail_open to true (or CLAUDE_TOOLS_FAIL_OPEN=1) to allow tool calls without guards.\n'
 	} >&2
 	exit 2

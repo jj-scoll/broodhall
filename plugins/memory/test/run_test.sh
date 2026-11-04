@@ -449,5 +449,73 @@ chmod +x "$c/data/bin/$ver/memory"
 out=$(CLAUDE_PLUGIN_ROOT=$cfg/plugins/cache/broodhall/memory/$ver sh "$cfg/plugins/cache/broodhall/memory/$ver/scripts/run.sh" cost </dev/null 2>/dev/null)
 if [ "$out" = from-plugin-data ]; then ok "CLAUDE_PLUGIN_DATA wins over the derived data dir"; else bad "CLAUDE_PLUGIN_DATA wins over the derived data dir" "out=$out"; fi
 
+# --- 15. a version bump: `run.sh mcp` while this version's binary is not downloaded yet.
+# Claude Code caches an MCP server that exits at startup for ~15 minutes, so memory's tools stay
+# gone even after the background install lands seconds later. The launcher must give a working
+# server: exec the newest binary already installed for another version, or wait for the install.
+# (mcp only forwards JSON-RPC to the daemon's socket, one request at a time with no handshake
+# or shared state, so an older mcp client talking to a newer daemon, or the reverse, is safe.)
+mkslowcurl() { # <dir> <seconds>: a curl on PATH that logs, sleeps, then runs the real one
+	realcurl=$(command -v curl)
+	mkdir -p "$1"
+	cat >"$1/curl" <<EOF
+#!/bin/sh
+echo "\$*" >>"$1/curl.log"
+sleep $2
+exec $realcurl "\$@"
+EOF
+	chmod +x "$1/curl"
+}
+mcp_ran() { grep -q '^mcp ' "$c/mark"; }
+
+newcase t15-older
+mkrelease "$c/rel"
+export MEMORY_RELEASE_URL=file://$c/rel
+mkdir -p "$c/data/bin/0.0.1" "$c/data/bin/0.9.0" "$c/data/bin/0.10.0"
+for v in 0.0.1 0.9.0; do printf '#!/bin/sh\necho "old %s mcp" >>"$STUB_MARK"\n' "$v" >"$c/data/bin/$v/memory"; chmod +x "$c/data/bin/$v/memory"; done
+printf '#!/bin/sh\necho "mcp old 0.10.0" >>"$STUB_MARK"\n' >"$c/data/bin/0.10.0/memory"
+chmod +x "$c/data/bin/0.10.0/memory"
+hook t15-older mcp
+if [ "$rc" -eq 0 ] && grep -q '^mcp old 0.10.0$' "$c/mark"; then ok "mcp with no binary for this version execs the newest older one"; else bad "mcp with no binary for this version execs the newest older one" "rc=$rc mark=$(cat "$c/mark") log=$(cat "$c/data/memory.log" 2>/dev/null)"; fi
+settle t15-older
+if [ -x "$c/data/bin/$ver/memory" ]; then ok "mcp on an older binary also starts this version's install"; else bad "mcp on an older binary also starts this version's install" "no binary; log: $(cat "$c/data/memory.log" 2>/dev/null)"; fi
+
+# Nothing older: an install is in flight (session-start started it) and mcp waits for it.
+newcase t15-inflight
+mkrelease "$c/rel"
+mkslowcurl "$c/path" 2
+export MEMORY_RELEASE_URL=file://$c/rel
+PATH=$c/path:$PATH hook t15-inflight session-start
+PATH=$c/path:$PATH hook t15-inflight mcp
+if [ "$rc" -eq 0 ] && mcp_ran; then ok "mcp waits for the in-flight install, then serves"; else bad "mcp waits for the in-flight install, then serves" "rc=$rc mark=$(cat "$c/mark") log=$(cat "$c/data/memory.log" 2>/dev/null)"; fi
+settle t15-inflight
+
+# Nothing older and no install running (the reload path): mcp starts one and waits for it.
+newcase t15-fresh
+mkrelease "$c/rel"
+mkslowcurl "$c/path" 1
+export MEMORY_RELEASE_URL=file://$c/rel
+PATH=$c/path:$PATH hook t15-fresh mcp
+if [ "$rc" -eq 0 ] && mcp_ran; then ok "mcp with nothing installed starts the install and serves"; else bad "mcp with nothing installed starts the install and serves" "rc=$rc mark=$(cat "$c/mark") log=$(cat "$c/data/memory.log" 2>/dev/null)"; fi
+settle t15-fresh
+
+# A download that cannot work: mcp gives up within the wait, exits 0 and prints nothing.
+newcase t15-fails
+export MEMORY_MCP_WAIT=3
+hook t15-fails mcp
+unset MEMORY_MCP_WAIT
+expect_open "mcp with a failing install still exits 0 silently"
+if [ "$secs" -le 5 ]; then ok "mcp with a failing install gives up promptly"; else bad "mcp with a failing install gives up promptly" "took $secs s"; fi
+
+# MEMORY_BIN (a local build) is never second-guessed by the fallback.
+newcase t15-membin
+mkdir -p "$c/data/bin/0.0.1"
+printf '#!/bin/sh\necho "old mcp" >>"$STUB_MARK"\n' >"$c/data/bin/0.0.1/memory"
+chmod +x "$c/data/bin/0.0.1/memory"
+export MEMORY_BIN=$c/not-there
+hook t15-membin mcp
+unset MEMORY_BIN
+if [ "$rc" -eq 0 ] && [ ! -s "$c/mark" ]; then ok "mcp with a missing MEMORY_BIN does not fall back"; else bad "mcp with a missing MEMORY_BIN does not fall back" "mark=$(cat "$c/mark")"; fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
