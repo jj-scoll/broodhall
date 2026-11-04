@@ -27,7 +27,7 @@ subcommands (`pre-tool-use`, `read-dedup`, `large-read-guard`, `config-gate`) al
 when the binary is not installed: `run.sh` exits 2 with a message on stderr, unless the
 [`fail_open`](../guardrails/options.md#fail_open) option is on. Every other entry exits 0
 silently then, so a missing binary never blocks a stop or a compaction. When only this
-version's binary is missing (after an update), they run the newest installed older binary
+version's binary is missing (after an update), the four guards (not the other hooks, which still exit 0 silently) run the newest installed older binary
 instead and start the install; see [Updating](../guide/updating.md#between-the-update-and-the-download). The `install` entry
 sets a timeout of 120 seconds and never blocks. After `install` puts the binary in place (or
 finds it there) the launcher runs `guardrails doctor -hook`, which prints only problems and

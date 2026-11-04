@@ -444,5 +444,59 @@ hook install
 w=0
 while [ -n "$(find "$tmp" -name .install-lock 2>/dev/null)" ] && [ "$w" -lt 100 ]; do sleep 0.1; w=$((w + 1)); done
 
+# Verifier findings. A non-guard hook never runs an older binary: a release can add a hook
+# subcommand the older binary rejects with exit 2, which at Stop keeps Claude from ending its turn.
+newcase bump-nonguard
+mkid "$c/data/bin/0.0.1/guardrails" old1
+for sub in brand-new-stop-hook session-env compact-guard; do
+	hook "$sub"
+	if [ "$rc" = 0 ] && [ -z "$out" ] && [ -z "$err" ]; then ok "version bump: non-guard $sub exits 0 silently and skips the older binary"; else bad "version bump: non-guard $sub exits 0 silently and skips the older binary" "rc=$rc out=$out err=$err"; fi
+done
+
+# A directory named guardrails is not a binary.
+newcase bump-dir
+mkdir -p "$c/data/bin/0.0.1/guardrails"
+export GUARDRAILS_INSTALL_WAIT=2
+hook pre-tool-use
+unset GUARDRAILS_INSTALL_WAIT
+if [ "$rc" = 2 ]; then ok "version bump: a directory is not used as the older binary"; else bad "version bump: a directory is not used as the older binary" "rc=$rc out=$out err=$err"; fi
+
+# A guard killed while it waits for the install leaves no copy of the hook JSON in TMPDIR.
+newcase wait-kill
+mkrelease "$c/rel"
+mkslowcurl "$c/path" 5
+mkdir -p "$c/tmp"
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+TMPDIR=$c/tmp PATH=$c/path:$PATH sh "$run_sh" pre-tool-use <<<'{"tool_name":"Bash"}' >/dev/null 2>&1 &
+gp=$!
+sleep 1
+kill "$gp" 2>/dev/null
+wait "$gp" 2>/dev/null
+if [ -z "$(ls -A "$c/tmp")" ]; then ok "a guard killed during the wait leaves no temp copy of its input"; else bad "a guard killed during the wait leaves no temp copy of its input" "$(ls -A "$c/tmp")"; fi
+pkill -f "$c/rel" 2>/dev/null
+sleep 6
+
+# First install: four guards and the SessionStart install race on an empty data dir. None may
+# block or say the install failed, and the release is downloaded once.
+racefail=
+for t in 1 2 3 4 5 6 7 8 9 10 11 12; do
+	newcase "race-$t"
+	mkrelease "$c/rel"
+	mkslowcurl "$c/path" 0
+	export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+	for n in 1 2 3 4; do
+		PATH=$c/path:$PATH sh "$run_sh" pre-tool-use <<<'{"tool_name":"Bash"}' >"$c/g$n" 2>"$c/e$n" &
+		eval "g$n=\$!"
+	done
+	PATH=$c/path:$PATH sh "$run_sh" install </dev/null >"$c/i" 2>&1 &
+	gi=$!
+	wait "$g1" "$g2" "$g3" "$g4" "$gi"
+	for n in 1 2 3 4; do
+		grep -q BLOCKED "$c/e$n" && racefail="$racefail race-$t:guard$n-blocked"
+	done
+	[ "$(grep -c 'tar.gz' "$c/path/curl.log")" = 1 ] || racefail="$racefail race-$t:downloads=$(grep -c 'tar.gz' "$c/path/curl.log")"
+done
+if [ -z "$racefail" ]; then ok "first-install race: no guard blocks and the release downloads once (12 trials)"; else bad "first-install race: no guard blocks and the release downloads once (12 trials)" "$racefail"; fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

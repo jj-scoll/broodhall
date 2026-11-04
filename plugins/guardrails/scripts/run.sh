@@ -100,11 +100,21 @@ lock_live() {
 	[ -d "$lock" ] || return 1
 	[ -z "$(find "$lock" -maxdepth 0 -mmin +15 2>/dev/null)" ] || return 1
 	p=$(cat "$lock/pid" 2>/dev/null)
-	[ -z "$p" ] || kill -0 "$p" 2>/dev/null
+	# No pid yet: its owner is between mkdir and writing it, or died there. Give it a minute.
+	if [ -z "$p" ]; then
+		[ -z "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]
+		return
+	fi
+	kill -0 "$p" 2>/dev/null
 }
+# take_lock makes the lock dir ours. Only mkdir creates it; a dead or expired lock is moved
+# aside before it is removed, so a fresh lock another process made meanwhile is never the one
+# deleted.
 take_lock() {
 	mkdir -p "$data/bin" 2>/dev/null || return 1
-	lock_live || rm -rf "$lock"
+	mkdir "$lock" 2>/dev/null && return 0
+	lock_live && return 1
+	mv "$lock" "$lock.stale.$$" 2>/dev/null && rm -rf "$lock.stale.$$"
 	mkdir "$lock" 2>/dev/null
 }
 recent_failure() { [ -n "$(find "$stamp" -mmin -5 2>/dev/null)" ]; }
@@ -177,7 +187,7 @@ spawn() {
 start_install() {
 	mkdir -p "$data/bin" 2>/dev/null || return 1
 	recent_failure && ! lock_live && return 1
-	take_lock || { lock_live; return; }
+	take_lock || return 0 # lost the race to another starter, which is installing
 	spawn sh "$0" install-locked
 	return 0
 }
@@ -228,7 +238,7 @@ newest_installed() {
 		[ "$v" = "$ver" ] && continue
 		case $v in *[!0-9.]*) continue ;; esac
 		for n in guardrails claude-tools; do
-			if [ -x "$d/$n" ]; then
+			if [ -f "$d/$n" ] && [ -x "$d/$n" ]; then
 				printf '%s %s\n' "$v" "$d/$n"
 				break
 			fi
@@ -241,12 +251,14 @@ case ${1-} in pre-tool-use | read-dedup | large-read-guard | config-gate) guard=
 
 bin=$curbin
 state=failed # installing: an install is running and may land; failed: none is
-if [ ! -x "$bin" ] && [ -z "${GUARDRAILS_BIN:-${CLAUDE_TOOLS_BIN-}}" ]; then
+# Only guards fall back: a release can add a hook subcommand the older binary rejects with
+# exit 2, which at Stop would keep Claude from ending its turn.
+if [ -n "$guard" ] && [ ! -x "$bin" ] && [ -z "${GUARDRAILS_BIN:-${CLAUDE_TOOLS_BIN-}}" ]; then
 	older=$(newest_installed)
 	if [ -n "$older" ]; then
 		bin=$older
-		[ -n "$guard" ] && start_install
-	elif [ -n "$guard" ]; then
+		start_install
+	else
 		start_install && state=installing
 	fi
 fi
@@ -257,6 +269,8 @@ if [ ! -x "$bin" ]; then
 		exit 0
 	fi
 	if [ "$state" = installing ] && input=$(mktemp "${TMPDIR:-/tmp}/guardrails-in.XXXXXX"); then
+		trap 'rm -f "$input"' EXIT
+		trap 'exit 143' HUP INT TERM
 		cat >"$input"
 		wait_install
 		if [ -x "$curbin" ]; then

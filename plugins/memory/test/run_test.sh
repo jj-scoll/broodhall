@@ -501,11 +501,11 @@ settle t15-fresh
 
 # A download that cannot work: mcp gives up within the wait, exits 0 and prints nothing.
 newcase t15-fails
-export MEMORY_MCP_WAIT=3
+export MEMORY_MCP_WAIT=20
 hook t15-fails mcp
 unset MEMORY_MCP_WAIT
 expect_open "mcp with a failing install still exits 0 silently"
-if [ "$secs" -le 5 ]; then ok "mcp with a failing install gives up promptly"; else bad "mcp with a failing install gives up promptly" "took $secs s"; fi
+if [ "$secs" -le 8 ]; then ok "mcp with a failing install gives up promptly"; else bad "mcp with a failing install gives up promptly" "took $secs s"; fi
 
 # MEMORY_BIN (a local build) is never second-guessed by the fallback.
 newcase t15-membin

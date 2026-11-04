@@ -23,8 +23,8 @@ That does not block your tool calls:
 
 - guardrails runs the newest binary already installed for another version until the new one
   lands. The guard that found the binary missing starts the download itself, so a
-  `/reload-plugins` needs no session start. Two installers at once are safe: one holds a lock
-  and the other waits for it.
+  `/reload-plugins` needs no session start. Only guards fall back; other hooks stay silent until the new binary lands. Two installers at once are safe: one holds a lock
+  and the other waits for it (a rare lock take-over can still download twice, which is harmless: the install is an atomic rename).
 - With no binary at all (a first install), the guard starts the download and waits up to 25
   seconds for it (`GUARDRAILS_INSTALL_WAIT`). If it does not land, the call is blocked as
   before, unless `fail_open` is on, and the message says whether the install is running or
