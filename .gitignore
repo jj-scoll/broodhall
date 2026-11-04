@@ -3,3 +3,6 @@
 /dist/
 /site/
 /.cache/
+
+# session handoff notes
+.handoff-next-*.md
