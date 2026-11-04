@@ -11,6 +11,7 @@ the third column. A dash means the field is absent from the entry.
 | `SessionStart` | — | `session-env` | — |
 | `ConfigChange` | <code>user_settings&#124;project_settings&#124;local_settings</code> | `config-gate` | `block` |
 | `Stop` | — | `gate` | — |
+| `Stop` | — | `autoclear` | — |
 | `Stop` | — | `receipt` | — |
 | `PreToolUse` | <code>Bash&#124;Edit&#124;Write&#124;MultiEdit&#124;NotebookEdit&#124;mcp__.*</code> | `pre-tool-use` | `block` |
 | `PreToolUse` | `Read` | `read-dedup` | `block` |
@@ -29,6 +30,27 @@ finds it there) the launcher runs `claude-tools doctor -hook`, which prints only
 always exits 0. See [Doctor](../guardrails/doctor.md). `config-gate` at `SessionStart` only
 takes a snapshot; `session-env` does nothing unless the
 [`aws_session_tag`](../guardrails/options.md#aws_session_tag) option is on.
+
+## context-guard
+
+The context-guard plugin registers no command hooks. Its `hooks/hooks.json` lists a hooks
+module instead:
+
+```json
+{ "modules": ["./context-guard.mjs"] }
+```
+
+The module hooks two events and calls `sh "$plugin_root/scripts/run.sh"` through
+`$.process.run`.
+
+| Event | What the module does |
+| --- | --- |
+| `turn.complete` | After a main-session turn, starts the watch for the clear that guardrails' `autoclear` arms. |
+| `prompt.submit` | Carries a prompt over a clear, adds the warning note, or drops the prompt past the block level. |
+
+The launcher accepts `state` and `autoclear <args>` and prints nothing and exits 1 when it
+finds no guardrails binary. It needs Claude Code 2.1.317 or newer. See
+[Context guard](../context-guard/index.md).
 
 ## memory
 

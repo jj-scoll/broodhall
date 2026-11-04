@@ -3,6 +3,7 @@
 ```
 claude plugin uninstall guardrails@broodhall
 claude plugin uninstall memory@broodhall
+claude plugin uninstall context-guard@broodhall
 ```
 
 This removes the plugin and, by default, its data directory, which holds the downloaded
