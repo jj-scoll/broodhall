@@ -22,8 +22,9 @@ The git, PII, raw-client-data and most egress guards then let the call run and r
 what they would have done. You see a `would ask` or `would block` count in the receipt line.
 
 After a few days, run `claude-tools guard-report` to see which rules fired and how often. Then
-turn `observe` off. The core blocks, settings files and secret files are enforced in observe
-mode too.
+turn `observe` off. Some guards stay enforced in observe mode too: the core blocks, the
+settings-file and secret-file guards, config-gate, compact-guard, the large-read block, the
+session-URL block and egress asks about a secret. See [options](../guardrails/options.md).
 
 ## See it work
 
