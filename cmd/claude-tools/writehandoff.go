@@ -461,6 +461,10 @@ func writeHandoffFile(transcript, nextPath, cwd, session string) (string, string
 			fixedNote = " fix-rejected"
 		}
 	}
+	// After the fix call, which may rewrite the header: the reader must know jobs are missing.
+	if m := bgOmittedLine.FindString(facts); m != "" {
+		text = strings.Replace(text, "\n\n## ", "\n> "+strings.Trim(m, "()")+"\n\n## ", 1)
+	}
 	path := filepath.Join(cwd, name)
 	if err := os.WriteFile(path+".tmp", []byte(pyStrip(text)+"\n"), 0o644); err != nil {
 		return "", "", err

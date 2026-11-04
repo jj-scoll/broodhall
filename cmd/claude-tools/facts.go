@@ -17,8 +17,6 @@ import (
 
 const promptCap = 1000
 
-var digitRun = regexp.MustCompile(`\d+`)
-
 var (
 	gitMutating = pyRe(`\bgit\b.*\b(commit|push|checkout|switch|worktree|merge|rebase|reset|tag|cherry-pick|stash)\b`+
 		`|\bgh pr (create|merge)\b`, 0)
@@ -358,15 +356,19 @@ func buildFacts(path, until string) (string, error) {
 
 const maxBgJobs = 10 // jobs listed in the facts block
 
-// jobLines lists the running background jobs. Jobs whose descriptions differ only in digits
-// (a batch of "Wait for PR 101", "Wait for PR 102") count as one, the latest; of those, the
-// latest maxBgJobs are listed and a line says how many were left out.
+// bgOmittedLine matches the note jobLines adds when it leaves jobs out; write-handoff copies it
+// into the handoff header because the writer model tends to drop it (issue #17).
+var bgOmittedLine = regexp.MustCompile(`\(\d+ more background jobs? still running [^)\n]*\)`)
+
+// jobLines lists the running background jobs. Jobs with the same description count as one, the
+// latest. Digits count: "Wait for PR 834" and "Wait for PR 836" are different work (issue #17).
+// Of those, the latest maxBgJobs are listed and a line says how many were left out.
 func jobLines(bg *ordered[bgJob]) []string {
 	seen := map[string]bool{}
 	var keep []string // newest first
 	for i := len(bg.keys) - 1; i >= 0; i-- {
 		id := bg.keys[i]
-		if k := digitRun.ReplaceAllString(bg.vals[id].desc, "#"); !seen[k] {
+		if k := bg.vals[id].desc; !seen[k] {
 			seen[k] = true
 			keep = append(keep, id)
 		}
@@ -385,7 +387,11 @@ func jobLines(bg *ordered[bgJob]) []string {
 		jobs = append(jobs, line)
 	}
 	if n := len(bg.keys) - len(listed); n > 0 {
-		jobs = append(jobs, fmt.Sprintf("(%d more background jobs omitted: older, or similar to a listed one)", n))
+		s := "s"
+		if n == 1 {
+			s = ""
+		}
+		jobs = append(jobs, fmt.Sprintf("(%d more background job%s still running are not listed: older, or the same description as a listed one)", n, s))
 	}
 	return jobs
 }
