@@ -15,6 +15,7 @@ bin=${CLAUDE_TOOLS_BIN:-$dest}
 # falls back to the same env var outside the plugin, then to plugin.json's default.
 export CLAUDE_TOOLS_OFF="${CLAUDE_PLUGIN_OPTION_DISABLED_GUARDS-${CLAUDE_TOOLS_OFF-pii,raw-client-data,session-url}}"
 export CLAUDE_TOOLS_PII_ALLOW="${CLAUDE_PLUGIN_OPTION_ALLOWED_EMAIL_DOMAINS-${CLAUDE_TOOLS_PII_ALLOW-}}"
+export HANDOFF_TOKENS="${CLAUDE_PLUGIN_OPTION_HANDOFF_TOKENS-${HANDOFF_TOKENS-}}"
 # The opt-in rtk rewrite is off unless the rtk option (or CLAUDE_TOOLS_RTK) says on.
 export CLAUDE_TOOLS_RTK="${CLAUDE_PLUGIN_OPTION_RTK-${CLAUDE_TOOLS_RTK-}}"
 export CLAUDE_TOOLS_RTK_CMD="${CLAUDE_PLUGIN_OPTION_RTK_COMMAND-${CLAUDE_TOOLS_RTK_CMD-}}"

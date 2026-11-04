@@ -23,6 +23,12 @@
       "description": "Comma-separated addresses or @domains the egress guard treats as yours, such as @example.com. The domain of your global git user.email always counts.",
       "default": ""
     },
+    "handoff_tokens": {
+      "type": "string",
+      "title": "Handoff threshold (tokens)",
+      "description": "Context size at which the Stop gate asks Claude, once per session, to write a handoff. Leave empty for 80% of CLAUDE_CODE_AUTO_COMPACT_WINDOW (240000 for the default 300000 window).",
+      "default": ""
+    },
     "aws_session_tag": {
       "type": "boolean",
       "title": "Tag AWS calls with the session id",

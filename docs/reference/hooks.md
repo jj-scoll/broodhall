@@ -10,12 +10,14 @@ the third column. A dash means the field is absent from the entry.
 | `SessionStart` | — | `config-gate` | — |
 | `SessionStart` | — | `session-env` | — |
 | `ConfigChange` | <code>user_settings&#124;project_settings&#124;local_settings</code> | `config-gate` | `block` |
+| `Stop` | — | `gate` | — |
 | `Stop` | — | `receipt` | — |
 | `PreToolUse` | <code>Bash&#124;Edit&#124;Write&#124;MultiEdit&#124;NotebookEdit&#124;mcp__.*</code> | `pre-tool-use` | `block` |
 | `PreToolUse` | `Read` | `read-dedup` | `block` |
 | `PreToolUse` | `Read` | `large-read-guard` | `block` |
 | `PostToolUse` | `Bash` | `retry-breaker` | — |
 | `PostToolUseFailure` | `Bash` | `retry-breaker` | — |
+| `PreCompact` | — | `compact-guard` | — |
 
 The entries with `onFailure: block` are the ones that fail closed. The `install` entry sets a
 timeout of 120 seconds. `config-gate` at `SessionStart` only takes a snapshot; `session-env`
