@@ -260,6 +260,26 @@ func TestConfigGateRun(t *testing.T) {
 			t.Errorf("exit %d, want 2", code)
 		}
 	})
+	t.Run("deleted settings file under a symlinked dir blocks", func(t *testing.T) {
+		// macOS temp dirs sit under /var -> /private/var; a missing file must still find
+		// the snapshot taken under its resolved path.
+		real := t.TempDir()
+		home := filepath.Join(t.TempDir(), "home")
+		if err := os.Symlink(real, home); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("HOME", home)
+		t.Setenv("CLAUDE_CONFIG_DIR", "")
+		os.MkdirAll(filepath.Join(home, ".claude"), 0o755)
+		settings := filepath.Join(home, ".claude", "settings.json")
+		os.WriteFile(settings, []byte(baseSettings), 0o644)
+		state := filepath.Join(real, "state")
+		run(t, gateInput("SessionStart", "startup", "", home), state)
+		os.Remove(settings)
+		if code, _ := run(t, gateInput("ConfigChange", "user_settings", settings, home), state); code != 2 {
+			t.Errorf("exit %d, want 2", code)
+		}
+	})
 	t.Run("project settings in cwd are snapshotted at SessionStart", func(t *testing.T) {
 		home, _, state := newEnv(t)
 		proj := filepath.Join(home, "src", "app")

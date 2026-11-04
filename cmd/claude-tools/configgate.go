@@ -158,11 +158,14 @@ func snapshotSettings(stateDir, cwd string) {
 }
 
 // snapshotPath keys a settings file by its symlink-resolved path, so a second config
-// directory that links to ~/.claude/settings.json shares its snapshot.
+// directory that links to ~/.claude/settings.json shares its snapshot. A deleted file
+// resolves through its directory, so it still finds the snapshot taken while it existed.
 func snapshotPath(stateDir, file string) string {
 	p := filepath.Clean(file)
 	if r, err := filepath.EvalSymlinks(p); err == nil {
 		p = r
+	} else if d, err := filepath.EvalSymlinks(filepath.Dir(p)); err == nil {
+		p = filepath.Join(d, filepath.Base(p))
 	}
 	sum := sha256.Sum256([]byte(p))
 	return filepath.Join(stateDir, hex.EncodeToString(sum[:8])+".json")
