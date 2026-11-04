@@ -87,7 +87,8 @@ func newGuardEvents(session string) (evs []guardEvent, commit func()) {
 	}
 	end := off + bytes.LastIndexByte(data[off:], '\n') + 1 // a line still being written waits
 	for _, line := range strings.Split(string(data[off:end]), "\n") {
-		if f := strings.Split(line, "\t"); len(f) == 3 {
+		// Outcome lines (askoutcome.go) are for guard-report, not the receipt.
+		if f := strings.Split(line, "\t"); len(f) == 3 && f[1] != "ran" && f[1] != "not-run" {
 			evs = append(evs, guardEvent{f[1], f[2]})
 		}
 	}
