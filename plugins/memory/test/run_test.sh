@@ -407,10 +407,11 @@ for cfgcase in home config-dir; do
 done
 
 # A launcher outside the plugin cache (a checkout) uses the memory-* data dir that holds this
-# version's binary, else the plain memory dir.
+# version's binary, else the plain memory dir, under CLAUDE_CONFIG_DIR.
 newcase t14-checkout
 c=$tmp/t14-checkout
-cfg=$HOME/.claude
+export CLAUDE_CONFIG_DIR=$c/cfg
+cfg=$CLAUDE_CONFIG_DIR
 plugin_copy "$c/checkout/plugins/memory"
 mkdir -p "$cfg/plugins/data/memory-other" "$cfg/plugins/data/memory-inline/bin/$ver"
 mkstub "$cfg/plugins/data/memory-inline/bin/$ver/memory"
@@ -421,6 +422,20 @@ mkdir -p "$cfg/plugins/data/memory/bin/$ver"
 mkstub "$cfg/plugins/data/memory/bin/$ver/memory"
 terminal_cost t14-checkout "$c/checkout/plugins/memory/scripts/run.sh"
 if [ "$rc" -eq 0 ] && [ "$out" = "$want_cost" ]; then ok "terminal cost from a checkout falls back to plugins/data/memory"; else bad "terminal cost from a checkout falls back to plugins/data/memory" "rc=$rc out=$out"; fi
+unset CLAUDE_CONFIG_DIR
+
+# With nothing installed yet, a cached launcher still picks memory-<marketplace> (its log
+# lands there), not the plain memory dir.
+newcase t14-fresh
+c=$tmp/t14-fresh
+cfg=$HOME/.claude
+plugin_copy "$cfg/plugins/cache/broodhall/memory/$ver"
+terminal_cost t14-fresh "$cfg/plugins/cache/broodhall/memory/$ver/scripts/run.sh"
+if [ -f "$cfg/plugins/data/memory-broodhall/memory.log" ] && [ ! -e "$cfg/plugins/data/memory" ]; then
+	ok "a cached launcher with no binary uses plugins/data/memory-<marketplace>"
+else
+	bad "a cached launcher with no binary uses plugins/data/memory-<marketplace>" "$(ls "$cfg/plugins/data" 2>&1)"
+fi
 
 # Inside Claude Code CLAUDE_PLUGIN_DATA still wins over the derived dir.
 newcase t14-hook
