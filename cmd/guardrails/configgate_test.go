@@ -365,13 +365,13 @@ func TestSettingsDiffPlugin(t *testing.T) {
 			}
 		})
 	}
-	t.Run("weakens/option unset falls back to the default families", func(t *testing.T) {
+	t.Run("silent/option unset equals the empty default", func(t *testing.T) {
 		old := `{"enabledPlugins": {"guardrails@broodhall": true},
 			"pluginConfigs": {"guardrails@broodhall": {"options": {"disabled_guards": ""}}}}`
 		next := `{"enabledPlugins": {"guardrails@broodhall": true}}`
 		weak, _, _ := settingsDiff([]byte(old), []byte(next))
-		if !strings.Contains(strings.Join(weak, "\n"), "guard family turned off: pii") {
-			t.Errorf("weakened = %q, want the default families counted as newly off", weak)
+		if len(weak) != 0 {
+			t.Errorf("weakened = %q, want silence", weak)
 		}
 	})
 	okCases := map[string]string{

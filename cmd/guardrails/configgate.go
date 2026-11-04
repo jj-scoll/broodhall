@@ -211,7 +211,7 @@ const guardsPlugin = "guardrails@"
 
 // defaultDisabledGuards is plugin.json's default for disabled_guards, used when the option
 // is unset.
-const defaultDisabledGuards = "pii,raw-client-data,session-url"
+const defaultDisabledGuards = ""
 
 // observeOption reports whether the observe option is on for id. The option is a boolean, and
 // Claude Code may store it as a string; observeOn takes the same words the guard does.
@@ -257,8 +257,17 @@ func (s settingsDoc) pluginEnabled(id string) bool {
 
 // disabledGuards returns the families the plugin option turns off for id.
 func (s settingsDoc) disabledGuards(id string) map[string]bool {
-	if v, ok := s.PluginConfigs[id].Options["disabled_guards"].(string); ok {
+	switch v := s.PluginConfigs[id].Options["disabled_guards"].(type) {
+	case string:
 		return guardsOff(v)
+	case []any:
+		parts := make([]string, 0, len(v))
+		for _, e := range v {
+			if str, ok := e.(string); ok {
+				parts = append(parts, str)
+			}
+		}
+		return guardsOff(strings.Join(parts, ","))
 	}
 	return guardsOff(defaultDisabledGuards)
 }

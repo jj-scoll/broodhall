@@ -113,6 +113,25 @@ func setupWriteArgs(args []string) bool {
 // shell parser reads as escapes. Only then does the text check below run on a parsed command.
 var winSetupRE = regexp.MustCompile(`(?i)\\(guardrails|claude-tools|run\.sh)(\.exe)?["']?\s+setup\b`)
 
+// embeddedSetupRE finds `<binary> setup ...` up to the end of the line or the next separator.
+var embeddedSetupRE = regexp.MustCompile(`(?i)[\w./\\-]*(guardrails|claude-tools|run\.sh)(\.exe)?\s+setup\b[^\n;|&'"]*`)
+
+// bareShell reports whether the argv is a shell given no script or -c, so it reads stdin.
+func bareShell(w []string) bool {
+	if len(w) == 0 || !setupShells[setupBase(w[0])] {
+		return false
+	}
+	for _, a := range w[1:] {
+		if !strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "+") {
+			return false
+		}
+		if a == "-c" {
+			return false
+		}
+	}
+	return true
+}
+
 // setupWriteText is the text-level check over one ;/&&/|/newline segment, used for Windows
 // paths and for a command the parser rejects.
 func setupWriteText(seg string) bool {
@@ -156,9 +175,22 @@ func setupWriteCall(cmd string) bool {
 		}
 		return false
 	}
+	stdinShell := false
 	for _, c := range cmds {
 		if setupWriteArgv(c.Words) {
 			return true
+		}
+		if bareShell(c.Words) {
+			stdinShell = true
+		}
+	}
+	// A shell with no script reads its commands from stdin, which a heredoc, echo or printf
+	// upstream can fill. Look for the command in the text of such a pipeline.
+	if stdinShell {
+		for _, m := range embeddedSetupRE.FindAllString(cmd, -1) {
+			if setupWriteText(m) {
+				return true
+			}
 		}
 	}
 	if winSetupRE.MatchString(cmd) {
