@@ -46,9 +46,16 @@ func parseShellDepth(cmd string, depth int, ms *mountSet) ([]simpleCmd, bool) {
 	var out []simpleCmd
 	ok := true
 	// descend adds what a command runs one level down: a script handed to a shell, and the
-	// command a container run|create|exec starts (its bind mounts joining ms).
+	// command a container run|create|exec starts, and the commands find -exec runs (its bind mounts joining ms).
 	var descend func(words, feeds []string, ms *mountSet)
 	descend = func(words, feeds []string, ms *mountSet) {
+		if len(words) > 0 && path.Base(words[0]) == "find" {
+			for _, ea := range execArgs(words) {
+				ic := mapCmd(simpleCmd{Words: peelWrappers(ea)}, ms)
+				out = append(out, ic)
+				descend(ic.Words, nil, ms)
+			}
+		}
 		for _, script := range nestedScripts(words, feeds) {
 			inner, innerOK := parseShellDepth(script.text, depth+1, ms)
 			if !innerOK && !script.lenient {
@@ -120,14 +127,24 @@ func nestedScripts(w []string, feeds []string) []nestedScript {
 	args := w[1:]
 	switch path.Base(w[0]) {
 	case "bash", "sh", "zsh", "dash", "ksh":
-		for i, a := range args {
-			if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "c") && i+1 < len(args) {
-				out = append(out, nestedScript{text: args[i+1]})
-				break
-			}
+		if script := dashC(args); script != "" {
+			out = append(out, nestedScript{text: script})
 		}
 		for _, f := range feeds {
 			out = append(out, nestedScript{text: f})
+		}
+	case "su", "script", "flock":
+		if script := dashC(args); script != "" {
+			out = append(out, nestedScript{text: script})
+		}
+	case "watch":
+		if script := watchScript(args); script != "" {
+			out = append(out, nestedScript{text: script})
+		}
+	case "trap":
+		// trap 'handler' SIGNAL...: a handler of "-" resets the signals.
+		if len(args) >= 2 && !strings.HasPrefix(args[0], "-") {
+			out = append(out, nestedScript{text: args[0]})
 		}
 	case "eval":
 		out = append(out, nestedScript{text: strings.Join(args, " ")})

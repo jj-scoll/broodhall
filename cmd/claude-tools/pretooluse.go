@@ -37,6 +37,13 @@ func decide(env *guardEnv, cmd string) decision {
 	if d := shellRules(env, cmd); d.Exit != 0 {
 		return d
 	}
+	// Text the parser cannot read gets the rm and force-push rules on loose words (shellloose.go).
+	if _, ok := parseShell(cmd); !ok {
+		if what := looseDestructive(cmd, env.Home); what != "" {
+			return decision{Ask: true, Rule: "unparsed-destructive",
+				Msg: "ASK: " + what + ". Confirm with the user before running it; rewrite it as plain bash if it is safe."}
+		}
+	}
 	// Session links must not leave the machine (git push, gh pr create|edit).
 	if d := sessionURLRule(env, cmd); d.Exit != 0 && !env.Off["session-url"] {
 		return d

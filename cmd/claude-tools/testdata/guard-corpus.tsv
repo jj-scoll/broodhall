@@ -151,3 +151,11 @@ block:dangerous:chown -R	block:dangerous:chown -R	sudo chown -R root /nix
 block:dangerous:chown -R	block:dangerous:chown -R	chown -R user /nohome/user/
 allow	block:dangerous:chown -R	chown -hR user $HOME
 block:dangerous:chown -R	block:dangerous:chown -R	bash -c 'chown -R x /storage'
+allow	block:dangerous:rm -rf /	timeout 5 rm -fr /
+allow	block:dangerous:rm -rf /	xargs -n1 rm -fr /
+allow	block:dangerous:rm -rf /	find . -exec rm -fr / {} \;
+allow	block:dangerous:rm -rf /	env -S "rm -fr /"
+allow	block:dangerous:rm -rf /	su -c "rm -fr /"
+allow	block:dangerous:rm -rf /	watch -n 1 "rm -fr /"
+allow	block:dangerous:git push --force	nice -n 5 git push origin --force x
+allow	ask:unparsed-destructive	echo ${(f)x}; rm -fr /
