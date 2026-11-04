@@ -38,6 +38,7 @@ nav:
       - Why: guide/why.md
       - Install: guide/install.md
       - First session: guide/first-session.md
+      - Roll out to a team: guide/team.md
       - Updating: guide/updating.md
       - Uninstall: guide/uninstall.md
       - Troubleshooting: guide/troubleshooting.md
@@ -58,6 +59,7 @@ nav:
       - Read limits: guardrails/read-limits.md
       - Retry loops: guardrails/retry-loops.md
       - Status line: guardrails/statusline.md
+      - Setup: guardrails/setup.md
       - Doctor: guardrails/doctor.md
       - Handoff gate: guardrails/handoff-gate.md
       - Write handoff: guardrails/write-handoff.md

@@ -50,6 +50,9 @@ type doctorEnv struct {
 	Exe        string
 	Settings   []string
 	Hook       bool
+	// ConfigDir is the Claude config directory whose plugins/ records the version checks read.
+	// Empty skips those checks.
+	ConfigDir string
 }
 
 func doctorCmd(args []string) int {
@@ -72,6 +75,7 @@ func doctorCmd(args []string) int {
 		return 2
 	}
 	e.Exe, _ = os.Executable()
+	e.ConfigDir = claudeConfigDir()
 	if *settings != "" {
 		e.Settings = strings.Split(*settings, ",")
 	} else {
@@ -80,15 +84,19 @@ func doctorCmd(args []string) int {
 	return doctor(os.Stdout, e)
 }
 
+// claudeConfigDir is CLAUDE_CONFIG_DIR, else ~/.claude.
+func claudeConfigDir() string {
+	if cfg := os.Getenv("CLAUDE_CONFIG_DIR"); cfg != "" {
+		return cfg
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".claude")
+}
+
 // defaultSettingsFiles lists the user settings (under CLAUDE_CONFIG_DIR when set) and the
 // current project's shared and local settings.
 func defaultSettingsFiles() []string {
-	cfg := os.Getenv("CLAUDE_CONFIG_DIR")
-	if cfg == "" {
-		home, _ := os.UserHomeDir()
-		cfg = filepath.Join(home, ".claude")
-	}
-	files := []string{filepath.Join(cfg, "settings.json")}
+	files := []string{filepath.Join(claudeConfigDir(), "settings.json")}
 	if proj := os.Getenv("CLAUDE_PROJECT_DIR"); proj != "" {
 		files = append(files, filepath.Join(proj, ".claude", "settings.json"), filepath.Join(proj, ".claude", "settings.local.json"))
 	} else if wd, err := os.Getwd(); err == nil {
@@ -154,11 +162,43 @@ func doctor(w io.Writer, e doctorEnv) int {
 	if p := checkRTK(e.Settings); p != "" {
 		report("WARN", "rtk", p)
 	}
+	if p := checkStatusLine(e.Settings); p != "" {
+		report("WARN", "statusLine", p)
+	}
+	if e.ConfigDir != "" {
+		doctorVersions(e.ConfigDir, report, skip)
+	}
 
 	if failed && !e.Hook {
 		return 1
 	}
 	return 0
+}
+
+// doctorVersions runs the cross-plugin version checks over the config directory's plugin records.
+func doctorVersions(configDir string, report func(level, subject, problem string), skip func(string)) {
+	if _, err := readInstalledPlugins(configDir); err != nil {
+		report("WARN", "plugin versions", err.Error())
+		return
+	}
+	groups := broodhallInstalls(configDir)
+	if len(groups) == 0 {
+		skip("plugin versions: no broodhall plugins in installed_plugins.json")
+		return
+	}
+	problems := append(checkPluginSkew(configDir), checkMarketplaceVersions(configDir)...)
+	for _, p := range problems {
+		report("WARN", "plugin versions", p)
+	}
+	if len(problems) == 0 {
+		var have []string
+		for _, mkt := range sortedKeys(groups) {
+			for _, p := range groups[mkt] {
+				have = append(have, p.Name+"@"+mkt+" "+p.Version)
+			}
+		}
+		report("WARN", "plugin versions: "+strings.Join(have, ", "), "")
+	}
 }
 
 // doctorHookReply sends -hook problems to both readers: systemMessage shows in the user's
@@ -253,12 +293,24 @@ func readSettings(files []string) []settingsView {
 }
 
 type settingsView struct {
-	EnabledPlugins map[string]any `json:"enabledPlugins"`
+	EnabledPlugins map[string]any  `json:"enabledPlugins"`
+	StatusLine     json.RawMessage `json:"statusLine"`
 	Hooks          map[string][]struct {
 		Hooks []struct {
 			Command string `json:"command"`
 		} `json:"hooks"`
 	} `json:"hooks"`
+}
+
+// statusLineCommand returns the statusLine command, "" when statusLine is absent or not an object.
+func (s settingsView) statusLineCommand() string {
+	var sl struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal(s.StatusLine, &sl) != nil {
+		return ""
+	}
+	return sl.Command
 }
 
 // hookCommands returns every hook command in the settings, in file order.

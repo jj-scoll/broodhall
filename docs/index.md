@@ -16,6 +16,16 @@ claude plugin install guardrails@broodhall
 
 Install the others the same way, by name. Start a new session afterwards.
 
+## Quick start
+
+1. Add the marketplace: `claude plugin marketplace add jj-scoll/broodhall`.
+2. Enable the plugins: `claude plugin install guardrails@broodhall`, and any of the others.
+3. In a new session, run `/guardrails:setup`. It walks you through a profile and your email
+   domains, shows what it will write, runs doctor, and offers a harmless demo of a block.
+
+See [Setup](guardrails/setup.md) for what it does, and [Roll out to a team](guide/team.md)
+to give a whole team or organisation the same install.
+
 The guardrails hooks are one static Go binary, also named `guardrails` (in older releases,
 `claude-tools`). Its config and state directories (`~/.config/claude-tools`,
 `~/.local/state/claude-tools`) and its `CLAUDE_TOOLS_*` environment variables keep the old
