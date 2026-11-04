@@ -150,3 +150,58 @@ func TestRemoteControlActiveHugeLines(t *testing.T) {
 		t.Errorf("took %v", d)
 	}
 }
+
+const (
+	slRCActive = `{"parentUuid":null,"isSidechain":false,"type":"system","subtype":"bridge_status","content":"/remote-control is active","url":"https://example.invalid/code/session_x"}`
+	slRCDown   = `{"parentUuid":null,"isSidechain":false,"type":"system","subtype":"informational","content":"Remote Control disconnected — server rejected the request","level":"warning"}`
+	slRCNot    = `{"parentUuid":null,"isSidechain":false,"type":"system","subtype":"informational","content":"Remote Control not started here · another Claude Code is connected","level":"warning"}`
+)
+
+// Claude Code keeps writing bridge-session lines after Remote Control disconnects, so the
+// newest of the activation and disconnect notices decides.
+func TestStatuslineRemoteControlDisconnect(t *testing.T) {
+	tests := []struct {
+		name  string
+		lines []string
+		want  bool
+	}{
+		{"active notice then bridge lines", []string{slRCActive, slBridge, slFiller(1)}, true},
+		{"disconnected, bridge lines keep coming", []string{slRCActive, slBridge, slRCDown, slFiller(1), slBridge, slFiller(2)}, false},
+		{"disconnected, then reactivated", []string{slRCActive, slBridge, slRCDown, slFiller(1), slRCActive, slBridge, slFiller(2)}, true},
+		{"not started here", []string{slRCNot, slBridge, slFiller(1)}, false},
+		{"disconnect notice after the marker", []string{slBridge, slFiller(1), slRCDown}, false},
+		{"disconnect older than the active notice", []string{slRCDown, slRCActive, slBridge}, true},
+		{"disconnect notice quoted inside a tool result", []string{slBridge, `{"type":"user","message":{"content":"{\"type\":\"system\",\"subtype\":\"informational\",\"content\":\"Remote Control disconnected\"}"}}`}, true},
+		{"oversized line is not a notice", []string{slBridge, strings.Replace(slRCDown, `"level"`, `"pad":"`+strings.Repeat("z", rcNoticeMaxLen)+`","level"`, 1), slFiller(1)}, true},
+		{"active notice but no marker", append([]string{slRCActive}, slFillers(0, 5)...), false},
+		{"active notice but marker out of range", append(append([]string{slBridge}, slFillers(0, rcMaxLinesAfter+5)...), slRCActive), false},
+		{"disconnect with no marker", []string{slRCActive, slRCDown, slFiller(1)}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := strings.Contains(slRC(t, tc.lines...), "⇄ rc"); got != tc.want {
+				t.Errorf("segment shown = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// A notice is looked for about a mebibyte back, no further, so a long transcript stays cheap.
+func TestStatuslineRemoteControlNoticeRange(t *testing.T) {
+	pad := func(kib int) []string { // lines of 20 KiB
+		n := kib / 20
+		out := make([]string, n)
+		for i := range out {
+			out[i] = `{"type":"api-request-blob","blob":"` + strings.Repeat("x", 20<<10) + `"}`
+		}
+		return out
+	}
+	near := append(append([]string{slRCDown}, pad(500)...), slBridge)
+	far := append(append([]string{slRCDown}, pad(1500)...), slBridge)
+	if strings.Contains(slRC(t, near...), "⇄ rc") {
+		t.Error("disconnect 500 KiB back ignored")
+	}
+	if !strings.Contains(slRC(t, far...), "⇄ rc") {
+		t.Error("disconnect 1.5 MiB back should be out of range")
+	}
+}

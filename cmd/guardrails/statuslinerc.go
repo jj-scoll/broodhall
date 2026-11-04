@@ -5,15 +5,36 @@ import (
 	"os"
 )
 
-// Remote Control has no field in the statusLine payload. While it is on, Claude Code keeps
-// rewriting a {"type":"bridge-session",...} line into the session transcript, about every 20
-// to 40 entries (99.9% of gaps in a sample of 27,000 real lines are 44 entries or fewer, the
-// largest 258). When it is turned off the lines stop and the session carries on. So the rule
-// is: Remote Control is on if a bridge-session line is among the last rcMaxLinesAfter lines.
+// Remote Control has no field in the statusLine payload, so this reads the session transcript.
+//
+// Claude Code writes a {"type":"bridge-session",...} line with each re-write of the session
+// metadata (every 20 to 40 entries, 99.9% of gaps in a sample of 27,000 real lines are 44 or
+// fewer, the largest 258). It is not a heartbeat: the lines go on after Remote Control
+// disconnects, usually with the same id. The rule is therefore two parts:
+//
+//   - a bridge-session line must be among the last rcMaxLinesAfter lines, and
+//   - the newest notice about the connection must not be a disconnect: "Remote Control
+//     disconnected" or "not started here" (both system/informational) against "is active"
+//     (system/bridge_status).
+//
 // Counting entries rather than time keeps an idle but connected session lit, since an idle
-// session writes nothing.
+// session writes nothing. What it cannot see: a disconnect that left no notice (such as
+// turning it off yourself), a notice further back than rcScanCap, and a resumed session that
+// inherited a bridge-session line without ever connecting.
 const (
-	rcMarker        = `{"type":"bridge-session"`
+	rcMarker = `{"type":"bridge-session"`
+	// Notices are short system entries (about 500 bytes). Checking only lines up to this long
+	// keeps the scan of a blob-heavy tail cheap.
+	rcNoticeMaxLen = 8 << 10
+	// Once a marker is in range, notices are looked for this far back only. Real transcripts
+	// put the newest one within 561 KiB at the 99th percentile.
+	rcNoticeCap = 1 << 20
+	// The tail is read in chunks of at most this size.
+	rcChunkMax      = 256 << 10
+	rcStatusActive  = `"subtype":"bridge_status"`
+	rcSubInfo       = `"subtype":"informational"`
+	rcNoticeDown    = `"content":"Remote Control disconnected`
+	rcNoticeNot     = `"content":"Remote Control not started`
 	rcMaxLinesAfter = 100
 	// rcScanCap bounds the tail read. A marker further back than this is treated as stale.
 	// The largest gap between two real bridge lines was 1.7 MB.
@@ -24,6 +45,9 @@ const (
 // reads the file backwards in chunks that double, so a long transcript costs one small read.
 // An unreadable or missing file is not on.
 func remoteControlActive(path string) bool {
+	if !isFile(path) { // os.Open on a FIFO blocks
+		return false
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return false
@@ -33,10 +57,13 @@ func remoteControlActive(path string) bool {
 	if err != nil || !st.Mode().IsRegular() {
 		return false
 	}
-	end, after := st.Size(), 0
+	end, after, marker := st.Size(), 0, false
 	floor := max(0, end-rcScanCap)
 	var carry []byte // the first, possibly partial, line of the chunk read last
-	for chunk := int64(64 << 10); end > floor; chunk *= 2 {
+	for chunk := int64(64 << 10); end > floor; chunk = min(chunk*2, rcChunkMax) {
+		if marker && st.Size()-end >= rcNoticeCap {
+			return true // no notice in range: the marker alone decides
+		}
 		start := max(floor, end-chunk)
 		buf := make([]byte, end-start, end-start+int64(len(carry)))
 		if _, err := f.ReadAt(buf, start); err != nil {
@@ -51,14 +78,22 @@ func remoteControlActive(path string) bool {
 			if len(lines[i]) == 0 {
 				continue
 			}
-			if bytes.HasPrefix(lines[i], []byte(rcMarker)) {
-				return after <= rcMaxLinesAfter
+			ln := lines[i]
+			switch {
+			case bytes.HasPrefix(ln, []byte(rcMarker)):
+				marker = marker || after <= rcMaxLinesAfter
+			case len(ln) > rcNoticeMaxLen:
+			case bytes.Contains(ln, []byte(rcStatusActive)):
+				return marker // the newest notice says connected
+			case bytes.Contains(ln, []byte(rcSubInfo)) &&
+				(bytes.Contains(ln, []byte(rcNoticeDown)) || bytes.Contains(ln, []byte(rcNoticeNot))):
+				return false
 			}
-			if after++; after > rcMaxLinesAfter {
+			if after++; after > rcMaxLinesAfter && !marker {
 				return false
 			}
 		}
 		carry, end = lines[0], start
 	}
-	return false
+	return marker // no notice in the scanned tail: the marker alone decides
 }
