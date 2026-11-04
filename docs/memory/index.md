@@ -79,12 +79,12 @@ the turns with a large cache write, each tied to a likely cause.
 
 ```sh
 m=$(ls -d ~/.claude/plugins/cache/broodhall/memory/*/ | sort -V | tail -1)
-CLAUDE_PLUGIN_DATA=~/.claude/plugins/data/memory-broodhall sh "${m}scripts/run.sh" cost --days 7
+sh "${m}scripts/run.sh" cost --days 7
 ```
 
-The first line picks the newest installed plugin version. Outside a hook the launcher does not
-know the plugin data directory, so `CLAUDE_PLUGIN_DATA` names it; without it the launcher says
-`memory: not installed yet`. With `CLAUDE_CONFIG_DIR` set, use it in place of `~/.claude`.
+The first line picks the newest installed plugin version. The launcher finds the plugin data
+directory from where the plugin is installed. With `CLAUDE_CONFIG_DIR` set, use it in place of
+`~/.claude`.
 
 | Cause | Rule |
 | --- | --- |

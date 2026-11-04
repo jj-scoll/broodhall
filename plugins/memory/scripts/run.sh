@@ -14,8 +14,25 @@
 # Test seams: MEMORY_BIN (binary path, skips install), MEMORY_RELEASE_URL (download base),
 # MEMORY_HOOK_TIMEOUT (seconds, default 3), MEMORY_NO_DAEMON=1 (do not start the daemon).
 root=${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
-data=${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/memory}
 ver=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json" 2>/dev/null)
+# Claude Code sets CLAUDE_PLUGIN_DATA for hooks and MCP. Run from a terminal, the launcher finds
+# that dir itself: Claude Code caches the plugin at <config>/plugins/cache/<marketplace>/memory/
+# <version> and keeps its data in <config>/plugins/data/memory-<marketplace>. Outside that cache
+# (a checkout) it takes the memory-* data dir that holds this version's binary, else memory.
+data=${CLAUDE_PLUGIN_DATA-}
+if [ -z "$data" ]; then
+	mkt=${root%/*/*}
+	case ${mkt%/*} in
+	*/plugins/cache) data=${mkt%/cache/*}/data/memory-${mkt##*/} ;;
+	*)
+		cfg=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
+		data=$cfg/plugins/data/memory
+		for d in "$cfg"/plugins/data/memory-*; do
+			[ -x "$d/bin/$ver/memory" ] && data=$d
+		done
+		;;
+	esac
+fi
 dest=$data/bin/$ver/memory
 bin=${MEMORY_BIN:-$dest}
 limit=${MEMORY_HOOK_TIMEOUT:-3}
