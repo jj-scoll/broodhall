@@ -196,7 +196,7 @@ func configEnvKV(kv string) string {
 }
 
 // envGitConfigs lists the settings git reads from the environment: GIT_CONFIG_PARAMETERS
-// ('key=value' entries) and GIT_CONFIG_COUNT with GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n.
+// (see gitConfigParams) and GIT_CONFIG_COUNT with GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n.
 func envGitConfigs(env []string) []string {
 	var out []string
 	keys, vals := map[string]string{}, map[string]string{}
@@ -204,11 +204,7 @@ func envGitConfigs(env []string) []string {
 		name, val, _ := strings.Cut(kv, "=")
 		switch {
 		case name == "GIT_CONFIG_PARAMETERS":
-			for _, e := range strings.Split(val, "'") {
-				if strings.Contains(e, "=") {
-					out = append(out, strings.TrimSpace(e))
-				}
-			}
+			out = append(out, gitConfigParams(val)...)
 		case strings.HasPrefix(name, "GIT_CONFIG_KEY_"):
 			keys[strings.TrimPrefix(name, "GIT_CONFIG_KEY_")] = val
 		case strings.HasPrefix(name, "GIT_CONFIG_VALUE_"):
@@ -219,6 +215,66 @@ func envGitConfigs(env []string) []string {
 		out = append(out, k+"="+vals[n])
 	}
 	return out
+}
+
+// gitSpace is what git's isspace matches (git-compat-util.h).
+const gitSpace = " \t\n\r"
+
+// gitConfigParams reads GIT_CONFIG_PARAMETERS the way git's parse_config_env_list
+// (config.c) does: entries split by spaces, each 'key=value' (the old form), 'key'='value'
+// (the form git 2.31 and later writes) or 'key'= (true). Each comes back as key=value, or as
+// key alone when it has no value. It stops at the first entry git rejects: git then fails
+// with "bogus format", so the command runs nothing.
+func gitConfigParams(s string) []string {
+	var out []string
+	for s != "" {
+		key, rest, ok := sqDequoteStep(s)
+		if !ok {
+			return out
+		}
+		switch {
+		case rest == "" || strings.IndexByte(gitSpace, rest[0]) >= 0:
+			out = append(out, key) // old form: git splits it at the first =
+		case rest[0] == '=' && (len(rest) == 1 || strings.IndexByte(gitSpace, rest[1]) >= 0):
+			out = append(out, key) // 'key'=
+			rest = rest[1:]
+		case rest[0] == '=':
+			val, r, ok := sqDequoteStep(rest[1:])
+			if !ok || r != "" && strings.IndexByte(gitSpace, r[0]) < 0 {
+				return out
+			}
+			out = append(out, key+"="+val)
+			rest = r
+		default:
+			return out
+		}
+		s = strings.TrimLeft(rest, gitSpace)
+	}
+	return out
+}
+
+// sqDequoteStep is git's sq_dequote_step (quote.c): one single-quoted word from the start of
+// s, where a backslashed quote or ! between two quoted parts stands for itself, and the text
+// after it. ok is false when s does not start with a quote or the quote is not closed.
+func sqDequoteStep(s string) (word, rest string, ok bool) {
+	if s == "" || s[0] != '\'' {
+		return "", "", false
+	}
+	var b strings.Builder
+	for i := 1; ; {
+		j := strings.IndexByte(s[i:], '\'')
+		if j < 0 {
+			return "", "", false
+		}
+		b.WriteString(s[i : i+j])
+		i += j + 1
+		if i+2 < len(s) && s[i] == '\\' && (s[i+1] == '\'' || s[i+1] == '!') && s[i+2] == '\'' {
+			b.WriteByte(s[i+1])
+			i += 3
+			continue
+		}
+		return b.String(), s[i:], true
+	}
 }
 
 // hooksPathLeavesRepo reports whether a core.hooksPath value switches the repository's
