@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -32,7 +33,8 @@ func guardReportRun(w io.Writer) int {
 		seen := false
 		for _, line := range strings.Split(string(data), "\n") {
 			p := strings.Split(line, "\t")
-			if len(p) != 3 {
+			// Same shape as the summary and receipt: other kinds are not counted.
+			if len(p) != 3 || !slices.Contains(reportKinds, p[1]) {
 				continue
 			}
 			if byRule[p[2]] == nil {

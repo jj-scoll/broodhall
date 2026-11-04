@@ -20,9 +20,14 @@ func TestGuardReport(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "claude-handoff", "s1.events"+".off"), []byte("12"), 0o600) // not a ledger
 	os.WriteFile(filepath.Join(dir, "claude-handoff", "junk.events"), []byte("garbage\n1\tmask\n"), 0o600)
 
+	os.WriteFile(filepath.Join(dir, "claude-handoff", "odd.events"), []byte("1\tbogus\tstrange-rule\n"), 0o600)
+
 	var out bytes.Buffer
 	if code := guardReportRun(&out); code != 0 {
 		t.Fatalf("exit %d", code)
+	}
+	if strings.Contains(out.String(), "strange-rule") || !strings.Contains(out.String(), "6 events") {
+		t.Errorf("a line with an unknown kind must be skipped:\n%s", out.String())
 	}
 	got := out.String()
 	for _, want := range []string{"2 sessions", "git-stash", "pii-wrap", "git-reset-hard", "session-url", "Approved versus denied"} {

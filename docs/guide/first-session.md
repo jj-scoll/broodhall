@@ -18,7 +18,7 @@ and `disabled_guards` turns the optional families off. See
 
 If you do not want a guard to stop you yet, turn on the
 [`observe`](../guardrails/options.md#observe) option with `/plugin configure guardrails@broodhall`.
-The git, egress, PII, raw-client-data and session-URL guards then let the call run and record
+The git, PII, raw-client-data and most egress guards then let the call run and record
 what they would have done. You see a `would ask` or `would block` count in the receipt line.
 
 After a few days, run `claude-tools guard-report` to see which rules fired and how often. Then

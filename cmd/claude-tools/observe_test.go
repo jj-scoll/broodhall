@@ -83,7 +83,7 @@ func TestObserveAskBecomesAllowAndLedger(t *testing.T) {
 }
 
 func TestObserveBlockInFamilyBecomesAllow(t *testing.T) {
-	cmd := `git commit -m "see https://claude.ai/code/session_abc123"`
+	cmd := "echo '{}' > ~/.config/claude-tools/pii-columns.json"
 	if code, _, _, _ := hookRun(t, "", cmd); code != 2 {
 		t.Fatalf("observe off: want block (exit 2), got %d", code)
 	}
@@ -91,11 +91,100 @@ func TestObserveBlockInFamilyBecomesAllow(t *testing.T) {
 	if code != 0 || errOut != "" {
 		t.Fatalf("observe on: want allow, got exit %d stderr %q", code, errOut)
 	}
-	if _, ctx := decisionOf(t, out); !strings.Contains(ctx, "would have been blocked") {
+	if _, ctx := decisionOf(t, out); !strings.Contains(ctx, "would have blocked") {
 		t.Errorf("context = %q", ctx)
 	}
-	if !strings.Contains(ledger, "\twould-block\tsession-url\n") {
+	if !strings.Contains(ledger, "\twould-block\tpii-rules:redirect\n") {
 		t.Errorf("ledger = %q", ledger)
+	}
+}
+
+// The note says what the guard would have done and drops its instruction: the call already ran.
+func TestObserveNoteDropsInstruction(t *testing.T) {
+	for _, cmd := range []string{corpusCommand(t, "ask:git-reset-hard"), "echo '{}' > ~/.config/claude-tools/pii-columns.json"} {
+		_, out, _, _ := hookRun(t, "1", cmd)
+		_, ctx := decisionOf(t, out)
+		for _, bad := range []string{"Confirm with the user", "run again", "ran anyway. ASK", "BLOCKED:", "ASK:"} {
+			if strings.Contains(ctx, bad) {
+				t.Errorf("note %q still carries %q", ctx, bad)
+			}
+		}
+		if !strings.Contains(ctx, "would have asked:") && !strings.Contains(ctx, "would have blocked:") {
+			t.Errorf("note = %q, want 'would have asked:' or 'would have blocked:'", ctx)
+		}
+	}
+}
+
+// Leaks cannot be taken back: the session-url block and a secret in outbound data stay enforced.
+func TestObserveKeepsIrreversibleLeakGuards(t *testing.T) {
+	code, _, _, ledger := hookRun(t, "1", `git commit -m "see https://claude.ai/code/session_abc123"`)
+	if code != 2 || !strings.Contains(ledger, "\tblock\tsession-url\n") || strings.Contains(ledger, "would-") {
+		t.Errorf("session-url: exit %d ledger %q, want the block", code, ledger)
+	}
+	// Other egress asks are observed.
+	saved := egressOwn
+	egressOwn = func() ([]string, string) { return []string{"me@example.com"}, "example.com" }
+	defer func() { egressOwn = saved }()
+	code, out, _, ledger := hookRun(t, "1", `gh issue create --title x --body "mail jane@acme-client.com"`)
+	if ask, _ := decisionOf(t, out); code != 0 || ask || !strings.Contains(ledger, "\twould-ask\tegress:email\n") {
+		t.Errorf("egress email: exit %d out %q ledger %q, want would-ask", code, out, ledger)
+	}
+}
+
+// A would-event is recorded only when the call goes through: an enforced guard that stops the
+// call later in decide() leaves no would-line.
+func TestObserveLogsWouldOnlyWhenAllowed(t *testing.T) {
+	cmd := "echo '{}' > ~/.config/claude-tools/pii-columns.json; rm -rf /"
+	code, _, _, ledger := hookRun(t, "1", cmd)
+	if code != 2 || strings.Contains(ledger, "would-") || !strings.Contains(ledger, "\tblock\t") {
+		t.Errorf("exit %d ledger %q, want only the enforced block", code, ledger)
+	}
+	_, out, _, ledger := hookRun(t, "1", "echo '{}' > ~/.config/claude-tools/pii-columns.json; sed -i s/a/b/ ~/.claude/settings.json")
+	if ask, _ := decisionOf(t, out); !ask || strings.Contains(ledger, "would-") {
+		t.Errorf("out %q ledger %q, want only the enforced settings ask", out, ledger)
+	}
+}
+
+// Non-Bash tools (MCP sends, edits of the PII rules file) honour observe too.
+func TestObserveNonBashTools(t *testing.T) {
+	saved := egressOwn
+	egressOwn = func() ([]string, string) { return []string{"me@example.com"}, "example.com" }
+	defer func() { egressOwn = saved }()
+	run := func(observe, tool string, input map[string]any) (string, string) {
+		t.Helper()
+		t.Setenv("HANDOFF_STATE_DIR", t.TempDir())
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("CLAUDE_TOOLS_OFF", "")
+		t.Setenv("CLAUDE_TOOLS_OBSERVE", observe)
+		in, _ := json.Marshal(map[string]any{"session_id": "obs1", "cwd": t.TempDir(), "tool_name": tool, "tool_input": input})
+		var stdout, stderr bytes.Buffer
+		preToolUseRun(in, "CT", func([]byte) ([]byte, []byte, int) { return nil, nil, 0 }, &stdout, &stderr)
+		ledger, _ := os.ReadFile(guardLedger("obs1"))
+		return stdout.String(), string(ledger)
+	}
+	mail := map[string]any{"to": "jane@acme-client.com", "body": "hi"}
+	if out, _ := run("", "mcp__claude_ai_Gmail__send_message", mail); !strings.Contains(out, `"ask"`) {
+		t.Fatalf("observe off: want ask, got %q", out)
+	}
+	out, ledger := run("1", "mcp__claude_ai_Gmail__send_message", mail)
+	if strings.Contains(out, `"ask"`) || !strings.Contains(out, "would have asked:") || !strings.Contains(ledger, "\twould-ask\tegress:email\n") {
+		t.Errorf("mcp egress: out %q ledger %q, want allow + would-ask", out, ledger)
+	}
+
+	// A secret in an MCP send is an irreversible leak: it stays an ask.
+	token := "ghp_" + strings.Repeat("aB3dE5fG7h", 4)[:36]
+	out, ledger = run("1", "mcp__claude_ai_Atlassian_Rovo__createJiraIssue", map[string]any{"description": "use " + token})
+	if !strings.Contains(out, `"ask"`) || !strings.Contains(ledger, "\task\tegress:secret\n") || strings.Contains(ledger, "would-") {
+		t.Errorf("mcp secret: out %q ledger %q, want the ask", out, ledger)
+	}
+
+	rules := map[string]any{"file_path": "~/.config/claude-tools/pii-columns.json", "content": "{}"}
+	if out, _ := run("", "Write", rules); out != "" {
+		t.Fatalf("observe off: the deny goes to stderr, got stdout %q", out)
+	}
+	out, ledger = run("1", "Write", rules)
+	if !strings.Contains(out, "would have blocked:") || !strings.Contains(ledger, "\twould-block\tpii-rules:Write\n") {
+		t.Errorf("rules file: out %q ledger %q, want allow + would-block", out, ledger)
 	}
 }
 

@@ -175,7 +175,7 @@ func preToolUseRun(data []byte, self string, rtk func([]byte) ([]byte, []byte, i
 			return d.Exit
 		}
 		if d, ok := egressToolDecision(in.ToolName, raw.ToolInput, in.Cwd); ok && d.Ask && !off["egress"] {
-			if observe {
+			if observe && !enforcedAlways[d.Rule] {
 				logGuardEvent(in.SessionID, wouldKind(d), d.Rule)
 				emitContext(stdout, "PreToolUse", observeNote([]decision{d}))
 				return 0
@@ -192,9 +192,6 @@ func preToolUseRun(data []byte, self string, rtk func([]byte) ([]byte, []byte, i
 	}
 	env := &guardEnv{Now: time.Now(), Session: in.SessionID, Cwd: in.Cwd, Home: home, XDGConfig: xdg, State: newFileState(in.SessionID), GitUnpushed: gitUnpushed, Off: off, Observe: observe}
 	d := decide(env, in.ToolInput.Command)
-	for _, w := range env.Would {
-		logGuardEvent(in.SessionID, wouldKind(w), w.Rule)
-	}
 	switch {
 	case d.Ask:
 		logGuardEvent(in.SessionID, "ask", d.Rule)
@@ -204,6 +201,10 @@ func preToolUseRun(data []byte, self string, rtk func([]byte) ([]byte, []byte, i
 		logGuardEvent(in.SessionID, "block", d.Rule)
 		fmt.Fprintln(stderr, d.Msg)
 		return d.Exit
+	}
+	// The call runs: only now do the observed decisions count.
+	for _, w := range env.Would {
+		logGuardEvent(in.SessionID, wouldKind(w), w.Rule)
 	}
 	// The mask note is part of the mask, not a nudge.
 	if d.Context != "" && d.Rule != "secret-file:mask" {

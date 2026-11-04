@@ -54,38 +54,47 @@ Outside the plugin the same list is read from `CLAUDE_TOOLS_PII_ALLOW`.
 | --- | --- |
 | Title | Observe mode (log only) |
 | Default | off |
-| Description | Off by default. When on, the optional guards (git, egress, pii, raw-client-data, session-url) allow the call and record what they would have asked or blocked, instead of stopping it. The core blocks, settings-file guard and secret-file guard stay enforced. Run claude-tools guard-report to see the counts. |
+| Description | Off by default. When on, the optional guards (git, egress, pii, raw-client-data) allow the call and record what they would have asked or blocked, instead of stopping it. These stay enforced: the core blocks, the settings-file and secret-file guards, config-gate, compact-guard, the large-read block, the session-URL block and egress asks about a secret. Run claude-tools guard-report to see the counts. |
 
 Use it to see what the guards would do before you let them stop anything. It is one switch
 for all guards, not one per guard.
 
-What it covers is exactly the five families that `disabled_guards` can name. An ask from one
-of them does not ask, and a block from one of them does not block. The call runs.
+What it covers is the families that `disabled_guards` can name, except where a mistake
+cannot be taken back: `git`, `pii`, `raw-client-data` and the `egress` asks. An ask from one of
+them does not ask, and a block from one of them does not block. The call runs.
 
-What it does not cover is what has no switch: the [core blocks](bash-core.md), the
-`git push --force` block, [Settings files](settings-files.md) and
-[Secret files](secret-files.md). They stay enforced in observe mode, because letting them
-through would delete files or show a secret to the model on your first day. The Read limits
-and the other nudges work as usual too.
+What it does not cover stays enforced:
+
+- The [core blocks](bash-core.md) and the `git push --force` block.
+- [Settings files](settings-files.md) and [Secret files](secret-files.md).
+- The [config gate](config-gate.md), which stops edits that would weaken the guards, and the
+  compact guard, which blocks a second manual compact.
+- The [session-URL](session-urls.md) block. A link that has been pushed cannot be taken back.
+- The [egress](egress.md) ask about a secret. A secret that has been sent cannot be taken
+  back. The other egress asks (an outside email, a phone number, data the guard cannot read)
+  are observed.
+- The [Read limits](read-limits.md) block on very large files. The other nudges work as usual.
 
 What you and Claude see:
 
-- Claude gets a note next to the tool result: `Guardrails observe mode: this call would have
-  asked you first (git-stash) and ran anyway.`, followed by the guard's usual reason.
+- Claude gets a note next to the tool result: `Guardrails observe mode: this call ran, but the
+  guard would have asked: <the guard's reason> (git-stash)`.
 - You see the [receipt](receipt.md) line `would ask 1 (git-stash)` or `would block 1
-  (session-url)`, and the statusline `guards` count shows the same.
+  (pii-rules)`, and the statusline `guards` count shows the same.
 - The guard ledger records `would-ask` or `would-block` with the rule id. Run
   `claude-tools guard-report` for the counts across sessions.
 
-An observed rule never hides a later one. In `git stash && cat ~/.aws/credentials`, the stash
-is let through and the secret read is still masked.
+Rules are checked in order and the first enforced decision ends the check. A rule after it is
+not evaluated, so it is not counted, and a call that an enforced guard stops leaves no
+`would-` line. An observed rule never hides a later one. In
+`git stash && cat ~/.aws/credentials`, the stash is let through and the secret read is still masked.
 
 Outside the plugin, set `CLAUDE_TOOLS_OBSERVE=1`; `true` and `yes` also turn it on. A set
 plugin option wins over it. Turn the option off to enforce again.
 
 `claude-tools guard-report` prints one row per rule with how many times it fired, split by
 kind. It cannot say how many asks you approved or denied: the ledger records that an ask
-happened, not your answer, and no hook sees the answer.
+happened, not your answer.
 
 ## `fail_open`
 

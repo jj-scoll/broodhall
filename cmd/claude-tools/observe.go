@@ -24,11 +24,16 @@ func observeOn(v string) bool {
 	return false
 }
 
+// enforcedAlways are the rules of optional families that observe leaves on: what they catch
+// cannot be taken back once sent, and their detectors rarely misfire, so watching buys nothing.
+var enforcedAlways = map[string]bool{"session-url": true, "egress:secret": true}
+
 // observed reports whether d, which an optional family just produced, is let through instead
 // of enforced. When it is, the decision is kept for the ledger and the note. The caller then
-// carries on to the later rules, so an observed rule never hides an enforced one.
+// carries on to the later rules, so an observed rule never hides an enforced one. The caller
+// logs the kept decisions only if the call finally runs (logWould).
 func (e *guardEnv) observed(d decision) bool {
-	if !e.Observe {
+	if !e.Observe || enforcedAlways[d.Rule] {
 		return false
 	}
 	e.Would = append(e.Would, d)
@@ -43,17 +48,27 @@ func wouldKind(d decision) string {
 	return "would-block"
 }
 
+// wouldReason is the guard's reason without its leading ASK:/BLOCKED: tag and without the
+// instruction that follows it: the call has already run.
+func wouldReason(msg string) string {
+	msg = strings.TrimPrefix(strings.TrimPrefix(msg, "ASK: "), "BLOCKED: ")
+	for _, cut := range []string{" Confirm with the user", " Remove it and run again"} {
+		msg, _, _ = strings.Cut(msg, cut)
+	}
+	return strings.TrimSpace(msg)
+}
+
 // observeNote is the model-visible line for observed decisions. Claude sees what the guard
-// said, so it can adjust; the user sees the receipt line.
+// would have said, so it can adjust; the user sees the receipt line.
 func observeNote(ds []decision) string {
 	var parts []string
 	for _, d := range ds {
-		what := "been blocked"
+		what := "blocked"
 		if d.Ask {
-			what = "asked you first"
+			what = "asked"
 		}
 		rule, _, _ := strings.Cut(d.Rule, " ")
-		parts = append(parts, fmt.Sprintf("Guardrails observe mode: this call would have %s (%s) and ran anyway. %s", what, rule, d.Msg))
+		parts = append(parts, fmt.Sprintf("Guardrails observe mode: this call ran, but the guard would have %s: %s (%s)", what, wouldReason(d.Msg), rule))
 	}
 	return strings.Join(parts, "\n\n")
 }
