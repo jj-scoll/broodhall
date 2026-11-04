@@ -6,7 +6,8 @@ package main
 // blocking one that recovers from a context-limit error fails the request.
 //
 // Each compaction also re-arms gate (removes its once-per-session mark), so a session that
-// keeps going writes a fresh handoff before its next compaction.
+// keeps going writes a fresh handoff before its next compaction. It also deletes the
+// session's read-dedup ledger, since the compacted conversation no longer holds those reads.
 
 import (
 	"encoding/json"
@@ -48,5 +49,7 @@ func compactGuard(args []string) int {
 
 	os.WriteFile(countFile, []byte(strconv.FormatInt(count+1, 10)+"\n"), 0o644)
 	os.Remove(filepath.Join(state, in.SessionID+".gate"))
+	// Claude is about to lose its earlier reads, so read-dedup must not claim them.
+	os.Remove(readCachePath(in.SessionID))
 	return 0
 }

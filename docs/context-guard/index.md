@@ -11,16 +11,22 @@
 
 ```sh
 claude plugin marketplace add jj-scoll/broodhall
-claude plugin install guardrails@broodhall
 claude plugin install context-guard@broodhall
 ```
+
+context-guard declares guardrails as a dependency, so Claude Code installs guardrails with it.
+If you already have guardrails, nothing changes. You can still install guardrails first.
+Claude Code does not stop you from disabling or uninstalling guardrails later, and context-guard
+stays enabled when you do. Running the context-guard install again may not bring guardrails
+back (it reported "already installed" in testing with a local marketplace), so reinstall it
+directly with `claude plugin install guardrails@broodhall`.
 
 Requirements:
 
 - **Claude Code 2.1.317 or newer.** Hooks modules are an early-access plugin kind (the
   declarations Claude Code writes say the surface may change between releases). This plugin
   was tested on 2.1.317 and no older version was tried.
-- **The guardrails plugin**, at a version whose binary has the `autoclear` subcommand. Without
+- **The guardrails plugin**, which Claude Code installs for you as a dependency, at a version whose binary has the `autoclear` subcommand. Without
   it context-guard cannot find the handoff state, so it skips the clear. The warn and block
   levels still work.
 
