@@ -29,6 +29,8 @@ const (
 	memdScanEvery     = 5 * time.Second
 	memdEventDebounce = 200 * time.Millisecond
 	memdSkipMargin    = time.Minute
+	// memdBackfillMax caps how far before startedAt a root's backfill reaches.
+	memdBackfillMax = 24 * time.Hour
 )
 
 // memdTailFile is what the tailer remembers about one transcript between Scan calls.
@@ -41,6 +43,7 @@ type memdTailFile struct {
 	// resumed: the file had a stored offset at startup, so it is read on from there with no
 	// startedAt filter and lines written while the daemon was down are kept.
 	resumed bool
+	since   time.Time // not resumed: events stamped before this are not recorded
 }
 
 type memdTailer struct {
@@ -48,15 +51,31 @@ type memdTailer struct {
 	roots     map[string]string // root dir -> account
 	startedAt time.Time
 
-	mu     sync.Mutex
-	files  map[string]*memdTailFile
-	loaded bool // stored offsets were read into files
+	mu      sync.Mutex
+	files   map[string]*memdTailFile
+	loaded  bool                 // stored offsets were read into files
+	covered map[string]time.Time // root -> newest stored offset update under it
 }
 
 // newMemdTailer returns a tailer over roots (root dir -> account). Files with a stored offset
-// resume from it; in any other file, events stamped before startedAt are not recorded.
+// resume from it. In any other file, events stamped before the root's cutoff are not
+// recorded: startedAt, or for a root an earlier daemon last tailed before startedAt (another
+// account's daemon held the socket meanwhile), that last time, at most memdBackfillMax back.
 func newMemdTailer(db *sql.DB, roots map[string]string, startedAt time.Time) *memdTailer {
-	return &memdTailer{db: db, roots: roots, startedAt: startedAt, files: map[string]*memdTailFile{}}
+	return &memdTailer{db: db, roots: roots, startedAt: startedAt, files: map[string]*memdTailFile{}, covered: map[string]time.Time{}}
+}
+
+// cutoff is the time from which a file under root with no stored offset is recorded.
+func (t *memdTailer) cutoff(root string) time.Time {
+	c, ok := t.covered[root]
+	if !ok || !c.Before(t.startedAt) {
+		return t.startedAt
+	}
+	c = c.Add(-memdSkipMargin)
+	if floor := t.startedAt.Add(-memdBackfillMax); c.Before(floor) {
+		return floor
+	}
+	return c
 }
 
 // Scan makes one pass over every *.jsonl under the roots and returns how many prompt and
@@ -76,7 +95,7 @@ func (t *memdTailer) Scan() (newEvents int, err error) {
 			if werr != nil || d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
 				return nil // vanished or unreadable entries are retried on the next pass
 			}
-			n, ferr := t.scanFile(path, account)
+			n, ferr := t.scanFile(path, root, account)
 			newEvents += n
 			if ferr != nil && err == nil {
 				err = fmt.Errorf("tail %s: %w", path, ferr)
@@ -93,23 +112,29 @@ func (t *memdTailer) Scan() (newEvents int, err error) {
 // loadOffsets reads every stored offset in one query, so the first pass over thousands of
 // transcripts does not look each one up.
 func (t *memdTailer) loadOffsets() error {
-	rows, err := t.db.Query(`SELECT path, byte_offset, inode, size, observer, sub, coalesce(reset_kind, '') FROM transcript_offsets`)
+	rows, err := t.db.Query(`SELECT path, byte_offset, inode, size, observer, sub, coalesce(reset_kind, ''), updated_at FROM transcript_offsets`)
 	if err != nil {
 		return fmt.Errorf("load offsets: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var path string
+		var updated time.Time
 		f := &memdTailFile{known: true, resumed: true}
-		if err := rows.Scan(&path, &f.offset, &f.inode, &f.size, &f.st.Observer, &f.st.Sub, &f.st.Reset); err != nil {
+		if err := rows.Scan(&path, &f.offset, &f.inode, &f.size, &f.st.Observer, &f.st.Sub, &f.st.Reset, &updated); err != nil {
 			return fmt.Errorf("load offsets: %w", err)
 		}
 		t.files[path] = f
+		for root := range t.roots {
+			if strings.HasPrefix(path, filepath.Clean(root)+string(filepath.Separator)) && updated.After(t.covered[root]) {
+				t.covered[root] = updated
+			}
+		}
 	}
 	return rows.Err()
 }
 
-func (t *memdTailer) scanFile(path, account string) (int, error) {
+func (t *memdTailer) scanFile(path, root, account string) (int, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return 0, nil // removed between walk and stat
@@ -125,13 +150,14 @@ func (t *memdTailer) scanFile(path, account string) (int, error) {
 		f = &memdTailFile{}
 		t.files[path] = f
 	}
-	// A file with no stored offset that was not written since startedAt holds no event to
-	// record: start at its end without reading it. The latches are re-set by any later line.
-	// The margin covers mtime's coarse clock; events before startedAt in such a file read
-	// anyway are dropped.
+	// A file with no stored offset that was not written since its root's cutoff holds no
+	// event to record: start at its end without reading it. The latches are re-set by any
+	// later line. The margin covers mtime's coarse clock; events before the cutoff in such a
+	// file read anyway are dropped.
 	if !f.known {
 		f.known = true
-		if fi.ModTime().Before(t.startedAt.Add(-memdSkipMargin)) {
+		f.since = t.cutoff(root)
+		if fi.ModTime().Before(f.since.Add(-memdSkipMargin)) {
 			f.offset, f.inode, f.size = size, inode, size
 			return 0, nil
 		}
@@ -224,7 +250,7 @@ func (t *memdTailer) commit(path string, f *memdTailFile, events []memdEvent, in
 			usage = append(usage, *e.Usage)
 			continue
 		}
-		if !f.resumed && !e.At.IsZero() && e.At.Before(t.startedAt) {
+		if !f.resumed && !e.At.IsZero() && e.At.Before(f.since) {
 			continue
 		}
 		if e.Kind == "turn_end" {
