@@ -47,8 +47,8 @@ func TestBroodhallNames(t *testing.T) {
 	if plug.Name != "guardrails" {
 		t.Errorf("plugin name = %q, want guardrails", plug.Name)
 	}
-	if plug.Version != "0.2.0" {
-		t.Errorf("plugin version = %q, want 0.2.0", plug.Version)
+	if plug.Version != "0.3.0" {
+		t.Errorf("plugin version = %q, want 0.3.0", plug.Version)
 	}
 	if plug.Repository != "https://github.com/jj-scoll/broodhall" {
 		t.Errorf("plugin repository = %q", plug.Repository)
