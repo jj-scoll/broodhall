@@ -1,6 +1,7 @@
 # Options
 
-Five plugin options, two files under `~/.config/claude-tools/`, and one environment variable.
+Five plugin options, two files under `~/.config/claude-tools/`, and two environment variables
+that are not plugin options (`HANDOFF_AUTOCLEAR` and `CLAUDE_TOOLS_BIN`).
 
 Set the plugin options with `/plugin configure guardrails@broodhall`, or from `/config`.
 
@@ -103,6 +104,14 @@ Outside the plugin, set `CLAUDE_TOOLS_RTK=1`.
 
 Use this when rtk is not on the PATH that Claude Code's hooks see, for example
 `/opt/tools/bin/rtk`. Outside the plugin it is read from `CLAUDE_TOOLS_RTK_CMD`.
+
+## `HANDOFF_AUTOCLEAR`
+
+Set to `0` in the environment Claude Code starts in to stop the [handoff
+chain](handoff-gate.md#the-chain) short of the clear. The handoff is still written, but
+`autoclear` arms nothing and logs `no clear: HANDOFF_AUTOCLEAR=0`, and the gate's message tells
+Claude that you will run `/clear` yourself. Any other value, or none, leaves the clear on.
+It is not a plugin option.
 
 ## `~/.config/claude-tools/secret-paths`
 

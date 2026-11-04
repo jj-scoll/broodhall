@@ -24,7 +24,7 @@ real reply for each.
 | [Nudges](nudges.md) | <span class="badge badge-note">NOTE</span> | Reminds Claude to plan before `terraform` or `terragrunt` `apply` and `destroy`, and to justify a `docker build`. |
 | [Read limits](read-limits.md) | <span class="badge badge-note">NOTE</span> <span class="badge badge-block">BLOCK</span> | Notes a re-read of an unchanged file and a large file read; blocks a full read of a very large code file. |
 | [Retry loops](retry-loops.md) | <span class="badge badge-note">NOTE</span> | Notes on the third failure of the same Bash command. |
-| [Handoff gate](handoff-gate.md) | <span class="badge badge-block">BLOCK</span> | Blocks the first stop of a session once its context passes a threshold, to get a handoff written, and blocks a second manual `/compact`. |
+| [Handoff gate](handoff-gate.md) | <span class="badge badge-block">BLOCK</span> | Blocks the first stop of a session once its context passes a threshold, to get the next steps written, has the handoff written in the background and arms a `/clear` that the [context-guard](../context-guard/index.md) plugin runs, and blocks a second manual `/compact`. |
 | [Write handoff](write-handoff.md) | | A subcommand, not a hook: `claude-tools write-handoff` writes the handoff from the transcript with a separate Haiku call on your Claude Code login. |
 | [Options](options.md) | | The settings that turn families off, tell the guards which addresses are yours, and opt in to the RTK rewrite. |
 

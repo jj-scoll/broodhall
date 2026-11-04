@@ -56,6 +56,8 @@ nav:
       - Handoff gate: guardrails/handoff-gate.md
       - Write handoff: guardrails/write-handoff.md
       - Options: guardrails/options.md
+  - Context guard:
+      - Overview: context-guard/index.md
   - Memory:
       - Overview: memory/index.md
       - Privacy and redaction: memory/privacy.md

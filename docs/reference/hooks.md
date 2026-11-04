@@ -13,10 +13,32 @@ the third column. A dash means the field is absent from the entry.
 | `PostToolUse` | `Bash` | `retry-breaker` | — |
 | `PostToolUseFailure` | `Bash` | `retry-breaker` | — |
 | `Stop` | — | `gate` | — |
+| `Stop` | — | `autoclear` | — |
 | `PreCompact` | — | `compact-guard` | — |
 
 The entries with `onFailure: block` are the ones that fail closed. The `SessionStart` entry
 sets a timeout of 120 seconds.
+
+## context-guard
+
+The context-guard plugin registers no command hooks. Its `hooks/hooks.json` lists a hooks
+module instead:
+
+```json
+{ "modules": ["./context-guard.mjs"] }
+```
+
+The module hooks two events and calls `sh "$plugin_root/scripts/run.sh"` through
+`$.process.run`.
+
+| Event | What the module does |
+| --- | --- |
+| `turn.complete` | After a main-session turn, starts the watch for the clear that guardrails' `autoclear` arms. |
+| `prompt.submit` | Carries a prompt over a clear, adds the warning note, or drops the prompt past the block level. |
+
+The launcher accepts `state` and `autoclear <args>` and prints nothing and exits 1 when it
+finds no guardrails binary. It needs Claude Code 2.1.317 or newer. See
+[Context guard](../context-guard/index.md).
 
 ## memory
 
