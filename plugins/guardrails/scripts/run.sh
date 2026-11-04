@@ -147,6 +147,7 @@ install_bin() (
 	*) fail "unsupported CPU $(uname -m)" ;;
 	esac
 	asset=guardrails_${os}_$arch.tar.gz want=$asset member=guardrails
+	command -v curl >/dev/null 2>&1 || fail "curl not found"
 	mkdir -p "$data/bin" && tmp=$(mktemp -d "$data/bin/.download.XXXXXX") || fail "cannot write $data"
 	trap 'rm -rf "$tmp"' EXIT
 	# A release made before the rename has only claude-tools_<os>_<arch>.tar.gz (see pick_dest).
