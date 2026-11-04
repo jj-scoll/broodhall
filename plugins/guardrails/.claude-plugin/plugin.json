@@ -14,7 +14,7 @@
     "disabled_guards": {
       "type": "string",
       "title": "Disabled guard families",
-      "description": "Comma-separated families to turn off: pii, raw-client-data, session-url, egress, git. Every guard is on when this is empty. The core blocks (rm -rf of home or root, git push --force, dd, fork bombs) cannot be turned off.",
+      "description": "Comma-separated families to turn off: pii, raw-client-data, session-url, egress, git, sweep. Every guard is on when this is empty. The core blocks (rm -rf of home or root, git push --force, dd, fork bombs) cannot be turned off.",
       "default": ""
     },
     "allowed_email_domains": {

@@ -42,6 +42,6 @@ earlier or a path assembled from variables gets past it.
 ## Turning it off
 
 You cannot. This guard has no family name in `disabled_guards`, and the code never consults
-`CLAUDE_TOOLS_OFF` for it: with `pii`, `raw-client-data`, `session-url`, `egress` and `git`
+`CLAUDE_TOOLS_OFF` for it: with `pii`, `raw-client-data`, `session-url`, `egress`, `git` and `sweep`
 all off, an Edit of `~/.claude/settings.json` still asks. You can approve each ask when it
 appears. See [Options](options.md).

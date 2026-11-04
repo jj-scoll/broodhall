@@ -52,8 +52,12 @@ type guardEnv struct {
 	// GitUnpushed returns the messages of commits in dir that are on no remote, each led by
 	// a \x01 and its short hash. Nil in replay: replay has no repositories.
 	GitUnpushed func(dir string) string
+	// OtherEdits lists the other live sessions that recorded edits, and GitStatus runs git
+	// status in dir for those files (sweepguard.go). Nil in replay: no sessions, no repos.
+	OtherEdits func(self string, now time.Time) []otherSession
+	GitStatus  func(dir string, files []string) (top string, ents []statusEntry)
 	// Off holds the rule families CLAUDE_TOOLS_OFF turns off (pii, raw-client-data,
-	// session-url, egress, git). Nil runs every rule.
+	// session-url, egress, git, sweep). Nil runs every rule.
 	Off map[string]bool
 	// Observe lets optional-family asks and blocks through and collects them in Would
 	// (observe.go).

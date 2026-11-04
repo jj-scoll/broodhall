@@ -5,7 +5,7 @@ package main
 // "would-block" with the rule id, so a new user can see what the guards would do before they
 // let them stop anything. One global switch (CLAUDE_TOOLS_OBSERVE, the observe plugin option).
 //
-// Observe covers exactly the five families disabled_guards can name (git, egress, pii,
+// Observe covers exactly the six families disabled_guards can name (git, egress, pii, sweep,
 // raw-client-data, session-url). The core blocks, the settings-file guard and the secret-file
 // guard have no switch in docs/guardrails/options.md and stay enforced: observing them would
 // let a destructive command run or a secret reach the model on day one.
