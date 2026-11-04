@@ -11,12 +11,19 @@ A push to `main` that changes shipped files (`plugins/` except `test/` and `test
 `go.mod`, `go.sum`, `.claude-plugin/`) runs the `autorelease` workflow. Docs-only and
 `.github`-only changes do not. The workflow:
 
-1. computes the next version with `.github/scripts/next-version.sh`,
-2. rewrites every `plugin.json` to it,
-3. commits `release vX.Y.Z [skip ci]` to `main` and pushes it with the tag in one atomic push
-   (if `main` moved, it starts over from the new tip),
-4. calls the `release` workflow for that tag, which builds the assets and creates the GitHub
-   release with generated notes.
+1. computes the next version with `.github/scripts/next-version.sh`, rewrites every
+   `plugin.json` and makes the `release vX.Y.Z [skip ci]` commit locally, pushing it only to
+   a scratch branch (`autorelease-candidate`), so nothing is advertised yet,
+2. calls the `release` workflow on that commit, which runs the tests, builds every asset and
+   creates a draft GitHub release with generated notes (drafts cannot be downloaded),
+3. pushes the commit and the tag `vX.Y.Z` to `main` in one atomic push, then publishes the
+   draft. If `main` moved meanwhile, it rebases when only docs, tests or `.github` changed;
+   if shipped files changed, it releases nothing, because the run queued for that merge does,
+4. deletes the scratch branch and any draft left over from a failed run.
+
+Guardrails' hooks fail closed when the binary for the `plugin.json` version cannot be
+downloaded, which is why `main` is only updated after the assets exist. The gap between the
+push and the publish is seconds.
 
 Only one release runs at a time; a merge that lands during a release waits for it.
 
@@ -67,14 +74,15 @@ versions to the same `X.Y.Z`, commit, then tag that commit `vX.Y.Z` and push the
 
 To rebuild a release whose workflow failed after the tag was pushed, run the `release`
 workflow by hand (Actions, release, Run workflow) with the existing tag. If the GitHub
-release was already created, delete it first.
+release was already created, delete it first. A failed automatic run leaves `main` and the tags
+as they were; re-run it, or merge the next change.
 
 ## Setup
 
 `main` must accept the `autorelease` push from `github-actions[bot]`. With branch protection
 or a ruleset that requires pull requests or status checks, add `github-actions` as a bypass
-actor, or the push is rejected. Under Settings, Actions, General, workflow permissions must
-allow the token to write (the workflows request `contents: write` themselves).
+actor, or the push is rejected. The default workflow permission can stay read-only: each job
+that writes declares `contents: write` itself.
 
 ## Earlier memory releases
 

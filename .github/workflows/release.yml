@@ -5,8 +5,10 @@
 # All three plugins share the version, so the tag is v<that version> for every one of them.
 #
 # Three ways in:
-#   workflow_call      autorelease.yml, after it bumped the plugins, committed and tagged. A tag
-#                      pushed with GITHUB_TOKEN triggers no workflow, so it calls this one directly.
+#   workflow_call      autorelease.yml, with its bump commit (ref) not yet on main and no tag yet:
+#                      the release is a DRAFT, and autorelease pushes the commit and tag and
+#                      publishes the draft only after every asset exists. (A tag pushed with
+#                      GITHUB_TOKEN triggers no workflow, hence the direct call.)
 #   push of a v* tag   the manual path: bump every plugin.json to the same X.Y.Z, tag, push.
 #   workflow_dispatch  rebuild the release of an existing tag (for example after a failed run).
 # Each stops unless the tag equals v<version> and all plugin.json versions are equal.
@@ -24,9 +26,19 @@ on:
   workflow_call:
     inputs:
       tag:
-        description: Existing tag to release, v<version>
+        description: Tag to release, v<version>
         required: true
         type: string
+      ref:
+        description: Commit to build (default the tag). autorelease passes its unpushed bump commit.
+        required: false
+        type: string
+        default: ""
+      draft:
+        description: Create a DRAFT release for a tag that does not exist yet; autorelease publishes it after pushing the commit and tag.
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       tag:
@@ -39,6 +51,7 @@ permissions:
 
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
+  REF: ${{ inputs.ref || inputs.tag || github.ref_name }}
   DUCKDB_VERSION: v2.0.0
 
 jobs:
@@ -47,7 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.REF }}
       - name: Tag matches the shared plugin version
         run: |
           .github/scripts/check-versions.sh
@@ -60,7 +73,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.REF }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -96,7 +109,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.REF }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -134,8 +147,13 @@ jobs:
       - name: Checksums and release
         env:
           GH_TOKEN: ${{ github.token }}
+          DRAFT: ${{ inputs.draft }}
         run: |
           xz -9e -T0 dist/*.tar
           cd dist && sha256sum -- *.tar.gz *.tar.xz > checksums.txt && cd ..
           [ "$(wc -l < dist/checksums.txt)" -eq 8 ] || { echo "expected 8 assets"; cat dist/checksums.txt; exit 1; }
-          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes
+          if [ "${DRAFT-}" = true ]; then
+            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --target "$REF" --title "$TAG" --generate-notes
+          else
+            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes
+          fi
