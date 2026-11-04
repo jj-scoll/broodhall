@@ -26,7 +26,7 @@ real reply for each.
 | [Retry loops](retry-loops.md) | <span class="badge badge-note">NOTE</span> | Notes on the third failure of the same Bash command. |
 | [Status line](statusline.md) | | An optional status line with context, prompt-cache and rate-limit segments. Wired in your own `settings.json`. |
 | [Doctor](doctor.md) | | A start-of-session check of the install: plugin enabled, binary checksum and version, hook reachability, duplicate guards. Silent when healthy. |
-| [Options](options.md) | | The settings that turn families off and tell the guards which addresses are yours. |
+| [Options](options.md) | | The settings that turn families off, tell the guards which addresses are yours, and opt in to the RTK rewrite. |
 
 ## What can be turned off
 

@@ -223,9 +223,15 @@ func preToolUseRun(data []byte, self string, rtk func([]byte) ([]byte, []byte, i
 		emitRewrite(stdout, data, cmd, ctxOut)
 		return 0
 	}
-	out, errOut, code := rtk(data)
+	// A command that retargets git (-C, --git-dir, --work-tree) stays as typed: rtk's
+	// `rtk git -C ...` wrapper would hide the target from guards that look for it.
+	var out, errOut []byte
+	var code int
+	if !gitRetargets(in.ToolInput.Command) {
+		out, errOut, code = rtk(data)
+	}
+	stderr.Write(errOut) // exit 2: rtk's denial; exit 0: a note such as rtk missing
 	if code == 2 {
-		stderr.Write(errOut)
 		return 2
 	}
 	if out = bytes.TrimSpace(out); len(out) > 0 {
