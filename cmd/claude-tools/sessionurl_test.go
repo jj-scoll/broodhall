@@ -25,7 +25,7 @@ const (
 )
 
 func sessEnv(unpushed func(dir string) string) *guardEnv {
-	return &guardEnv{Now: t0, Session: "s", Cwd: "/repo", Home: "/home/user", State: memState{}, GitUnpushed: unpushed}
+	return &guardEnv{Now: t0, Session: "s", Cwd: "/repo", Home: "/nohome/user", State: memState{}, GitUnpushed: unpushed}
 }
 
 func TestSessionURLRuleCommandText(t *testing.T) {

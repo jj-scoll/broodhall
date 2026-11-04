@@ -25,10 +25,12 @@ real reply for each.
 | [Nudges](nudges.md) | <span class="badge badge-note">NOTE</span> | Reminds Claude to plan before `terraform` or `terragrunt` `apply` and `destroy`, and to justify a `docker build`. |
 | [Read limits](read-limits.md) | <span class="badge badge-note">NOTE</span> <span class="badge badge-block">BLOCK</span> | Notes a re-read of an unchanged file and a large file read; blocks a full read of a very large code file. |
 | [Retry loops](retry-loops.md) | <span class="badge badge-note">NOTE</span> | Notes on the third failure of the same Bash command. |
-| [Options](options.md) | | The settings that turn families off, say what to do without the binary, tell the guards which addresses and client data are yours, and opt in to the RTK rewrite. |
+| [Status line](statusline.md) | | An optional status line with context, prompt-cache and rate-limit segments. Wired in your own `settings.json`. |
+| [Doctor](doctor.md) | | A start-of-session check of the install: plugin enabled, binary checksum and version, hook reachability, duplicate guards. Silent when healthy. |
 | [Handoff gate](handoff-gate.md) | <span class="badge badge-block">BLOCK</span> | Blocks the first stop of a session once its context passes a threshold, to get the next steps written, has the handoff written in the background and arms a `/clear` that the [context-guard](../context-guard/index.md) plugin runs, and blocks a second manual `/compact`. |
 | [Write handoff](write-handoff.md) | | A subcommand, not a hook: `claude-tools write-handoff` writes the handoff from the transcript with a separate Haiku call on your Claude Code login. |
 | [Receipt](receipt.md) | | A one-line summary at Stop of what the guards did that turn. |
+| [Options](options.md) | | The settings that turn families off, say what to do without the binary, tell the guards which addresses and client data are yours, and opt in to the RTK rewrite. |
 
 ## What can be turned off
 

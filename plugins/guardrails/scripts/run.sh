@@ -1,7 +1,9 @@
 #!/bin/sh
 # guardrails hook launcher: runs this plugin version's claude-tools binary on the hook's stdin.
 # `run.sh install` (the SessionStart hook) downloads the binary from the GitHub release the
-# first time a version runs, and a failed install never stops the session start. The guards
+# first time a version runs, records its sha256 next to it, then runs `claude-tools doctor
+# -hook`, which says nothing unless the install has a problem. A failed install or a failed
+# doctor never stops the session start. The guards
 # (pre-tool-use, read-dedup, large-read-guard, config-gate) fail CLOSED: with no binary they exit
 # 2 and say on stderr what failed, how to retry and how to opt out, so PreToolUse blocks the
 # tool call instead of letting it through unguarded. Every other hook exits 0 silently, since
@@ -15,6 +17,7 @@ data=${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/guardrails}
 ver=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json")
 dest=$data/bin/$ver/claude-tools
 bin=${CLAUDE_TOOLS_BIN:-$dest}
+export CLAUDE_PLUGIN_ROOT="$root"
 
 # userConfig options reach hooks as CLAUDE_PLUGIN_OPTION_<KEY>. An option the user never set
 # falls back to the same env var outside the plugin, then to plugin.json's default.
@@ -36,7 +39,8 @@ true | TRUE | True | 1 | yes) fail_open=1 ;;
 esac
 
 if [ "${1-}" = install ]; then
-	[ -x "$bin" ] && exit 0
+	doctor() { "$bin" doctor -hook || true; exit 0; }
+	[ -x "$bin" ] && doctor
 	fail() {
 		if [ -n "$fail_open" ]; then
 			effect="so its guards are off this session (fail_open is set)"
@@ -63,7 +67,10 @@ if [ "${1-}" = install ]; then
 	(cd "$tmp" && grep "  $asset\$" checksums.txt | $sum -c - >/dev/null 2>&1) || fail "checksum mismatch"
 	tar -xzf "$tmp/$asset" -C "$tmp" claude-tools && mkdir -p "${dest%/*}" &&
 		mv -f "$tmp/claude-tools" "$dest" || fail "unpack failed"
-	exit 0
+	# What doctor compares the binary with later: the unpacked file's hash, taken after the
+	# archive passed the release checksum.
+	$sum "$dest" | sed 's|  .*|  claude-tools|' >"$dest.sha256"
+	doctor
 fi
 
 if [ ! -x "$bin" ]; then

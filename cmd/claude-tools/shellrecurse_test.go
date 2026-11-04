@@ -35,7 +35,7 @@ func TestInnerShellRecursion(t *testing.T) {
 		{"chown of a container's own path", `docker run --rm img chown -R 1000 /data`, allowed},
 		{"chown of a mounted scratch dir", `docker run --rm -v /tmp/s/rt:/opt/te img sh -c 'chown -R 1000:100 /opt/te'`, allowed},
 		{"chown of a mounted scratch subdir", `docker run -v /:/host img chown -R 1000 /host/tmp/s`, allowed},
-		{"chown through a home mount", `docker run -v /home/user:/h img chown -R 1000 /h`, chown},
+		{"chown through a home mount", `docker run -v /nohome/user:/h img chown -R 1000 /h`, chown},
 		{"chown of the nix mount", `docker run -v /nix:/n img chown -R 1000 /n/store`, allowed},
 		{"chown of the nix root", `docker run -v /nix:/n img chown -R 1000 /n`, chown},
 		{"bare chown of root", `chown -R x /`, chown},
@@ -60,7 +60,7 @@ func TestInnerShellRecursion(t *testing.T) {
 		{"--volume=", `docker run --volume=/:/host alpine rm -rf /host`, rmRoot},
 		{"glob under mount", `docker run -v /:/host alpine sh -c "rm -rf /host/*"`, rmRoot},
 		{"trailing slash", `docker run -v /:/host alpine rm -rf /host/`, rmRoot},
-		{"volume options", `podman run -v /home/user:/data:z,ro img rm -rf /data`, rmHome},
+		{"volume options", `podman run -v /nohome/user:/data:z,ro img rm -rf /data`, rmHome},
 		{"mount type=bind", `docker run --mount type=bind,source=/,target=/mnt alpine rm -rf /mnt`, rmRoot},
 		{"mount src dst", `docker run --mount type=bind,src=/home,dst=/h alpine rm -rf /h`, "block:dangerous:rm -rf /home"},
 		{"mount destination", `docker run --mount=source=/nix,destination=/n,type=bind alpine rm -rf /n`, "block:dangerous:rm -rf /nix"},
@@ -92,7 +92,7 @@ func TestInnerShellRecursion(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			env := &guardEnv{Now: time.Unix(1_800_000_000, 0), Session: "s", Cwd: "/work", Home: "/home/user", State: memState{}}
+			env := &guardEnv{Now: time.Unix(1_800_000_000, 0), Session: "s", Cwd: "/work", Home: "/nohome/user", State: memState{}}
 			if got := decide(env, tt.cmd).Kind(); got != tt.want {
 				t.Errorf("decide(%q) = %s, want %s", tt.cmd, got, tt.want)
 			}
@@ -104,7 +104,7 @@ func TestInnerShellRecursion(t *testing.T) {
 // rules: a plan run inside a container is not a plan of the host directory.
 func TestInnerShellStatefulRulesStayOuter(t *testing.T) {
 	st := memState{}
-	env := &guardEnv{Now: time.Unix(1_800_000_000, 0), Session: "s", Cwd: "/infra", Home: "/home/user", State: st}
+	env := &guardEnv{Now: time.Unix(1_800_000_000, 0), Session: "s", Cwd: "/infra", Home: "/nohome/user", State: st}
 	decide(env, `docker run img terraform plan`)
 	if len(st) != 0 {
 		t.Errorf("a plan inside a container marked state: %v", st)

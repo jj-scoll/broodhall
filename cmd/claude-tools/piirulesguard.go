@@ -18,6 +18,7 @@ package main
 // the obvious routes fail loudly so they happen only by deliberate circumvention.
 
 import (
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -51,6 +52,9 @@ func rulesFiles(home, xdg string) []string {
 }
 
 // resolveForCompare makes p absolute and follows symlinks as far as the path exists.
+// A level that Lstat cannot see is skipped with that one call: EvalSymlinks walks every
+// component from the root, so trying it at each level of a missing path costs depth² stats,
+// and on macOS every one under /home goes through autofs.
 func resolveForCompare(p, cwd string) string {
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(cwd, p)
@@ -58,8 +62,10 @@ func resolveForCompare(p, cwd string) string {
 	p = filepath.Clean(p)
 	rest := ""
 	for q := p; ; q = filepath.Dir(q) {
-		if r, err := filepath.EvalSymlinks(q); err == nil {
-			return filepath.Join(r, rest)
+		if _, err := os.Lstat(q); err == nil {
+			if r, err := filepath.EvalSymlinks(q); err == nil {
+				return filepath.Join(r, rest)
+			}
 		}
 		rest = filepath.Join(filepath.Base(q), rest)
 		if filepath.Dir(q) == q {

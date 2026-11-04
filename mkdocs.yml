@@ -54,6 +54,8 @@ nav:
       - Nudges: guardrails/nudges.md
       - Read limits: guardrails/read-limits.md
       - Retry loops: guardrails/retry-loops.md
+      - Status line: guardrails/statusline.md
+      - Doctor: guardrails/doctor.md
       - Handoff gate: guardrails/handoff-gate.md
       - Write handoff: guardrails/write-handoff.md
       - Receipt: guardrails/receipt.md
