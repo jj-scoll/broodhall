@@ -39,6 +39,9 @@ version each time it runs:
 }
 ```
 
+This command needs no `HANDOFF_STATE_DIR`: the binary finds the handoff state in the plugin
+data directory it lives in (see [handoff-gate.md](handoff-gate.md#state)).
+
 - The data directory is named `guardrails-<marketplace>`; change `guardrails-broodhall` if
   you installed from a marketplace with another name.
 - `CLAUDE_CONFIG_DIR` is honored, so one shared `settings.json` works for several accounts,
