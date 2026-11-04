@@ -30,6 +30,11 @@ Each of the three is masked first (below), then cut to its first 6,000 and last 
 characters if it is longer. The cut happens after masking, so it cannot expose half of a
 secret. Session summaries use the same command and the same masking.
 
+Compaction summaries are not sent anywhere. They are masked with the same rules before they
+are written to the `compactions/` folder, and again before they are stored. One exception:
+if the hook runs before the `memory` binary is installed, it saves the summary unmasked
+(file mode 0600) and the daemon masks it when it reads the file.
+
 Tools in the skip list are never sent. By default these are `listmcpresourcestool`,
 `slashcommand`, `skill`, `todowrite` and `askuserquestion`. You can change the list, and add
 a pattern that skips matching Bash commands, in [Options](options.md).

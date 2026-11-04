@@ -163,6 +163,25 @@ emit() {
 	if run_bounded "$@"; then cat "$outf"; fi
 }
 
+# spool_raw copies the hook payload into the daemon's compaction spool when the binary is
+# missing or failed, so a compaction summary is not lost; the daemon redacts and validates it
+# on ingest. The spool is <state dir>/compactions, the binary's own choice of state dir.
+spool_raw() {
+	if [ -n "${MEMORY_DIR-}" ]; then
+		sdir=$MEMORY_DIR
+	else
+		case ${XDG_DATA_HOME-} in
+		/*) sdir=$XDG_DATA_HOME/memory ;;
+		*) sdir=$HOME/.local/share/memory ;;
+		esac
+	fi
+	sdir=$sdir/compactions
+	f=raw-$(date +%s)-$$.json
+	( umask 077
+		mkdir -p "$sdir" && cp "$in" "$sdir/.$f.tmp" && mv "$sdir/.$f.tmp" "$sdir/$f"
+	) 2>/dev/null || log "compact-capture: could not spool the payload into $sdir"
+}
+
 main() {
 	mode=${1-}
 	if [ "$mode" = mcp ]; then
@@ -195,6 +214,9 @@ main() {
 		else
 			bg_install
 		fi
+		;;
+	compact-capture) # PostCompact: no stdout, and the summary must not be lost
+		if [ -x "$bin" ] && run_bounded "$@"; then :; else spool_raw; fi
 		;;
 	"") log "usage: run.sh session-start|install|mcp|<subcommand>" ;;
 	*)

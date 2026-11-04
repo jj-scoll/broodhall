@@ -165,6 +165,38 @@ else
 	bad "hooks.json runs lookup before Edit, Write and NotebookEdit" "no matching PreToolUse entry"
 fi
 
+# --- 2d. PostCompact compact-capture: wired in hooks.json, prints nothing whatever the binary
+# does, and a payload is never lost: with no binary (or a binary that fails) the raw payload
+# is spooled for the daemon to ingest.
+if jq -e '.hooks.PostCompact[0].hooks[] | select(.command | endswith("run.sh\" compact-capture"))' "$root/hooks/hooks.json" >/dev/null 2>&1; then
+	ok "hooks.json runs compact-capture on PostCompact"
+else
+	bad "hooks.json runs compact-capture on PostCompact" "no PostCompact entry"
+fi
+payload='{"session_id":"abc-1","cwd":"/tmp","hook_event_name":"PostCompact","trigger":"manual","compact_summary":"we fixed it"}'
+cc() { # <case> : run compact-capture with $payload
+	c=$tmp/$1
+	out=$(printf '%s' "$payload" | sh "$run_sh" compact-capture 2>"$c/stderr")
+	rc=$?
+}
+newcase t2d
+export MEMORY_DIR=$tmp/t2d/mem
+cc t2d
+expect_open "compact-capture with no binary prints nothing"
+n=$(ls "$MEMORY_DIR/compactions"/*.json 2>/dev/null | wc -l)
+if [ "$n" -eq 1 ] && grep -q 'we fixed it' "$MEMORY_DIR"/compactions/*.json; then ok "compact-capture with no binary spools the raw payload"; else bad "compact-capture with no binary spools the raw payload" "files=$n"; fi
+if ls "$MEMORY_DIR/compactions"/.* >/dev/null 2>&1 && [ -n "$(find "$MEMORY_DIR/compactions" -name '.*.tmp' 2>/dev/null)" ]; then bad "no temp files left in the spool" "$(ls -a "$MEMORY_DIR/compactions")"; else ok "no temp files left in the spool"; fi
+newcase t2d-stub
+mkstub "$tmp/t2d-stub/memory"
+export MEMORY_BIN=$tmp/t2d-stub/memory MEMORY_DIR=$tmp/t2d-stub/mem
+cc t2d-stub
+expect_open "compact-capture with a working binary prints nothing"
+if grep -q '^compact-capture ' "$tmp/t2d-stub/mark" && [ ! -d "$MEMORY_DIR/compactions" ]; then ok "compact-capture hands the payload to the binary, no shell spool"; else bad "compact-capture hands the payload to the binary, no shell spool" "mark: $(cat "$tmp/t2d-stub/mark")"; fi
+export STUB_MODE=crash
+cc t2d-stub
+expect_open "compact-capture with a crashing binary prints nothing"
+if [ "$(ls "$MEMORY_DIR/compactions"/*.json 2>/dev/null | wc -l)" -eq 1 ]; then ok "a failed compact-capture falls back to the raw spool"; else bad "a failed compact-capture falls back to the raw spool" "$(ls -a "$MEMORY_DIR/compactions" 2>&1)"; fi
+
 # --- 3. checksum mismatch: never execute, never install
 newcase t3
 mkrelease "$tmp/t3/rel"

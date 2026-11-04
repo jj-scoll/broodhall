@@ -107,7 +107,7 @@ func memdServe(ctx context.Context, dir string, roots map[string]string) error {
 
 	var wg sync.WaitGroup
 	tailer := newMemdTailer(db, roots, time.Now())
-	wg.Add(4)
+	wg.Add(5)
 	// The in-memory search index builds in the background; searches use SQL until it is ready.
 	go func() { defer wg.Done(); searcherFor(db).buildAll(runCtx) }()
 	go func() {
@@ -118,6 +118,7 @@ func memdServe(ctx context.Context, dir string, roots map[string]string) error {
 	}()
 	go func() { defer wg.Done(); runObserverWorkers(runCtx, db, 0) }()
 	go func() { defer wg.Done(); runSummaryWorker(runCtx, db) }()
+	go func() { defer wg.Done(); runCompactionDrain(runCtx, db, filepath.Join(dir, "compactions")) }()
 
 	// UI: loopback TCP. No WriteTimeout, which would cut the SSE stream at /api/v1/events (R39).
 	// A failed bind is logged and memory keeps serving the socket.

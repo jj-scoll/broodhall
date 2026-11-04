@@ -174,6 +174,16 @@ CREATE TABLE IF NOT EXISTS summaries (
 	source             VARCHAR NOT NULL CHECK (source IN ('imported','live')),
 	created_at         TIMESTAMP NOT NULL DEFAULT current_timestamp
 );
+-- One row per captured compaction (PostCompact hook): the idempotency key and the marker that
+-- summary_id's summaries row is a compaction summary, not a model-written session summary.
+CREATE TABLE IF NOT EXISTS compactions (
+	capture_key VARCHAR PRIMARY KEY,
+	summary_id  BIGINT NOT NULL,
+	session_id  VARCHAR NOT NULL DEFAULT '',
+	trigger     VARCHAR NOT NULL DEFAULT '',
+	cwd         VARCHAR NOT NULL DEFAULT '',
+	created_at  TIMESTAMP NOT NULL DEFAULT current_timestamp
+);
 CREATE TABLE IF NOT EXISTS summary_requests (
 	session_id VARCHAR PRIMARY KEY,
 	state      VARCHAR NOT NULL DEFAULT 'pending' CHECK (state IN ('pending','done','rejected')),
