@@ -109,7 +109,7 @@ func TestCheckPluginSkew(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := newCfgFixture(t)
 			c.installed(t, tt.pairs...)
-			got := checkPluginSkew(c.dir)
+			got := checkPluginSkew(c.dir, "")
 			if tt.want == nil {
 				if len(got) != 0 {
 					t.Errorf("want no problem, got %q", got)
@@ -133,7 +133,7 @@ func TestCheckPluginSkewRecognisesRenamedMarketplace(t *testing.T) {
 	c := newCfgFixture(t)
 	c.installed(t, "guardrails@team-bh", "1.5.3", "memory@team-bh", "1.6.0")
 	c.write(t, "plugins/known_marketplaces.json", `{"team-bh":{"source":{"source":"github","repo":"jj-scoll/broodhall"},"installLocation":"`+filepath.Join(c.dir, "plugins/marketplaces/team-bh")+`"}}`)
-	if got := checkPluginSkew(c.dir); len(got) != 1 || !strings.Contains(got[0], "team-bh") {
+	if got := checkPluginSkew(c.dir, ""); len(got) != 1 || !strings.Contains(got[0], "team-bh") {
 		t.Errorf("renamed marketplace: got %q", got)
 	}
 }
@@ -142,7 +142,7 @@ func TestCheckMarketplaceVersions(t *testing.T) {
 	c := newCfgFixture(t)
 	c.installed(t, "guardrails@broodhall", "1.5.3", "memory@broodhall", "1.6.0")
 	c.marketplace(t, "broodhall", "guardrails", "1.6.0", "memory", "1.6.0")
-	got := checkMarketplaceVersions(c.dir)
+	got := checkMarketplaceVersions(c.dir, "")
 	if len(got) != 1 {
 		t.Fatalf("want one problem (guardrails behind), got %q", got)
 	}
@@ -158,14 +158,14 @@ func TestCheckMarketplaceVersionsQuietCases(t *testing.T) {
 		c := newCfgFixture(t)
 		c.installed(t, "guardrails@broodhall", "1.6.0")
 		c.marketplace(t, "broodhall", "guardrails", "1.6.0")
-		if got := checkMarketplaceVersions(c.dir); len(got) != 0 {
+		if got := checkMarketplaceVersions(c.dir, ""); len(got) != 0 {
 			t.Errorf("got %q", got)
 		}
 	})
 	t.Run("no marketplace checkout", func(t *testing.T) {
 		c := newCfgFixture(t)
 		c.installed(t, "guardrails@broodhall", "1.5.3")
-		if got := checkMarketplaceVersions(c.dir); len(got) != 0 {
+		if got := checkMarketplaceVersions(c.dir, ""); len(got) != 0 {
 			t.Errorf("got %q", got)
 		}
 	})
@@ -174,7 +174,7 @@ func TestCheckMarketplaceVersionsQuietCases(t *testing.T) {
 		c.installed(t, "rtk@broodhall", "0.1.0")
 		c.write(t, "plugins/marketplaces/broodhall/.claude-plugin/marketplace.json",
 			`{"name":"broodhall","owner":{"name":"x"},"plugins":[{"name":"rtk","source":{"source":"git-subdir","url":"u","path":"p"}}]}`)
-		if got := checkMarketplaceVersions(c.dir); len(got) != 0 {
+		if got := checkMarketplaceVersions(c.dir, ""); len(got) != 0 {
 			t.Errorf("an external source has no version to read here: got %q", got)
 		}
 	})
@@ -183,7 +183,7 @@ func TestCheckMarketplaceVersionsQuietCases(t *testing.T) {
 		c.installed(t, "memory@broodhall", "1.5.0")
 		c.write(t, "plugins/marketplaces/broodhall/.claude-plugin/marketplace.json",
 			`{"name":"broodhall","owner":{"name":"x"},"plugins":[{"name":"memory","source":"./plugins/memory","version":"1.6.0"}]}`)
-		if got := checkMarketplaceVersions(c.dir); len(got) != 1 {
+		if got := checkMarketplaceVersions(c.dir, ""); len(got) != 1 {
 			t.Errorf("entry version should count: got %q", got)
 		}
 	})
@@ -193,7 +193,7 @@ func TestCheckMarketplaceVersionsQuietCases(t *testing.T) {
 		c.write(t, "plugins/marketplaces/broodhall/plugins/memory/.claude-plugin/plugin.json", `{"name":"memory","version":"1.6.0"}`)
 		c.write(t, "plugins/marketplaces/broodhall/.claude-plugin/marketplace.json",
 			`{"name":"broodhall","owner":{"name":"x"},"plugins":[{"name":"memory","source":"./plugins/memory","version":"9.9.9"}]}`)
-		if got := checkMarketplaceVersions(c.dir); len(got) != 0 {
+		if got := checkMarketplaceVersions(c.dir, ""); len(got) != 0 {
 			t.Errorf("manifest version wins over the entry: got %q", got)
 		}
 	})

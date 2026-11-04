@@ -27,7 +27,7 @@ Ask the user to pick one. A profile only sets plugin options that already exist.
 | Profile | What it does |
 | --- | --- |
 | `standard` | Every guard family on. The guards stop or ask, as described in the docs. |
-| `observe` | Every guard family on, but the optional guards only log what they would have asked or blocked. Good for the first few days. Run `guardrails guard-report` later to see the counts. |
+| `observe` | Every guard family on, but the optional guards only log what they would have asked or blocked. Good for the first few days. The user can run `guard-report` through the plugin launcher later to see the counts. |
 
 If they want a family off, tell them to use `/plugin configure guardrails@broodhall` themselves. That is a deliberate choice, and the config gate refuses it when it is made in a running session.
 
@@ -55,7 +55,12 @@ On a yes, run the same command with `-write` added:
 sh "${CLAUDE_PLUGIN_ROOT}/scripts/run.sh" setup -profile standard -domains acme.com -write
 ```
 
-Claude Code asks the user to confirm a change to a settings file. That is expected. If setup reports an error, such as a settings file that is not valid JSON, show the message and stop. Do not edit the file by hand to get around it.
+Two things happen here, and both are expected.
+
+1. The guardrails settings-file guard asks the user to approve this command, because `setup -write` changes `settings.json`. Tell the user to approve it only if it matches the preview they just saw.
+2. After the write, config-gate may report `blocked the change to settings.json` and say this session keeps its current settings. That happens when the change turns observe mode on or adds an email domain, since both loosen a guard. It is not a failure: the file is written, and the new options apply from the next session. Tell the user to start a new session.
+
+If setup reports an error, such as a settings file that is not valid JSON, is read-only, or has content after its JSON value, show the message and stop. Do not edit the file by hand to get around it.
 
 ## 6. Run doctor
 

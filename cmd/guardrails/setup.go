@@ -25,6 +25,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -59,17 +60,14 @@ func setupRun(out, errw io.Writer, args []string) int {
 	}
 	if *domains != "" {
 		list, err := normalizeDomains(*domains)
-		if err != nil || list == "" {
-			if err == nil {
-				err = fmt.Errorf("-domains names no domain")
-			}
+		if err != nil {
 			fmt.Fprintln(errw, "setup:", err)
 			return 2
 		}
 		want["allowed_email_domains"] = list
 	}
-	if strings.ContainsAny(*market, "@ \t") {
-		fmt.Fprintf(errw, "setup: marketplace %q must be a bare name such as broodhall\n", *market)
+	if *market != "" && (!marketplaceNameRE.MatchString(*market) || strings.Contains(*market, "..")) {
+		fmt.Fprintf(errw, "setup: marketplace %q must be a bare name such as broodhall (letters, digits, dot, dash, underscore)\n", *market)
 		return 2
 	}
 
@@ -78,7 +76,12 @@ func setupRun(out, errw io.Writer, args []string) int {
 		dir = claudeConfigDir()
 	}
 	path := filepath.Join(dir, "settings.json")
-	if r, err := filepath.EvalSymlinks(path); err == nil {
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		r, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			fmt.Fprintf(errw, "setup: %s is a symlink to a file that does not exist, so setup leaves it alone: %v\n", path, err)
+			return 1
+		}
 		path = r // write through a symlinked settings.json, keep the link
 	}
 
@@ -92,10 +95,21 @@ func setupRun(out, errw io.Writer, args []string) int {
 	if exists && len(bytes.TrimSpace(raw)) > 0 {
 		dec := json.NewDecoder(bytes.NewReader(raw))
 		dec.UseNumber()
-		if err := dec.Decode(&doc); err != nil {
+		var top any
+		if err := dec.Decode(&top); err != nil {
 			fmt.Fprintf(errw, "setup: %s is not valid JSON, so setup leaves it alone: %v\n", path, err)
 			return 1
 		}
+		if _, err := dec.Token(); err != io.EOF {
+			fmt.Fprintf(errw, "setup: %s has content after its JSON value, so setup leaves it alone\n", path)
+			return 1
+		}
+		obj, ok := top.(map[string]any)
+		if !ok {
+			fmt.Fprintf(errw, "setup: %s does not hold a JSON object, so setup leaves it alone\n", path)
+			return 1
+		}
+		doc = obj
 	}
 
 	id := "guardrails@" + *market
@@ -103,8 +117,8 @@ func setupRun(out, errw io.Writer, args []string) int {
 		id = "guardrails@" + broodhallMarketplace
 		if ep, ok := doc["enabledPlugins"].(map[string]any); ok {
 			keys := make([]string, 0, len(ep))
-			for k := range ep {
-				if strings.HasPrefix(k, guardsPlugin) {
+			for k, v := range ep {
+				if strings.HasPrefix(k, guardsPlugin) && v != false {
 					keys = append(keys, k)
 				}
 			}
@@ -188,7 +202,11 @@ func setupRun(out, errw io.Writer, args []string) int {
 		return 1
 	}
 	if exists {
-		if err := os.WriteFile(path+".guardrails-setup.bak", raw, 0o600); err != nil {
+		if fi, err := os.Stat(path); err == nil && fi.Mode().Perm()&0o200 == 0 {
+			fmt.Fprintf(errw, "setup: %s is read-only, so nothing was written; make it writable first\n", path)
+			return 1
+		}
+		if err := writeBackup(path+".guardrails-setup.bak", raw); err != nil {
 			fmt.Fprintf(errw, "setup: cannot back up %s, so nothing was written: %v\n", path, err)
 			return 1
 		}
@@ -203,6 +221,25 @@ func setupRun(out, errw io.Writer, args []string) int {
 	}
 	fmt.Fprintln(out, "\nClaude Code reloads settings on change; start a new session if an option does not seem to apply.")
 	return 0
+}
+
+var marketplaceNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// writeBackup replaces the backup file with data. It removes what is there first and creates
+// the new file exclusively, so a symlink left at that name is replaced, never written through.
+func writeBackup(path string, data []byte) error {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 func jsonStr(v any) string {

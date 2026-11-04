@@ -35,7 +35,14 @@ Merge the result into `.claude/settings.json` in the repository and commit it:
 ```
 
 Each teammate accepts the folder trust prompt once. Claude Code then registers the marketplace
-and installs the plugins. Until they accept it, the marketplace entry is ignored.
+and installs the plugins that live in this repository: guardrails, memory and context-guard.
+Until they accept it, the marketplace entry is ignored.
+
+!!! warning "rtk is not installed this way"
+    rtk comes from another repository. Claude Code does not install a plugin from an external
+    source on the strength of repository settings alone. If you add `-plugins guardrails,rtk`,
+    each person must also run `claude plugin install rtk@broodhall` once. Until they do, Claude
+    Code reports that rtk is enabled in project settings but not installed.
 
 - `extraKnownMarketplaces` maps a marketplace name to a `source` and an optional
   `autoUpdate`. The `github` source takes `repo`. Other sources are `git` (a `url`), `url`,
@@ -87,8 +94,12 @@ alphabetical order. MDM and server-managed settings are other ways to deliver th
 - To also stop people adding other marketplaces, add `strictKnownMarketplaces`. It is managed
   only. `team-init` does not print it, because it is a policy choice. See the Claude Code
   [settings reference](https://code.claude.com/docs/en/settings-reference#strictknownmarketplaces).
-- The guardrails doctor does not read managed settings, so a plugin enabled only there shows
-  a `WARN` for "plugin enabled". It is harmless.
+- `guardrails doctor` reads the managed settings files at the paths above, so a plugin enabled
+  only there does not draw a "plugin enabled" warning. Server-managed settings and MDM
+  profiles are not files doctor can read, so a plugin enabled only through those still gets
+  that `WARN` at every session start.
+- A managed `observe` option or `allowed_email_domains` entry is judged by config-gate like a
+  user one: it only guards against a change made in a running session.
 
 ## After the rollout
 
@@ -102,6 +113,8 @@ lacks. `guardrails doctor` checks for this with two warnings, shown at session s
 
 - The installed broodhall plugins in `plugins/installed_plugins.json` are at more than one
   version. The message names the plugins behind and the `claude plugin update` command for each.
+  Only user-scope installs count, plus project or local installs recorded for the project you
+  are in. An install made for another repository is not loaded here and is never reported.
 - An installed plugin differs from the version the marketplace checkout on disk offers. Doctor
   reads the checkout under `plugins/marketplaces/`, or the `installLocation` that
   `known_marketplaces.json` records. It does not read a `ref` or `sha` from your settings.

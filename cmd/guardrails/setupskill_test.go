@@ -38,6 +38,9 @@ func TestSetupSkillMatchesTheBinary(t *testing.T) {
 		"-profile standard",
 		"-profile observe",
 		"-domains",
+		"settings-file guard asks",
+		"config-gate may report",
+		"next session",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("SKILL.md lacks %q", want)

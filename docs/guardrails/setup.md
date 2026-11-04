@@ -62,8 +62,24 @@ settings, never from a project file. This is what `/plugin configure` writes too
 - The file is rewritten with its keys sorted and two-space indentation. The previous contents
   are kept in `settings.json.guardrails-setup.bak`. A run that changes nothing writes nothing
   and makes no backup.
-- A `settings.json` that is a symlink is written through, and the link stays.
-- A file that is not valid JSON is left alone.
+- A `settings.json` that is a symlink is written through, and the link stays. A symlink to a
+  file that does not exist is left alone.
+- A file that is not valid JSON, holds anything but one JSON object, or has content after the
+  object is left alone. So is a read-only file.
+- Run one setup at a time. Two runs at once can lose one of the two changes.
+
+## Asking and config-gate
+
+`setup -write` changes your settings file without naming it, so the guardrails
+settings-file guard treats it like any other model write to `settings.json` and asks you to
+approve it. This holds for the plugin launcher and for the binary under either name.
+
+[Config-gate](config-gate.md) also treats two of these options as loosening a guard, the way
+it treats `disabled_guards`: turning `observe` on, and adding an entry to
+`allowed_email_domains`. When setup does either, config-gate may report `blocked the change`
+and keep the running session on its old settings. The file is written, and the options apply
+from your next session. Turning `observe` off, removing a domain, and the `standard` profile
+raise protection and pass silently.
 
 ## From a terminal
 

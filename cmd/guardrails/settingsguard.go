@@ -45,8 +45,71 @@ func isSettingsPath(p string) bool {
 	return false
 }
 
+// setupWrappers are command words that run the next word: skipped to find the real command.
+var setupWrappers = map[string]bool{"env": true, "exec": true, "command": true, "sudo": true, "time": true, "nohup": true, "nice": true}
+
+var setupShells = map[string]bool{"sh": true, "bash": true, "zsh": true, "dash": true}
+
+// setupBinaries are the names `setup` runs under: the binary (also by its old name) and the
+// plugin launcher.
+var setupBinaries = map[string]bool{"guardrails": true, "claude-tools": true, "run.sh": true}
+
+// setupWriteCall reports whether the command segment runs `<guardrails> setup ... -write`.
+// That subcommand rewrites the user's settings.json without naming the file, so it needs the
+// same ask as any other model write there. The binary must be the command word (after env
+// assignments and wrappers such as sh, env, exec), so a commit message, an echo or a grep that
+// only mentions it does not ask. A binary reached through a variable is not seen: the same
+// speed-bump caveat as the rest of this guard.
+func setupWriteCall(seg string) bool {
+	toks := strings.Fields(seg)
+	trim := func(s string) string { return strings.Trim(s, `"'`+"`()") }
+	for i := 0; i < len(toks); i++ {
+		t := trim(toks[i])
+		base := strings.TrimSuffix(filepath.Base(strings.ReplaceAll(t, `\`, "/")), ".exe")
+		switch {
+		case t == "" || strings.Contains(t, "=") && !strings.ContainsAny(t, "/\\") && !strings.HasPrefix(t, "-"):
+			continue // VAR=value
+		case setupWrappers[base] && !setupBinaries[base]:
+			continue
+		case setupShells[base]:
+			for j := i + 1; j < len(toks); j++ {
+				if trim(toks[j]) == "-c" {
+					return setupWriteCall(strings.Join(toks[j+1:], " "))
+				}
+			}
+			continue // sh script.sh setup ...: the script is the next word
+		case setupBinaries[base]:
+			if i+1 >= len(toks) || trim(toks[i+1]) != "setup" {
+				return false
+			}
+			for _, a := range toks[i+2:] {
+				a = trim(a)
+				if a == "-write" || a == "--write" {
+					return true
+				}
+				if v, ok := strings.CutPrefix(strings.TrimLeft(a, "-"), "write="); ok && strings.HasPrefix(a, "-") {
+					switch strings.ToLower(v) {
+					case "false", "0", "f", "":
+					default:
+						return true
+					}
+				}
+			}
+			return false
+		default:
+			return false
+		}
+	}
+	return false
+}
+
 // settingsGuard is the Bash half of the guard.
 func settingsGuard(env *guardEnv, cmd string) decision {
+	for _, seg := range segSplitRE.Split(cmd, -1) {
+		if setupWriteCall(seg) {
+			return settingsAsk("guardrails setup -write")
+		}
+	}
 	if !strings.Contains(cmd, ".claude") && !strings.Contains(cmd, "settings") {
 		return decision{}
 	}

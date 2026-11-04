@@ -17,6 +17,8 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Setenv("HANDOFF_STATE_DIR", dir)
+	// No test reads or writes the real ~/.claude: tests that mean a config dir set their own.
+	os.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(dir, "claude-config"))
 	os.Setenv("CLAUDE_MEM_DATA_DIR", dir) // no settings.json: memd keeps the default skip lists
 	code := m.Run()
 	os.RemoveAll(dir)

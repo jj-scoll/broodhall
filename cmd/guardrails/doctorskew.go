@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,6 +24,19 @@ import (
 
 type installedPlugin struct {
 	Name, Marketplace, Version, Scope string
+	// ProjectPath is the project a project or local scope install belongs to.
+	ProjectPath string
+}
+
+// appliesTo reports whether this install is loaded in a session in projectDir: user and
+// managed installs always are, project and local installs only in the project they were
+// made for. With no project directory known, only the first kind count.
+func (p installedPlugin) appliesTo(projectDir string) bool {
+	switch p.Scope {
+	case "project", "local":
+		return projectDir != "" && p.ProjectPath != "" && filepath.Clean(p.ProjectPath) == filepath.Clean(projectDir)
+	}
+	return true
 }
 
 // broodhallPlugins are the plugins that share this repository's version. rtk lives in another
@@ -46,8 +60,9 @@ func readInstalledPlugins(configDir string) ([]installedPlugin, error) {
 		return nil, fmt.Errorf("installed_plugins.json: %w", err)
 	}
 	type rec struct {
-		Scope   string `json:"scope"`
-		Version string `json:"version"`
+		Scope       string `json:"scope"`
+		Version     string `json:"version"`
+		ProjectPath string `json:"projectPath"`
 	}
 	var out []installedPlugin
 	ids := make([]string, 0, len(doc.Plugins))
@@ -70,12 +85,16 @@ func readInstalledPlugins(configDir string) ([]installedPlugin, error) {
 		}
 		for _, r := range recs {
 			if r.Version != "" {
-				out = append(out, installedPlugin{Name: name, Marketplace: mkt, Version: r.Version, Scope: r.Scope})
+				out = append(out, installedPlugin{Name: name, Marketplace: mkt, Version: r.Version, Scope: r.Scope, ProjectPath: r.ProjectPath})
 			}
 		}
 	}
 	return out, nil
 }
+
+// broodhallURLRe matches the broodhall repository's clone URLs exactly, so a fork such as
+// jj-scoll/broodhall-fork does not count.
+var broodhallURLRe = regexp.MustCompile(`(?i)^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)` + `jj-scoll/broodhall(\.git)?/?$`)
 
 // broodhallMarketplaces returns the marketplace names that serve broodhall: the default name,
 // plus any marketplace whose recorded source is the broodhall repository (a renamed copy).
@@ -95,7 +114,7 @@ func broodhallMarketplaces(configDir string) map[string]bool {
 		return out
 	}
 	for name, k := range known {
-		if k.Source.Repo == "jj-scoll/broodhall" || strings.Contains(k.Source.URL, "jj-scoll/broodhall") {
+		if strings.EqualFold(k.Source.Repo, broodhallRepo) || broodhallURLRe.MatchString(k.Source.URL) {
 			out[name] = true
 		}
 	}
@@ -103,7 +122,7 @@ func broodhallMarketplaces(configDir string) map[string]bool {
 }
 
 // broodhallInstalls returns the installed broodhall plugins, grouped by marketplace.
-func broodhallInstalls(configDir string) map[string][]installedPlugin {
+func broodhallInstalls(configDir, projectDir string) map[string][]installedPlugin {
 	all, err := readInstalledPlugins(configDir)
 	if err != nil || len(all) == 0 {
 		return nil
@@ -111,7 +130,7 @@ func broodhallInstalls(configDir string) map[string][]installedPlugin {
 	mkts := broodhallMarketplaces(configDir)
 	out := map[string][]installedPlugin{}
 	for _, p := range all {
-		if broodhallPlugins[p.Name] && mkts[p.Marketplace] {
+		if broodhallPlugins[p.Name] && mkts[p.Marketplace] && p.appliesTo(projectDir) {
 			out[p.Marketplace] = append(out[p.Marketplace], p)
 		}
 	}
@@ -147,14 +166,16 @@ func versionLess(a, b string) bool {
 
 // checkPluginSkew reports each marketplace whose installed broodhall plugins are not all at
 // one version. Plugins behind the newest are the ones to update.
-func checkPluginSkew(configDir string) []string {
+func checkPluginSkew(configDir, projectDir string) []string {
 	var out []string
-	groups := broodhallInstalls(configDir)
+	groups := broodhallInstalls(configDir, projectDir)
 	for _, mkt := range sortedKeys(groups) {
 		versions := map[string]bool{}
 		newest := ""
+		ordered := true // every version is X.Y.Z, so "behind" means something
 		for _, p := range groups[mkt] {
 			versions[p.Version] = true
+			ordered = ordered && semverRe.MatchString(p.Version)
 			if newest == "" || versionLess(newest, p.Version) {
 				newest = p.Version
 			}
@@ -166,7 +187,8 @@ func checkPluginSkew(configDir string) []string {
 		seen := map[string]bool{}
 		for _, p := range groups[mkt] {
 			have = append(have, p.Name+" "+p.Version)
-			if p.Version != newest && !seen[p.Name] {
+			// With a version it cannot order (a pre-release), name every plugin.
+			if (p.Version != newest || !ordered) && !seen[p.Name] {
 				seen[p.Name] = true
 				update = append(update, "claude plugin update "+p.Name+"@"+mkt)
 			}
@@ -224,9 +246,9 @@ func marketplaceVersion(configDir, mkt, name string) (version string, ok bool) {
 // checkMarketplaceVersions reports each installed broodhall plugin whose version differs from
 // the one the marketplace checkout on disk offers. The checkout is what `claude plugin update`
 // installs from. A ref or sha pinned in settings is not read: only the checkout is.
-func checkMarketplaceVersions(configDir string) []string {
+func checkMarketplaceVersions(configDir, projectDir string) []string {
 	var out []string
-	groups := broodhallInstalls(configDir)
+	groups := broodhallInstalls(configDir, projectDir)
 	for _, mkt := range sortedKeys(groups) {
 		seen := map[string]bool{}
 		for _, p := range groups[mkt] {
@@ -247,7 +269,7 @@ func checkMarketplaceVersions(configDir string) []string {
 
 // oldBinaryRe matches claude-tools as the last element of a path or a bare command word. A
 // directory named claude-tools (~/.config/claude-tools/...) is followed by a slash and does not match.
-var oldBinaryRe = regexp.MustCompile(`(^|[\s/'"])claude-tools($|[\s'"])`)
+var oldBinaryRe = regexp.MustCompile("(^|[\\s/\\\\'\"(`])claude-tools(\\.exe)?($|[\\s'\";|&)`])")
 
 // checkStatusLine returns a problem when the settings' statusLine command still runs the binary
 // under its old name, claude-tools. Plugins from the rename on install guardrails, so that name
@@ -259,4 +281,25 @@ func checkStatusLine(files []string) string {
 		}
 	}
 	return ""
+}
+
+// managedSettingsRoot is the system directory Claude Code reads managed settings from
+// (https://code.claude.com/docs/en/managed-settings), by operating system.
+func managedSettingsRoot() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "/Library/Application Support/ClaudeCode"
+	case "windows":
+		return `C:\Program Files\ClaudeCode`
+	}
+	return "/etc/claude-code"
+}
+
+// managedSettingsFilesIn lists managed-settings.json, then the managed-settings.d/*.json
+// drop-ins in alphabetical order, the order Claude Code merges them. Missing files are fine.
+func managedSettingsFilesIn(root string) []string {
+	files := []string{filepath.Join(root, "managed-settings.json")}
+	drop, _ := filepath.Glob(filepath.Join(root, "managed-settings.d", "*.json"))
+	sort.Strings(drop)
+	return append(files, drop...)
 }

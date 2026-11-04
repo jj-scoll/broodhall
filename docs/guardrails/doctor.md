@@ -16,7 +16,7 @@ CLAUDE_PLUGIN_ROOT=<plugin dir> /path/to/guardrails doctor
 
 | Check | Level | Passes when |
 | --- | --- | --- |
-| plugin enabled | `FAIL`, `WARN` | `enabledPlugins` in your user, project or local settings names `guardrails` and does not set it false. A marketplace install with no entry at all gives a `WARN`: managed settings are not read. |
+| plugin enabled | `FAIL`, `WARN` | `enabledPlugins` in your user, project or local settings names `guardrails` and does not set it false. Managed settings files (`managed-settings.json` and `managed-settings.d/*.json` in the system directory) count too. A marketplace install with no entry in any of them gives a `WARN`. |
 | hooks reachable | `FAIL` | Every command in the plugin's `hooks/hooks.json` can start: the launcher script exists, and the subcommand it names is one this binary has. |
 | version | `FAIL` | The binary carries a version stamp, and it equals the `version` in `plugin.json`. |
 | binary | `FAIL` | The binary's sha256 equals the one the launcher recorded in `guardrails.sha256` beside it after it checked the release archive. A binary with no record passes. |

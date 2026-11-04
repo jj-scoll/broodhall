@@ -106,7 +106,11 @@ func teamInit(out, errw io.Writer, args []string) int {
 			"A plugin set to true here is force-enabled and users cannot turn it off.\n")
 	} else {
 		fmt.Fprint(errw, "Merge this into .claude/settings.json and commit it. Each teammate accepts the folder trust prompt once,\n"+
-			"then Claude Code registers the marketplace and installs the plugins. For your own machine, merge it into ~/.claude/settings.json.\n")
+			"then Claude Code registers the marketplace and installs the plugins that live in this repository. For your own machine, merge it into ~/.claude/settings.json.\n")
+	}
+	if enabled["rtk@"+broodhallMarketplace] != nil {
+		fmt.Fprint(errw, "rtk comes from another repository, and Claude Code does not install such a plugin from settings alone.\n"+
+			"Each person runs once: claude plugin install rtk@broodhall\n")
 	}
 	return 0
 }
@@ -138,6 +142,9 @@ func normalizeDomains(s string) (string, error) {
 			seen[d] = true
 			out = append(out, d)
 		}
+	}
+	if len(out) == 0 {
+		return "", fmt.Errorf("-domains names no domain")
 	}
 	return strings.Join(out, ","), nil
 }

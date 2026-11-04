@@ -17,6 +17,8 @@ which keeps the session on its current settings, when the change does any of thi
 - Sets `enabledPlugins` for `guardrails@<marketplace>` to `false`, or removes the entry.
 - Adds a family to the plugin's `disabled_guards` option in `pluginConfigs`. An unset option
   counts as the default families, so unsetting an option that was empty also counts.
+- Turns the plugin's `observe` option on, so the optional guards only log.
+- Adds an entry to the plugin's `allowed_email_domains` option. Removing one passes.
 - Adds, changes or removes a `GUARDRAILS_*` or `CLAUDE_TOOLS_*` variable under `env`, `GUARDRAILS_OFF`
   included.
 - Adds a `PreToolUse` or `PermissionRequest` hook. Such a hook can allow or rewrite a call
