@@ -374,3 +374,54 @@ func TestNumFieldOutOfRange(t *testing.T) {
 		}
 	}
 }
+
+// usageSpeedFixture writes a transcript of n distinct responses, each repeated three times
+// (content blocks), and returns the tailer that has not read it yet.
+func usageSpeedFixture(t *testing.T, n int) *memdTailer {
+	t.Helper()
+	e := newTailEnv(t, "")
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		for j := 0; j < 3; j++ {
+			ts := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i)*time.Second + time.Duration(j)*time.Millisecond)
+			b.WriteString(usageLine{sess: "s1", mid: fmt.Sprintf("msg_%05d", i), rid: fmt.Sprintf("req_%05d", i), model: "claude-opus-5-5",
+				ts: ts.Format("2006-01-02T15:04:05.000Z"), in: 2, out: 100 + j, create: 500, read: 40000, split: &[2]int{0, 500}}.String())
+		}
+	}
+	p := writeTranscript(t, e.dir, "s1.jsonl", b.String())
+	old := time.Date(2026, 9, 1, 2, 0, 0, 0, time.UTC)
+	os.Chtimes(p, old, old)
+	return e.tailer()
+}
+
+func TestUsageBackfillSpeed(t *testing.T) {
+	const n = 3400
+	tl := usageSpeedFixture(t, n)
+	t0 := time.Now()
+	if err := tl.BackfillUsage(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	d := time.Since(t0)
+	t.Logf("backfill of %d keys (%d lines): %v", n, 3*n, d)
+	if got := usageCount(t, tl.db); got != n {
+		t.Fatalf("rows = %d, want %d", got, n)
+	}
+	var out int64
+	tl.db.QueryRow(`SELECT sum(output_tokens) FROM api_usage`).Scan(&out)
+	if out != int64(n)*102 {
+		t.Fatalf("sum(output) = %d, want %d (the largest of three partials per key)", out, int64(n)*102)
+	}
+	// Dropping the watermark re-reads everything: every key conflicts, across batch edges too.
+	tl.db.Exec(`DELETE FROM import_watermarks WHERE table_name = 'api_usage'`)
+	if err := tl.BackfillUsage(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var out2 int64
+	tl.db.QueryRow(`SELECT sum(output_tokens) FROM api_usage`).Scan(&out2)
+	if usageCount(t, tl.db) != n || out2 != out {
+		t.Fatalf("second pass changed totals: rows %d out %d, want %d and %d", usageCount(t, tl.db), out2, n, out)
+	}
+	if d > 20*time.Second {
+		t.Fatalf("backfill took %v; want well under 20s (was about 57s per 3,400 keys with row-at-a-time upserts)", d)
+	}
+}

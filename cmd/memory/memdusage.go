@@ -153,17 +153,11 @@ func maxPtr(a, b *int64) *int64 {
 	return b
 }
 
-// writeUsage upserts rows in tx. Each key appears once per call (mergeUsage), and an existing
-// row only ever grows, so the result does not depend on how often a line is read.
-func writeUsage(tx *sql.Tx, rows []memdUsage) error {
-	if len(rows) == 0 {
-		return nil
-	}
-	st, err := tx.Prepare(`INSERT INTO api_usage (message_id, request_id, session_id, project, cwd, ts, model, is_sidechain, is_observer,
-  agent_id, input_tokens, output_tokens, cache_creation_input_tokens, cache_creation_5m_input_tokens,
-  cache_creation_1h_input_tokens, cache_read_input_tokens, service_tier, reset_kind)
-VALUES (?, ?, ?, ?, ?, CAST(? AS TIMESTAMP), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (message_id, request_id) DO UPDATE SET
+// usageBatch is how many rows one INSERT carries: 18 parameters each, well under the limit,
+// and a statement per row costs about 3 ms in DuckDB where a statement per 200 rows does not.
+const usageBatch = 200
+
+const usageUpsertTail = ` ON CONFLICT (message_id, request_id) DO UPDATE SET
   ts = least(api_usage.ts, excluded.ts),
   input_tokens = greatest(api_usage.input_tokens, excluded.input_tokens),
   output_tokens = greatest(api_usage.output_tokens, excluded.output_tokens),
@@ -171,23 +165,44 @@ ON CONFLICT (message_id, request_id) DO UPDATE SET
   cache_creation_5m_input_tokens = greatest(api_usage.cache_creation_5m_input_tokens, excluded.cache_creation_5m_input_tokens),
   cache_creation_1h_input_tokens = greatest(api_usage.cache_creation_1h_input_tokens, excluded.cache_creation_1h_input_tokens),
   cache_read_input_tokens = greatest(api_usage.cache_read_input_tokens, excluded.cache_read_input_tokens),
-  reset_kind = CASE WHEN api_usage.reset_kind <> '' THEN api_usage.reset_kind ELSE excluded.reset_kind END`)
-	if err != nil {
-		return fmt.Errorf("prepare usage: %w", err)
-	}
-	defer st.Close()
-	for _, r := range mergeUsage(rows) {
-		var c5, c1 any
-		if r.C5m != nil {
-			c5 = *r.C5m
+  reset_kind = CASE WHEN api_usage.reset_kind <> '' THEN api_usage.reset_kind ELSE excluded.reset_kind END`
+
+const usageInsertHead = `INSERT INTO api_usage (message_id, request_id, session_id, project, cwd, ts, model, is_sidechain, is_observer,
+  agent_id, input_tokens, output_tokens, cache_creation_input_tokens, cache_creation_5m_input_tokens,
+  cache_creation_1h_input_tokens, cache_read_input_tokens, service_tier, reset_kind) VALUES `
+
+const usageTuple = `(?, ?, ?, ?, ?, CAST(? AS TIMESTAMP), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+// writeUsage upserts rows in tx, usageBatch rows per statement. Each key appears once per
+// call (mergeUsage), which a multi-row ON CONFLICT needs, and an existing row only ever
+// grows, so the result does not depend on how often a line is read.
+func writeUsage(tx *sql.Tx, rows []memdUsage) error {
+	rows = mergeUsage(rows)
+	for len(rows) > 0 {
+		n := min(usageBatch, len(rows))
+		var q strings.Builder
+		q.WriteString(usageInsertHead)
+		args := make([]any, 0, n*18)
+		for i, r := range rows[:n] {
+			if i > 0 {
+				q.WriteByte(',')
+			}
+			q.WriteString(usageTuple)
+			var c5, c1 any
+			if r.C5m != nil {
+				c5 = *r.C5m
+			}
+			if r.C1h != nil {
+				c1 = *r.C1h
+			}
+			args = append(args, r.MessageID, r.RequestID, r.SessionID, r.Project, r.Cwd, memdTS(r.At), r.Model, r.Sidechain, r.Observer,
+				r.AgentID, r.In, r.Out, r.CacheCreate, c5, c1, r.CacheRead, r.ServiceTier, r.Reset)
 		}
-		if r.C1h != nil {
-			c1 = *r.C1h
-		}
-		if _, err := st.Exec(r.MessageID, r.RequestID, r.SessionID, r.Project, r.Cwd, memdTS(r.At), r.Model, r.Sidechain, r.Observer,
-			r.AgentID, r.In, r.Out, r.CacheCreate, c5, c1, r.CacheRead, r.ServiceTier, r.Reset); err != nil {
+		q.WriteString(usageUpsertTail)
+		if _, err := tx.Exec(q.String(), args...); err != nil {
 			return fmt.Errorf("insert usage: %w", err)
 		}
+		rows = rows[n:]
 	}
 	return nil
 }
