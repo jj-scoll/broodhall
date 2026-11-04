@@ -8,7 +8,8 @@
 #   run.sh session-start   binary installed: start the daemon, print the context block;
 #                          not installed: start a background install and print nothing
 #   run.sh install         install the binary if needed (in the foreground)
-#   run.sh mcp             exec the MCP stdio server (exits 0 at once if there is no binary)
+#   run.sh mcp             exec the MCP stdio server; with no binary for this version it serves from the
+#                          newest installed older one, or waits (bounded) for the install, else exits 0
 #   run.sh <subcommand>    run `memory <subcommand>` with the hook's stdin, bounded by a timeout
 #
 # Test seams: MEMORY_BIN (binary path, skips install), MEMORY_RELEASE_URL (download base),
@@ -138,6 +139,42 @@ bg_install() {
 	spawn sh "$0" install-locked
 }
 
+# newest_installed prints the highest-numbered x.y.z version's memory binary, other than this
+# version's, that is executable. Prerelease-style directory names are skipped.
+newest_installed() {
+	for d in "$data"/bin/[0-9]*.[0-9]*.[0-9]*; do
+		v=${d##*/}
+		[ "$v" = "$ver" ] && continue
+		case $v in *[!0-9.]*) continue ;; esac
+		[ -x "$d/memory" ] && printf '%s %s\n' "$v" "$d/memory"
+	done | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1 | cut -d' ' -f2-
+}
+
+# mcp_without_binary runs when this version's binary is not installed. Claude Code caches an
+# MCP server that exits at startup for about 15 minutes, so exiting here would cost memory's
+# tools for the whole session even though the install lands seconds later. Instead it starts
+# the install (if none is running) and then serves from the newest binary of another version
+# (mcp only forwards each request to the daemon's socket, so a version difference is safe), or,
+# with none installed, waits up to MEMORY_MCP_WAIT seconds (default 25, under Claude Code's
+# 30 s connect timeout) for the install. It returns, and the launcher exits 0, only if nothing
+# could serve.
+mcp_without_binary() {
+	if [ -n "${MEMORY_BIN-}" ]; then log "mcp: MEMORY_BIN=$MEMORY_BIN is not executable"; return 0; fi
+	bg_install
+	older=$(newest_installed)
+	if [ -n "$older" ]; then
+		log "mcp: no binary at $bin; using $older while it installs"
+		exec "$older" mcp
+	fi
+	n=${MEMORY_MCP_WAIT:-25}
+	while [ "$n" -gt 0 ] && [ -d "$lock" ] && [ ! -x "$bin" ]; do
+		sleep 1
+		n=$((n - 1))
+	done
+	[ -x "$bin" ] && exec "$bin" mcp
+	log "mcp: no binary at $bin"
+}
+
 # run_bounded runs the binary with stdin from $in and stdout to $outf. A watchdog kills it
 # after $limit seconds. Returns the binary's status (nonzero when it was killed).
 run_bounded() {
@@ -167,7 +204,7 @@ main() {
 	mode=${1-}
 	if [ "$mode" = mcp ]; then
 		[ -x "$bin" ] && exec "$bin" mcp
-		log "mcp: no binary at $bin"
+		mcp_without_binary
 		return 0
 	fi
 	# `cost` is run by a person at a terminal: no hook payload on stdin (a terminal never sends
