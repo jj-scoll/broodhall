@@ -98,6 +98,23 @@ func TestSettingsGuardFollowsConfigDirs(t *testing.T) {
 		`cd "$PROJ" && echo '{}' > .claude-personal/settings.json`,
 		"cd $(git rev-parse --show-toplevel) && echo '{}' > .claude-work/settings.json",
 		"popd && echo '{}' > .claude-work/settings.json",
+		// Any cd word or CDPATH makes the location unknown, wherever it is and whether or
+		// not the cd works (verify-58 R2, R3).
+		"if cd ~; then echo 1 > .claude-work/settings.json; fi",
+		"builtin cd ~ && echo 1 > .claude-work/settings.json",
+		"command cd ~ && echo 1 > .claude-work/settings.json",
+		`\cd ~ && echo 1 > .claude-work/settings.json`,
+		"cd ~ && cd sub 2>/dev/null; echo 1 > .claude-work/settings.json",
+		"pushd ~; pushd /tmp; pushd +1; echo 1 > .claude-work/settings.json",
+		"CDPATH=~ cd .claude-work && echo 1 > settings.json",
+		"export CDPATH=~; cd .claude-work && echo 1 > settings.json",
+		"export CDPATH=$HOME; cd .claude-work >/dev/null && echo 1 > settings.json",
+		// Main asked these by name too: the cd may not land where it says.
+		"cd ~/src && echo '{}' > .claude-work/settings.json",
+		"cd ~/src 2>/dev/null && echo '{}' > .claude-work/settings.json",
+		"pushd ~/src >/dev/null && echo '{}' > .claude-work/settings.json",
+		// A known absolute target still moves the cwd.
+		"cd ~/.claude-work/x && echo '{}' > ../settings.json",
 		// The variable as written: the hook has the same CLAUDE_CONFIG_DIR as the shell.
 		"echo '{}' > $CLAUDE_CONFIG_DIR/settings.json",
 		"sed -i s/a/b/ ${CLAUDE_CONFIG_DIR}/settings.local.json",
@@ -110,10 +127,13 @@ func TestSettingsGuardFollowsConfigDirs(t *testing.T) {
 	}
 	for _, cmd := range []string{
 		"echo '{}' > ~/claude-notes/settings.json",
-		"cd ~/src && echo '{}' > .claude-work/settings.json",
-		"cd ~/src 2>/dev/null && echo '{}' > .claude-work/settings.json",
-		"pushd ~/src >/dev/null && echo '{}' > .claude-work/settings.json",
 		"cd - && echo '{}' > notes/settings.json",
+		// .claude-plugin is every plugin repo's manifest dir, not read as ~/.claude-plugin.
+		`cd "$PROJ" && rm -rf .claude-plugin`,
+		`cd "$PROJ" && echo '{}' > .claude-plugin/settings.json`,
+		// A write before the cd runs where the session is.
+		"echo '{}' > .claude-work/settings.json; cd ~",
+		"echo cd > notes.txt",
 		"echo '{}' > $CLAUDE_CONFIG_DIR_OLD/settings.json",
 	} {
 		if d := settingsGuard(env, cmd); d.Ask {

@@ -266,16 +266,17 @@ func setupWriteCall(cmd string) bool {
 // redirOnlyRE is a redirect operator with its target in the next word (`> /dev/null`).
 var redirOnlyRE = regexp.MustCompile(`^(?:\d*|&)(?:>>?|<<?|<>|>&|<&)$`)
 
-// cdTarget reads one segment: ok when it is a cd, pushd or popd, and dir where it goes. The
-// target is the first word that is not an option or a redirect, and a bare cd goes to ~.
-// dir is "" when the target can't be known: cd -, popd, a bare pushd.
-func cdTarget(seg string) (dir string, ok bool) {
+// cdWordRE finds a cd, pushd or popd word (also `\cd`, `builtin cd`, `command cd`) or CDPATH
+// anywhere in a segment. After one, where the command runs can't be known for sure.
+var cdWordRE = regexp.MustCompile("(?:^|[\\s(){}!`\"'])\\\\?(?:cd|pushd|popd)(?:$|[\\s(){}`\"'])|CDPATH")
+
+// cdTarget returns where a segment that starts with cd or pushd goes, when that is a plain
+// path: the first word that is not an option or a redirect, or ~ for a bare cd. It returns
+// "" for anything else (popd, cd -, pushd +1, a cd that is not first).
+func cdTarget(seg string) string {
 	f := strings.Fields(strings.TrimLeft(seg, " \t({"))
-	if len(f) == 0 || f[0] != "cd" && f[0] != "pushd" && f[0] != "popd" {
-		return "", false
-	}
-	if f[0] == "popd" {
-		return "", true
+	if len(f) == 0 || f[0] != "cd" && f[0] != "pushd" {
+		return ""
 	}
 	for i := 1; i < len(f); i++ {
 		switch w := f[i]; {
@@ -283,17 +284,17 @@ func cdTarget(seg string) (dir string, ok bool) {
 			if redirOnlyRE.MatchString(w) {
 				i++
 			}
-		case w == "-":
-			return "", true
+		case w == "-", strings.HasPrefix(w, "+"): // cd -, pushd +1
+			return ""
 		case strings.HasPrefix(w, "-"): // -L, -P, -e, -@, --
 		default:
-			return strings.Trim(w, `"')}`), true
+			return strings.Trim(w, `"')}`)
 		}
 	}
 	if f[0] == "cd" {
-		return "~", true
+		return "~"
 	}
-	return "", true
+	return ""
 }
 
 // settingsGuard is the Bash half of the guard.
@@ -316,8 +317,9 @@ func settingsGuard(env *guardEnv, cmd string) decision {
 		}
 		return filepath.Clean(tok)
 	}
-	// is tests the path tok names. While a cd went somewhere unknown (lost), a relative
-	// .claude* path is also tested as ~/.claude*, so the check fails closed.
+	// is tests the path tok names. Once a cd word or CDPATH shows up (lost), a relative
+	// .claude* path is also tested as ~/.claude*, so the check fails closed. .claude-plugin
+	// is left out: every plugin repo has one.
 	is := func(tok string, test func(p, home string) bool) bool {
 		if tok == "" {
 			return false
@@ -326,28 +328,29 @@ func settingsGuard(env *guardEnv, cmd string) decision {
 			return true
 		}
 		rel := filepath.Clean(tok)
-		return lost && env.Home != "" && strings.HasPrefix(rel, ".claude") && test(filepath.Join(env.Home, rel), env.Home)
+		first, _, _ := strings.Cut(rel, "/")
+		return lost && env.Home != "" && strings.HasPrefix(first, ".claude") && first != ".claude-plugin" &&
+			test(filepath.Join(env.Home, rel), env.Home)
 	}
-	// Each segment runs where the cd, pushd or popd before it moved, as secretGuard.scan
-	// follows them (a subshell's cd is kept after it ends: that can only ask more). dirRef:
-	// the command names a config dir or runs in one, so a bare settings.json is in one.
-	// tokSplitRE splits at braces, so ${HOME} becomes $HOME first.
+	// From the first segment with a cd, pushd, popd or CDPATH on, the location is lost: a cd
+	// may sit anywhere (`if cd`, `builtin cd`) and may fail. cdTarget adds the plain target
+	// of a cd that starts a segment, so cwd follows it (a subshell's cd is kept after it
+	// ends: that can only ask more). dirRef: the command names a config dir or runs in
+	// one, so a bare settings.json is in one. tokSplitRE splits at braces, so ${HOME}
+	// becomes $HOME first.
 	cmd = strings.NewReplacer(">|", ">", "${HOME}", "$HOME", "${CLAUDE_CONFIG_DIR}", "$CLAUDE_CONFIG_DIR").Replace(cmd)
 	segs := segSplitRE.Split(cmd, -1)
 	cwds, losts := make([]string, len(segs)), make([]bool, len(segs))
 	dirRef := false
 	for i, seg := range segs {
+		lost = lost || cdWordRE.MatchString(seg)
 		cwds[i], losts[i] = cwd, lost
 		dirRef = dirRef || isClaudeDir(cwd, env.Home)
 		for _, t := range tokSplitRE.Split(seg, -1) {
 			dirRef = dirRef || is(t, isClaudeDir)
 		}
-		if dir, ok := cdTarget(seg); ok {
-			if t := expandHome(expandPathVars(dir, env.Home), env.Home); dir == "" || strings.ContainsAny(t, "$`") {
-				lost = true
-			} else {
-				cwd, lost = expand(dir), lost && !filepath.IsAbs(t)
-			}
+		if dir := cdTarget(seg); dir != "" && !strings.ContainsAny(expandHome(expandPathVars(dir, env.Home), env.Home), "$`") {
+			cwd = expand(dir)
 		}
 	}
 	dirRef = dirRef || isClaudeDir(cwd, env.Home)
