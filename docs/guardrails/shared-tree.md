@@ -26,7 +26,7 @@ it would take in meets all of these:
 | `git commit -a`, `-am`, `--all` | every changed tracked file |
 | `git stash`, `stash push`, `stash save` | every changed tracked file, and new files with `-u` or `-a` |
 | `git checkout .`, `git checkout -- .`, `git restore .` | every changed tracked file in the current directory |
-| `git reset --hard` | every changed tracked file |
+| `git reset --hard`, `git checkout -f`, `git switch -f` (`--discard-changes`) | every changed tracked file |
 | `git clean -f` | new files |
 
 A `git stash push -- path` or `git add -A path` is limited to that path, so it asks only if
@@ -57,7 +57,7 @@ Read). Only sessions that recorded an edit are considered.
 
 The check is cheap when nothing is shared. With no other live session that has recorded
 edits, no git process runs. Otherwise it runs `git rev-parse --show-toplevel` and one
-`git status` limited to the files the other sessions edited, with a 2 second limit. If git is
+`git status` limited to the files the other sessions edited, with a 1.5 second limit. If more than 300 files were recorded, the status is not limited to them. If git is
 slow, missing or fails, the command goes through.
 
 ## Not covered
@@ -74,7 +74,11 @@ slow, missing or fails, the command goes through.
 - Text the shell parser rejects. `git clean -f` without `-d` is checked as if it also removed
   new directories, so it may ask when it would not have taken the file.
 - `git commit` of a change another session already staged, and `git add -p`.
-- A glob or magic pathspec (`:(exclude)`, `*.go`) counts as the whole tree.
+- A glob or magic pathspec (`:(exclude)`, `*.go`) counts as the whole tree. `git add :/`, `..` and `*` are read as the whole tree; an absolute path to the repository root is not.
+- A file edited through a symlink, and a file renamed after the other session edited it: only the path written is recorded.
+- Git aliases, a command built from variables or `$(...)`, and `git commit -a` of a change that is only staged.
+- Many `record-edit` hooks racing while the edits file is pruned (past 64 KB) can lose recent entries.
+- File names with control characters are shown quoted.
 
 ## Turning it off
 

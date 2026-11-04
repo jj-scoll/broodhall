@@ -25,6 +25,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -32,8 +33,8 @@ import (
 const (
 	sweepRule     = "shared-tree-sweep"
 	sweepMaxFiles = 5
-	sweepMaxPaths = 300 // recorded paths handed to git status
-	sweepTimeout  = 2 * time.Second
+	sweepMaxPaths = 300 // above this many recorded paths git status runs unlimited
+	sweepTimeout  = 1500 * time.Millisecond
 )
 
 // statusEntry is one line of git status --porcelain: the XY codes and the path relative to
@@ -106,7 +107,20 @@ func parseGitArgs(args []string, valued string, longValued ...string) gitArgs {
 }
 
 // wholePathspec: a pathspec that names the current directory and everything under it.
-func wholePathspec(p string) bool { return p == "." || p == "./" || p == "*" }
+func wholePathspec(p string) bool {
+	if p == "*" || p == ":/" {
+		return true
+	}
+	if p == "" || strings.HasPrefix(p, ":") || strings.HasPrefix(p, "/") {
+		return false
+	}
+	for _, seg := range strings.Split(path.Clean(p), "/") {
+		if seg != "." && seg != ".." {
+			return false
+		}
+	}
+	return true
+}
 
 // gitWords returns the directory git runs in, or ok=false when the command points git
 // somewhere this rule cannot follow (--git-dir, --work-tree, GIT_DIR, GIT_WORK_TREE).
@@ -215,11 +229,20 @@ func sweepOf(sub string, args []string) (sweepCmd, bool) {
 		untracked := g.has('u', "include-untracked") || g.has('a', "all")
 		s.Takes = func(e statusEntry) bool { return trackedAny(e) || (untracked && e.untracked()) }
 		return s, true
+	case "switch":
+		g := parseGitArgs(args, "cCt", "create", "force-create", "track", "orphan")
+		if !g.has('f', "force") && !g.long["discard-changes"] {
+			return sweepCmd{}, false
+		}
+		return sweepCmd{Label: "git switch -f", Takes: trackedAny}, true
 	case "checkout", "restore":
 		g := parseGitArgs(args, "sbBU", "source", "pathspec-from-file")
 		dot := false
 		for _, p := range g.pos {
 			dot = dot || p == "."
+		}
+		if !dot && sub == "checkout" && g.has('f', "force") && len(g.pos) <= 1 && !hasArg(args, "--") {
+			return sweepCmd{Label: "git checkout -f", Takes: trackedAny}, true // replaces every tracked file
 		}
 		if !dot {
 			return sweepCmd{}, false
@@ -270,7 +293,7 @@ func inScope(scope []string, dir, top, home string) func(p string) bool {
 		if strings.HasPrefix(s, ":") || strings.ContainsAny(s, "*?[") && !wholePathspec(s) {
 			return func(string) bool { return true }
 		}
-		if wholePathspec(s) && s == "*" {
+		if s == "*" {
 			s = "."
 		}
 		rel, err := filepath.Rel(top, resolveDir(dir, s, home))
@@ -318,9 +341,6 @@ func sweepGuard(env *guardEnv, cmds []simpleCmd) decision {
 		}
 	}
 	sort.Strings(cands)
-	if len(cands) > sweepMaxPaths {
-		cands = cands[:sweepMaxPaths]
-	}
 	type statusResult struct {
 		top  string
 		ents []statusEntry
@@ -363,7 +383,7 @@ func sweepGuard(env *guardEnv, cmds []simpleCmd) decision {
 			var shown []string
 			for _, f := range files {
 				if listed < sweepMaxFiles {
-					shown = append(shown, f)
+					shown = append(shown, printable(f))
 					listed++
 				}
 			}
@@ -419,14 +439,17 @@ func gitStatusOf(dir string, files []string) (string, []statusEntry) {
 		top = r
 	}
 	args := []string{"--literal-pathspecs", "status", "--porcelain=v1", "-z", "-uall", "--"}
-	n := len(args)
+	var rels []string
 	for _, f := range files {
 		if rel, err := filepath.Rel(top, f); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, "../") {
-			args = append(args, rel)
+			rels = append(rels, rel)
 		}
 	}
-	if len(args) == n {
+	if len(rels) == 0 {
 		return "", nil
+	}
+	if len(rels) <= sweepMaxPaths { // more than that: the whole status is cheaper than the long argv
+		args = append(args, rels...)
 	}
 	out, err = run(top, args...)
 	if err != nil {
@@ -451,4 +474,15 @@ func parseStatusZ(b []byte) []statusEntry {
 		}
 	}
 	return ents
+}
+
+// printable quotes a file name that holds a control character, so it cannot break the line
+// or add text of its own to the reason.
+func printable(s string) string {
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return strconv.Quote(s)
+		}
+	}
+	return s
 }
