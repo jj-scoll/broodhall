@@ -24,7 +24,7 @@ func hwKey(h string) string { return strings.ReplaceAll(strings.ToLower(h), " ",
 // fakeClaude is a `claude` on PATH that logs each call (argv one per line, env, stdin) in
 // dir/call.N and answers with dir/resp.N, or fails when dir/fail exists.
 const fakeClaudeScript = `#!/bin/sh
-n=$(ls -d "$FAKE_DIR"/call.* 2>/dev/null | wc -l)
+n=$(ls -d "$FAKE_DIR"/call.* 2>/dev/null | wc -l | tr -d ' ') # BSD wc pads the count
 c="$FAKE_DIR/call.$n"
 mkdir "$c"
 for a in "$@"; do printf '%s\n' "$a"; done > "$c/argv"
@@ -59,7 +59,7 @@ func hwSetup(t *testing.T) *hwEnv {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("FAKE_DIR", e.dir)
 	t.Setenv("ANTHROPIC_API_KEY", "sk-test-parent-key")
-	t.Setenv("XDG_RUNTIME_DIR", filepath.Join(root, "run")) // no memory daemon unless a test starts one
+	t.Setenv("XDG_RUNTIME_DIR", shortSockDir(t)) // no memory daemon unless a test starts one
 
 	e.transcript = filepath.Join(root, "t.jsonl")
 	lines := []map[string]any{
