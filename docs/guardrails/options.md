@@ -1,7 +1,8 @@
 # Options
 
-Ten plugin options, two files under `~/.config/claude-tools/`, and two environment variables
-that are not plugin options (`HANDOFF_AUTOCLEAR` and `CLAUDE_TOOLS_BIN`).
+Ten plugin options, two files under `~/.config/guardrails/`, and two environment variables
+that are not plugin options (`HANDOFF_AUTOCLEAR` and `GUARDRAILS_BIN`). The older
+`claude-tools` names still work; see [Older names](#older-names).
 
 Set the plugin options with `/plugin configure guardrails@broodhall`, or from `/config`.
 
@@ -32,8 +33,8 @@ this option says. [Nudges](nudges.md), [Read limits](read-limits.md) and
 
 Names are separated by commas, and spaces around a name are ignored. A name that is not one of
 the six has no effect. An empty value turns every family on. The launcher falls back to the
-`CLAUDE_TOOLS_OFF` environment variable, then to empty: every family on. The binary run on
-its own treats an unset `CLAUDE_TOOLS_OFF` as every family on too.
+`GUARDRAILS_OFF` environment variable, then to empty: every family on. The binary run on
+its own reads `CLAUDE_TOOLS_OFF` when `GUARDRAILS_OFF` is unset, and treats both unset as every family on.
 
 ## `allowed_email_domains`
 
@@ -43,7 +44,7 @@ its own treats an unset `CLAUDE_TOOLS_OFF` as every family on too.
 | Default | empty |
 | Description | Comma-separated addresses or @domains the egress guard treats as yours, such as @example.com. The domain of your global git user.email always counts. |
 
-Outside the plugin the same list is read from `CLAUDE_TOOLS_PII_ALLOW`.
+Outside the plugin the same list is read from `GUARDRAILS_PII_ALLOW`.
 
 - In [Egress](egress.md), a full address matches that address, and `@example.com` matches the
   domain and its subdomains. The domain of `git config --global user.email` always matches.
@@ -91,7 +92,7 @@ not evaluated, so it is not counted, and a call that an enforced guard stops lea
 `would-` line. An observed rule never hides a later one. In
 `git stash && cat ~/.aws/credentials`, the stash is let through and the secret read is still masked.
 
-Outside the plugin, set `CLAUDE_TOOLS_OBSERVE=1`; `true` and `yes` also turn it on. A set
+Outside the plugin, set `GUARDRAILS_OBSERVE=1`; `true` and `yes` also turn it on. A set
 plugin option wins over it. Turn the option off to enforce again.
 
 `guardrails guard-report` prints one row per rule with how many times it fired, split by
@@ -121,12 +122,12 @@ version differ):
 ```text
 guardrails: BLOCKED: the guard binary guardrails X.Y.Z is not installed (/home/you/.claude/plugins/data/guardrails-broodhall/bin/X.Y.Z/guardrails), so this tool call was not checked.
 Retry: start a new session (SessionStart downloads it), or run: sh "/path/to/plugin/scripts/run.sh" install
-Opt out: set the guardrails option fail_open to true (or CLAUDE_TOOLS_FAIL_OPEN=1) to allow tool calls without guards.
+Opt out: set the guardrails option fail_open to true (or GUARDRAILS_FAIL_OPEN=1) to allow tool calls without guards.
 ```
 
 Set `fail_open` to `true` and the launcher exits 0 and prints nothing instead, so every call
 runs unguarded and the failed-install notice says so. Outside the plugin the same switch is
-the `CLAUDE_TOOLS_FAIL_OPEN` environment variable; `true`, `1` and `yes` turn it on. The
+the `GUARDRAILS_FAIL_OPEN` environment variable; `true`, `1` and `yes` turn it on. The
 session-start install itself never blocks: a failed download only shows a notice and retries
 at the next session.
 
@@ -138,7 +139,7 @@ at the next session.
 | Default | empty |
 | Description | Comma-separated S3 bucket names that hold raw client data; * matches any run of characters, for example *-clientdata. The raw-client-data guard asks before Python reads s3://<bucket>/... Empty means no buckets. |
 
-Outside the plugin the same list is read from `CLAUDE_TOOLS_CLIENT_BUCKETS`. See
+Outside the plugin the same list is read from `GUARDRAILS_CLIENT_BUCKETS`. See
 [PII](pii.md#raw-client-data-ask).
 
 ## `masked_copy_dirs`
@@ -149,7 +150,7 @@ Outside the plugin the same list is read from `CLAUDE_TOOLS_CLIENT_BUCKETS`. See
 | Default | empty |
 | Description | Comma-separated directories that hold masked copies of client data, for example ~/.cache/masked/. The raw-client-data guard does not ask about parquet paths under them. Empty means no exemption. |
 
-Outside the plugin the same list is read from `CLAUDE_TOOLS_MASKED_DIRS`. See
+Outside the plugin the same list is read from `GUARDRAILS_MASKED_DIRS`. See
 [PII](pii.md#raw-client-data-ask).
 
 ## `handoff_tokens`
@@ -177,7 +178,7 @@ Bash then show `app/claude-<id>` in their User-Agent, and CloudTrail's `userAgen
 the session. A session resumed or compacted adds no second line; a new session id adds one.
 
 The hook never blocks and prints nothing. It writes nothing for a missing or unsafe session id.
-Outside the plugin, set `CLAUDE_TOOLS_AWS_SESSION_TAG=1`; a set plugin option wins over it.
+Outside the plugin, set `GUARDRAILS_AWS_SESSION_TAG=1`; a set plugin option wins over it.
 
 ## `rtk`
 
@@ -212,7 +213,7 @@ rewritten, and the hook prints one note on stderr per session. It never blocks. 
 that fails, or runs for more than 5 seconds, is treated the same way, without a note.
 rtk's own deny (exit code 2) is passed through as a block.
 
-Outside the plugin, set `CLAUDE_TOOLS_RTK=1`.
+Outside the plugin, set `GUARDRAILS_RTK=1`.
 
 ## `rtk_command`
 
@@ -223,7 +224,7 @@ Outside the plugin, set `CLAUDE_TOOLS_RTK=1`.
 | Description | The rtk executable to run when the rtk option is on. Empty means `rtk` from PATH. |
 
 Use this when rtk is not on the PATH that Claude Code's hooks see, for example
-`/opt/tools/bin/rtk`. Outside the plugin it is read from `CLAUDE_TOOLS_RTK_CMD`.
+`/opt/tools/bin/rtk`. Outside the plugin it is read from `GUARDRAILS_RTK_CMD`.
 
 ## `HANDOFF_AUTOCLEAR`
 
@@ -233,7 +234,7 @@ chain](handoff-gate.md#the-chain) short of the clear. The handoff is still writt
 Claude that you will run `/clear` yourself. Any other value, or none, leaves the clear on.
 It is not a plugin option.
 
-## `~/.config/claude-tools/secret-paths`
+## `~/.config/guardrails/secret-paths`
 
 Extra files for [Secret files](secret-files.md) to protect, one path or glob per line. The
 list adds to the built-in ones; it does not replace them. The file itself is protected too.
@@ -248,10 +249,10 @@ list adds to the built-in ones; it does not replace them. The file itself is pro
   with `#`. A `#` after text on a line is part of the path.
 - A line that is not an absolute path after `~` is expanded names no file and is ignored.
 - If `XDG_CONFIG_HOME` is set to an absolute path, the file is read from
-  `$XDG_CONFIG_HOME/claude-tools/secret-paths` instead.
+  `$XDG_CONFIG_HOME/guardrails/secret-paths` instead.
 - The file is read on each tool call, so a new line applies at once.
 
-## `~/.config/claude-tools/pii-columns.json`
+## `~/.config/guardrails/pii-columns.json`
 
 The column rules for the [PII](pii.md) mask. It is used only when the `pii` family is on. The
 location follows the same `XDG_CONFIG_HOME` rule as above. Claude is blocked from writing it.
@@ -295,20 +296,37 @@ edit them, run `guardrails pii-rules init`, which writes the file and will not o
 existing one. To check a file, run `guardrails pii-rules check [path]`:
 
 ```text
-ok /home/you/.config/claude-tools/pii-columns.json: 28 rules active (33 in file), 1 explicit columns
+ok /home/you/.config/guardrails/pii-columns.json: 28 rules active (33 in file), 1 explicit columns
 ```
 
 ```text
 invalid bad.json: pii-columns.json: rule 0 ("x"): unknown category "bogus"
 ```
 
-## `CLAUDE_TOOLS_BIN`
+## `GUARDRAILS_BIN`
 
 The hooks run one binary. By default that is the copy the plugin downloads for its version, to
-`bin/<version>/guardrails` under the plugin's data directory. Set `CLAUDE_TOOLS_BIN` to the
+`bin/<version>/guardrails` under the plugin's data directory. Set `GUARDRAILS_BIN` to the
 path of your own build to run that instead, for example one you built from this repository.
 
 The download is skipped only when the path is executable. If the path is not an executable
 file, the session-start step downloads the release copy anyway, but the hooks still look
 at your path and find nothing to run, so every call is blocked (or, with
 [`fail_open`](#fail_open), let through unguarded). Check the path before you rely on it.
+
+## Older names
+
+The binary was called `claude-tools` before it was renamed `guardrails`. Your existing setup
+keeps working:
+
+- **Files.** Each file is looked for under `guardrails/` first, then under `claude-tools/`,
+  and a new one is created under `guardrails/`. So an existing
+  `~/.config/claude-tools/pii-columns.json`, `~/.config/claude-tools/secret-paths` or
+  `~/.local/state/claude-tools/pii-key` stays in use, and your PII tags do not change. To move
+  one, move the file; a file under `guardrails/` wins when both exist. `secret-paths` is read
+  from both directories.
+- **Environment variables.** Each `GUARDRAILS_<NAME>` falls back to `CLAUDE_TOOLS_<NAME>`
+  when it is unset. A `GUARDRAILS_<NAME>` that is set, even to an empty value, wins.
+- **Guards.** The [PII](pii.md) rules-file block and the [Secret files](secret-files.md)
+  protection cover both directories, and the [config gate](config-gate.md) treats a change to
+  either kind of variable as weakening a guard.

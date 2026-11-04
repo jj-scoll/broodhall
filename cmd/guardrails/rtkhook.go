@@ -11,7 +11,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 	"os/exec"
 	"path"
 	"strings"
@@ -21,9 +20,10 @@ import (
 // rtkHook is what preToolUseRun calls; tests replace it so they never run a real rtk.
 var rtkHook = runRTK
 
-// rtkEnabled reads CLAUDE_TOOLS_RTK, which the launcher sets from the `rtk` plugin option.
+// rtkEnabled reads GUARDRAILS_RTK (or CLAUDE_TOOLS_RTK), which the launcher sets from the
+// `rtk` plugin option.
 func rtkEnabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("CLAUDE_TOOLS_RTK"))) {
+	switch strings.ToLower(strings.TrimSpace(settingEnv("RTK"))) {
 	case "1", "true", "yes", "on":
 		return true
 	}
@@ -38,7 +38,7 @@ func runRTK(stdin []byte) ([]byte, []byte, int) {
 	if !rtkEnabled() {
 		return nil, nil, 0
 	}
-	name := strings.TrimSpace(os.Getenv("CLAUDE_TOOLS_RTK_CMD"))
+	name := strings.TrimSpace(settingEnv("RTK_CMD"))
 	if name == "" {
 		name = "rtk"
 	}

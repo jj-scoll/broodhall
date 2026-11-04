@@ -82,6 +82,6 @@ slow, missing or fails, the command goes through.
 
 ## Turning it off
 
-The family is `sweep`. Add it to the `disabled_guards` option (or to `CLAUDE_TOOLS_OFF`, a
+The family is `sweep`. Add it to the `disabled_guards` option (or to `GUARDRAILS_OFF`, a
 comma-separated list). Recording continues, but nothing asks. In [observe mode](options.md#observe)
 the ask is let through and logged as `would ask (shared-tree-sweep)`. See [Options](options.md).

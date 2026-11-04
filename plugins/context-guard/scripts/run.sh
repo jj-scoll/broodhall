@@ -4,7 +4,7 @@
 #   run.sh state              prints the state base dir ($base/claude-handoff holds the marks)
 #   run.sh autoclear <args>   runs `guardrails autoclear <args>` with that dir
 # With no binary or no state dir it prints nothing and exits 1, so the mod skips the clear.
-# Both lookups mirror guardrails' launcher: CLAUDE_TOOLS_BIN names a binary, HANDOFF_STATE_DIR
+# Both lookups mirror guardrails' launcher: GUARDRAILS_BIN (or CLAUDE_TOOLS_BIN) names a binary, HANDOFF_STATE_DIR
 # names the state dir (an empty value means /tmp, as in the binary), and otherwise the state
 # dir is guardrails' plugin data dir, where its launcher unpacks bin/<version>/guardrails
 # (bin/<version>/claude-tools before the rename; a guardrails that old is found too).
@@ -23,7 +23,7 @@ if [ "${HANDOFF_STATE_DIR+set}" ]; then
 elif [ -n "$newest" ]; then
 	base=${newest%/bin/*/*}
 fi
-bin=${CLAUDE_TOOLS_BIN-$newest}
+bin=${GUARDRAILS_BIN-${CLAUDE_TOOLS_BIN-$newest}}
 
 case "${1-}" in
 state)

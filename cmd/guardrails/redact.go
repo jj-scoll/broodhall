@@ -500,11 +500,7 @@ func runRedact(x *redactor, args []string, stdin io.Reader, stdout, stderr io.Wr
 
 // piiKey returns the local tag key, creating it (0600) on first use.
 func piiKey() []byte {
-	dir := os.Getenv("XDG_STATE_HOME")
-	if dir == "" {
-		dir = filepath.Join(os.Getenv("HOME"), ".local", "state")
-	}
-	p := filepath.Join(dir, "claude-tools", "pii-key")
+	p := userPath(stateBase(), "pii-key")
 	if k, err := os.ReadFile(p); err == nil && len(k) >= 16 {
 		return k
 	}
@@ -516,9 +512,10 @@ func piiKey() []byte {
 	return k
 }
 
-// piiAllow is the user's own addresses: git user.email plus CLAUDE_TOOLS_PII_ALLOW (commas).
+// piiAllow is the user's own addresses: git user.email plus GUARDRAILS_PII_ALLOW (or
+// CLAUDE_TOOLS_PII_ALLOW), comma-separated.
 func piiAllow() []string {
-	allow := strings.Split(os.Getenv("CLAUDE_TOOLS_PII_ALLOW"), ",")
+	allow := strings.Split(settingEnv("PII_ALLOW"), ",")
 	if out, err := exec.Command("git", "config", "--global", "user.email").Output(); err == nil {
 		allow = append(allow, strings.TrimSpace(string(out)))
 	}

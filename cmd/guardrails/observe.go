@@ -3,7 +3,7 @@ package main
 // Observe mode: the guards run, but an ask or a block from an optional family is not enforced.
 // The call goes through with a note for Claude, and the ledger records "would-ask" or
 // "would-block" with the rule id, so a new user can see what the guards would do before they
-// let them stop anything. One global switch (CLAUDE_TOOLS_OBSERVE, the observe plugin option).
+// let them stop anything. One global switch (GUARDRAILS_OBSERVE, the observe plugin option).
 //
 // Observe covers exactly the six families disabled_guards can name (git, egress, pii, sweep,
 // raw-client-data, session-url). The core blocks, the settings-file guard and the secret-file

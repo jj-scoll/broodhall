@@ -56,7 +56,7 @@ type guardEnv struct {
 	// status in dir for those files (sweepguard.go). Nil in replay: no sessions, no repos.
 	OtherEdits func(self string, now time.Time) []otherSession
 	GitStatus  func(dir string, files []string) (top string, ents []statusEntry)
-	// Off holds the rule families CLAUDE_TOOLS_OFF turns off (pii, raw-client-data,
+	// Off holds the rule families GUARDRAILS_OFF (or CLAUDE_TOOLS_OFF) turns off (pii, raw-client-data,
 	// session-url, egress, git, sweep). Nil runs every rule.
 	Off map[string]bool
 	// Observe lets optional-family asks and blocks through and collects them in Would
@@ -65,7 +65,7 @@ type guardEnv struct {
 	Would   []decision
 }
 
-// guardsOff parses CLAUDE_TOOLS_OFF, a comma-separated list of rule families.
+// guardsOff parses GUARDRAILS_OFF (or CLAUDE_TOOLS_OFF), a comma-separated list of rule families.
 func guardsOff(s string) map[string]bool {
 	off := map[string]bool{}
 	for _, f := range strings.Split(s, ",") {

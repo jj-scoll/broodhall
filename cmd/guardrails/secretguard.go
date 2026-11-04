@@ -1,8 +1,9 @@
 package main
 
 // Secret-file guard (pre-tool-use). The protected files are secretPathsDefault plus the
-// lines of ~/.config/claude-tools/secret-paths (a path or glob per line, ~ allowed, #
-// comments). The list adds to the defaults and is protected itself. Claude sees the
+// lines of ~/.config/guardrails/secret-paths and ~/.config/claude-tools/secret-paths (a path or
+// glob per line, ~ allowed, # comments). Each list adds to the defaults and is protected
+// itself. Claude sees the
 // contents masked:
 //
 //   - Bash: a plain reader of a protected file (cat, head, tail, grep, rg, sed -n 'Np',
@@ -35,7 +36,7 @@ var secretPathsDefault = []string{
 	"~/.aws/credentials", "~/.aws/sso/cache/*.json", "~/.aws/cli/cache/*.json",
 	"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed25519", "~/.ssh/id_ecdsa_sk", "~/.ssh/id_ed25519_sk",
 	"~/.netrc", "~/.pgpass", "~/.docker/config.json", "~/.config/gh/hosts.yml",
-	"~/.local/state/claude-tools/pii-key",
+	"~/.local/state/guardrails/pii-key", "~/.local/state/claude-tools/pii-key",
 }
 
 const secretMaskNote = "pre-tool-use masked this read of a protected secret file (`guardrails redact --secrets`): " +
@@ -54,13 +55,14 @@ var (
 // secretPaths is every protected path pattern, absolute and cleaned.
 func secretPaths(home, xdg string) []string {
 	ps := append([]string{}, secretPathsDefault...)
-	if rules := piiRulesPathFor(xdg, home); rules != "" {
-		list := filepath.Join(filepath.Dir(rules), "secret-paths")
-		ps = append(ps, list)
-		if b, err := os.ReadFile(list); err == nil {
-			for _, l := range strings.Split(string(b), "\n") {
-				if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
-					ps = append(ps, l)
+	if base := configBase(xdg, home); base != "" {
+		for _, list := range userPaths(base, "secret-paths") {
+			ps = append(ps, list)
+			if b, err := os.ReadFile(list); err == nil {
+				for _, l := range strings.Split(string(b), "\n") {
+					if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
+						ps = append(ps, l)
+					}
 				}
 			}
 		}

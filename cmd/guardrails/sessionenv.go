@@ -7,7 +7,7 @@ package main
 // with >> so other hooks' lines survive. SessionStart stdout would land in Claude's
 // context, so this prints nothing, and it never fails the session. It does nothing unless the
 // aws_session_tag plugin option is "true" (CLAUDE_PLUGIN_OPTION_AWS_SESSION_TAG), or, when
-// that option is unset, CLAUDE_TOOLS_AWS_SESSION_TAG is "1" or "true".
+// that option is unset, GUARDRAILS_AWS_SESSION_TAG (or CLAUDE_TOOLS_AWS_SESSION_TAG) is "1" or "true".
 
 import (
 	"bufio"
@@ -24,7 +24,7 @@ const uaAppIDVar = "AWS_SDK_UA_APP_ID"
 func sessionEnvEnabled() bool {
 	v, ok := os.LookupEnv("CLAUDE_PLUGIN_OPTION_AWS_SESSION_TAG")
 	if !ok || v == "" {
-		v = os.Getenv("CLAUDE_TOOLS_AWS_SESSION_TAG")
+		v = settingEnv("AWS_SESSION_TAG")
 	}
 	return v == "true" || v == "1"
 }

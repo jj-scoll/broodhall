@@ -38,12 +38,12 @@ passes it. It never blocks a session.
 ## Guards seem to be off
 
 - The binary may be missing and `fail_open` on. With no binary the launcher allows every call
-  only when `fail_open` (or `CLAUDE_TOOLS_FAIL_OPEN`) is set. Start a new session and look
+  only when `fail_open` (or `GUARDRAILS_FAIL_OPEN`) is set. Start a new session and look
   for the notice above.
 - A guard family may be disabled. Every family is on by
   default, so check `disabled_guards`. Check the plugin's options with `claude plugin configure guardrails@broodhall`,
   and see [Options](../guardrails/options.md).
-- `CLAUDE_TOOLS_BIN` may point at a binary that does not exist or is not executable. The
+- `GUARDRAILS_BIN` may point at a binary that does not exist or is not executable. The
   launcher uses that path in place of the downloaded binary, and with no executable there it
   blocks every call (or allows every call under `fail_open`).
 
