@@ -11,6 +11,8 @@
 
 ## Use
 
+From a terminal, define the `guardrails` function first. [Run it from a terminal](index.md#run-it-from-a-terminal) shows how.
+
 ```text
 guardrails write-handoff <transcript.jsonl> <next-steps file> <cwd> <session id>
 ```
