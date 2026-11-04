@@ -5,7 +5,7 @@
 problem prints one message that you see in the transcript and that Claude can read, so it can
 help fix it. Doctor always exits 0 in that mode, so it can never block a session.
 
-Run it by hand for a full report, with `ok`, `skip` and problem lines. By hand it exits 1 when
+Run it by hand for a full report, with `ok`, `skip` and problem lines. [Run it from a terminal](index.md#run-it-from-a-terminal) shows how. By hand it exits 1 when
 a check failed.
 
 ```

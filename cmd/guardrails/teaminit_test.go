@@ -170,3 +170,25 @@ func TestTeamInitRegistered(t *testing.T) {
 		t.Error("team-init is not in the command table")
 	}
 }
+
+// The note names the user settings file Claude Code actually reads: under CLAUDE_CONFIG_DIR when set.
+func TestTeamInitUserSettingsPathFollowsConfigDir(t *testing.T) {
+	cfg := filepath.Join(t.TempDir(), "work config")
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	_, errw, code := runTeamInit(t)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errw)
+	}
+	if want := filepath.Join(cfg, "settings.json"); !strings.Contains(errw, want) {
+		t.Errorf("note does not name %s:\n%s", want, errw)
+	}
+	if strings.Contains(errw, "~/.claude/settings.json") {
+		t.Errorf("note names ~/.claude/settings.json although CLAUDE_CONFIG_DIR is set:\n%s", errw)
+	}
+
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	_, errw, _ = runTeamInit(t)
+	if !strings.Contains(errw, "~/.claude/settings.json") {
+		t.Errorf("with CLAUDE_CONFIG_DIR unset the note should name ~/.claude/settings.json:\n%s", errw)
+	}
+}

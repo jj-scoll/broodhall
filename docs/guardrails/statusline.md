@@ -12,8 +12,8 @@ A plugin cannot set `statusLine`. Claude Code reads only the `agent` and
 `subagentStatusLine` keys from a plugin's own settings, so the status line is wired by hand
 in your `settings.json`. Point `command` at the binary the launcher installed, which lives
 at `bin/<version>/guardrails` under the plugin's data directory (`CLAUDE_PLUGIN_DATA`).
-Run `guardrails doctor` from a shell where that variable is set, or read the `ok binary`
-line of its report, to see the exact path.
+To see the exact path, run `guardrails doctor` (see [Run it from a terminal](index.md#run-it-from-a-terminal))
+and read the `ok binary` line of its report.
 
 ```json
 {

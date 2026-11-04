@@ -95,7 +95,7 @@ not evaluated, so it is not counted, and a call that an enforced guard stops lea
 Outside the plugin, set `GUARDRAILS_OBSERVE=1`; `true` and `yes` also turn it on. A set
 plugin option wins over it. Turn the option off to enforce again.
 
-`guardrails guard-report` prints one row per rule with how many times it fired, split by
+`guardrails guard-report` ([Run it from a terminal](index.md#run-it-from-a-terminal)) prints one row per rule with how many times it fired, split by
 kind. For asks it also shows `ran-after-ask` (the tool ran after the ask, so you approved)
 and `not-run` (no follow-up by the session's Stop, or none within 10 minutes for older asks).
 A denial and an abandoned prompt look the same, so the report cannot say "denied". A rule
@@ -294,7 +294,7 @@ Email and phone shapes in any value are masked whatever the file says.
 Your file replaces the built-in rules. It does not add to them. If it is missing, unreadable,
 not valid JSON, has a bad pattern or an unknown category, or has no active rule, the built-in
 rules are used and nothing is reported at mask time. To start from the built-in rules and
-edit them, run `guardrails pii-rules init`, which writes the file and will not overwrite an
+edit them, run `guardrails pii-rules init` ([Run it from a terminal](index.md#run-it-from-a-terminal)), which writes the file and will not overwrite an
 existing one. To check a file, run `guardrails pii-rules check [path]`:
 
 ```text

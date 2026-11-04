@@ -55,7 +55,7 @@ downloaded. Then define this shell function. It runs the newest installed versio
 
 ```sh
 guardrails() {
-	"$(printf '%s\n' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/data/guardrails-broodhall/bin/[0-9]*/guardrails | sort -V | tail -n 1)" "$@"
+    "$(printf '%s\n' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/data/guardrails-broodhall/bin/[0-9]*/guardrails | sort -V | tail -n 1)" "$@"
 }
 guardrails version
 ```
