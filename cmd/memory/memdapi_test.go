@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -203,6 +204,7 @@ func TestMemdAPINoRawToolUses(t *testing.T) {
 		"/api/v1/observations", "/api/v1/observations/1", "/api/v1/projects",
 		"/api/v1/sessions", "/api/v1/sessions/s1", "/api/v1/work-state", "/api/v1/work-state?project=proj-a",
 		"/api/v1/deliverables", "/api/v1/observer", "/api/v1/privacy",
+		"/api/v1/facets", "/api/v1/timeseries", "/api/v1/system", "/api/v1/handoffs",
 	}
 	for _, p := range paths {
 		code, body := apiGet(t, h, p)
@@ -487,5 +489,212 @@ func TestMemdAPIEvents(t *testing.T) {
 	case <-closed:
 	case <-time.After(3 * time.Second):
 		t.Fatal("handler still running after client disconnect")
+	}
+}
+
+// ---- viewer endpoints: filters, facets, timeseries, system, handoffs ----
+
+func seedUIDays(t *testing.T, db *sql.DB) {
+	t.Helper()
+	apiExec(t, db, `INSERT INTO sessions (session_id, project) VALUES ('sess-one','proj-a'), ('sess-two','proj-b')`)
+	ins := `INSERT INTO observations (project, session_id, type, raw_type, title, source, created_at)
+		VALUES (?, ?, ?, ?, ?, 'live', CAST(? AS TIMESTAMP))`
+	apiExec(t, db, ins, "proj-a", "sess-one", "bugfix", "bugfix", "old a", "2026-01-10 10:00:00")
+	apiExec(t, db, ins, "proj-a", "sess-one", "feature", "feature", "mid a", "2026-01-11 23:30:00")
+	apiExec(t, db, ins, "proj-b", "sess-two", "bugfix", "bugfix", "new b", "2026-01-12 08:00:00")
+	apiExec(t, db, ins, "proj-b", "sess-two", "bugfix", "bugfix", "new b2", "2026-01-12 09:00:00")
+}
+
+func TestMemdAPIObservationFilters(t *testing.T) {
+	db, _ := openTestMemd(t)
+	seedUIDays(t, db)
+	h := uiHandler(db)
+	titles := func(q string) []string {
+		var p struct {
+			Items []struct{ Title string } `json:"items"`
+			Total int                      `json:"total"`
+		}
+		apiJSON(t, h, "/api/v1/observations?"+q, &p)
+		var out []string
+		for _, i := range p.Items {
+			out = append(out, i.Title)
+		}
+		if p.Total != len(out) {
+			t.Errorf("%s: total %d != items %d", q, p.Total, len(out))
+		}
+		return out
+	}
+	tests := []struct {
+		q    string
+		want string
+	}{
+		{"session=sess-two", "new b2,new b"},
+		{"from=2026-01-11&to=2026-01-11", "mid a"},
+		{"from=2026-01-12", "new b2,new b"},
+		{"to=2026-01-10", "old a"},
+		// UTC+2: 23:30Z on the 11th is 01:30 local on the 12th.
+		{"from=2026-01-12&to=2026-01-12&tz_offset=120", "new b2,new b,mid a"},
+		{"session=sess-two&type=feature", ""},
+	}
+	for _, tt := range tests {
+		if got := strings.Join(titles(tt.q), ","); got != tt.want {
+			t.Errorf("%s = %q, want %q", tt.q, got, tt.want)
+		}
+	}
+	for _, bad := range []string{"from=yesterday", "to=2026-13-40", "from=2026-01-01&tz_offset=abc", "tz_offset=99999"} {
+		if code, _ := apiGet(t, h, "/api/v1/observations?"+bad); code != 400 {
+			t.Errorf("%s = %d, want 400", bad, code)
+		}
+	}
+}
+
+func TestMemdAPIFacets(t *testing.T) {
+	db, _ := openTestMemd(t)
+	seedUIDays(t, db)
+	var f struct {
+		Projects []struct {
+			Name  string
+			Count int
+		}
+		Types []struct {
+			Name  string
+			Count int
+		}
+		FirstAt string `json:"first_at"`
+		LastAt  string `json:"last_at"`
+	}
+	apiJSON(t, uiHandler(db), "/api/v1/facets", &f)
+	if len(f.Projects) != 2 || f.Projects[0].Name != "proj-a" || f.Projects[0].Count != 2 {
+		t.Errorf("projects = %+v", f.Projects)
+	}
+	if len(f.Types) != 2 || f.Types[0].Name != "bugfix" || f.Types[0].Count != 3 {
+		t.Errorf("types = %+v", f.Types)
+	}
+	if f.FirstAt != "2026-01-10T10:00:00Z" || f.LastAt != "2026-01-12T09:00:00Z" {
+		t.Errorf("range = %q .. %q", f.FirstAt, f.LastAt)
+	}
+}
+
+func TestMemdAPITimeseries(t *testing.T) {
+	db, _ := openTestMemd(t)
+	seedUIDays(t, db)
+	h := uiHandler(db)
+	type resp struct {
+		Items []struct {
+			Day, Project, Type string
+			Count              int
+		} `json:"items"`
+	}
+	flat := func(r resp) string {
+		var s []string
+		for _, i := range r.Items {
+			s = append(s, fmt.Sprintf("%s/%s/%s=%d", i.Day, i.Project, i.Type, i.Count))
+		}
+		return strings.Join(s, " ")
+	}
+	var r resp
+	apiJSON(t, h, "/api/v1/timeseries?from=2026-01-01&to=2026-01-31", &r)
+	want := "2026-01-10/proj-a/bugfix=1 2026-01-11/proj-a/feature=1 2026-01-12/proj-b/bugfix=2"
+	if got := flat(r); got != want {
+		t.Errorf("utc = %q, want %q", got, want)
+	}
+	apiJSON(t, h, "/api/v1/timeseries?from=2026-01-01&to=2026-01-31&tz_offset=120", &r)
+	want = "2026-01-10/proj-a/bugfix=1 2026-01-12/proj-a/feature=1 2026-01-12/proj-b/bugfix=2"
+	if got := flat(r); got != want {
+		t.Errorf("tz=+120 = %q, want %q", got, want)
+	}
+	apiJSON(t, h, "/api/v1/timeseries?from=2026-01-12&to=2026-01-12&project=proj-b&type=bugfix", &r)
+	if got := flat(r); got != "2026-01-12/proj-b/bugfix=2" {
+		t.Errorf("filtered = %q", got)
+	}
+	if code, _ := apiGet(t, h, "/api/v1/timeseries?from=nope"); code != 400 {
+		t.Errorf("bad from = %d", code)
+	}
+}
+
+func TestMemdAPISystem(t *testing.T) {
+	db, dir := openTestMemd(t)
+	var empty struct {
+		Version      string `json:"version"`
+		Status       string `json:"status"`
+		LastIngestAt string `json:"last_ingest_at"`
+		DBBytes      int64  `json:"db_bytes"`
+	}
+	h := uiHandler(db)
+	apiJSON(t, h, "/api/v1/system", &empty)
+	if empty.Version == "" || empty.Status != "ok" || empty.LastIngestAt != "" {
+		t.Errorf("empty db = %+v", empty)
+	}
+	if empty.DBBytes <= 0 {
+		t.Errorf("db_bytes = %d for %s", empty.DBBytes, dir)
+	}
+	apiExec(t, db, `INSERT INTO tool_uses (session_id, tool_use_id, tool_name, created_at) VALUES ('s','t1','Bash', TIMESTAMP '2026-02-03 04:05:06')`)
+	apiExec(t, db, `INSERT INTO prompts (session_id, prompt_number, text, created_at) VALUES ('s',1,'x', TIMESTAMP '2026-02-03 04:06:00')`)
+	apiExec(t, db, `INSERT INTO observations (project, session_id, type, source, created_at) VALUES ('p','s','bugfix','live', TIMESTAMP '2026-02-03 05:00:00')`)
+	var s struct {
+		LastIngestAt      string `json:"last_ingest_at"`
+		LastObservationAt string `json:"last_observation_at"`
+		Totals            struct{ Observations, Sessions, Prompts int }
+	}
+	apiJSON(t, h, "/api/v1/system", &s)
+	if s.LastIngestAt != "2026-02-03T04:06:00Z" || s.LastObservationAt != "2026-02-03T05:00:00Z" {
+		t.Errorf("times = %+v", s)
+	}
+	if s.Totals.Observations != 1 || s.Totals.Prompts != 1 {
+		t.Errorf("totals = %+v", s.Totals)
+	}
+}
+
+func TestMemdAPIHandoffs(t *testing.T) {
+	db, _ := openTestMemd(t)
+	apiExec(t, db, `INSERT INTO sessions (session_id, project) VALUES ('abcd1234-0000-4000-8000-000000000000','proj-a'), ('ffff0000-1111-4000-8000-000000000000','proj-a')`)
+	h := uiHandler(db)
+	ws := func(project, list, fields, at string) {
+		apiExec(t, db, `INSERT INTO work_state (project, list_name, fields, created_at) VALUES (?, ?, ?, CAST(? AS TIMESTAMP))`, project, list, fields, at)
+	}
+	ws("proj-a", "handoff", `{"text":"# First\nold","handoff_file":"HANDOFF-abcd1234.md"}`, "2026-03-01 10:00:00")
+	ws("proj-a", "handoff", `{"consumed_at":1772362800000,"consumed_by":"startup"}`, "2026-03-01 11:00:00")
+	ws("proj-a", "handoff", `{"text":"<script>alert(1)</script> second","session_id":"ffff0000-1111-4000-8000-000000000000"}`, "2026-03-02 10:00:00")
+	ws("proj-b", "handoff", `{"text":"third, no link","handoff_file":"HANDOFF.md"}`, "2026-03-03 10:00:00")
+	ws("proj-a", "todo", `{"task":"not a handoff"}`, "2026-03-03 11:00:00")
+
+	var p struct {
+		Items []struct {
+			Project     string `json:"project"`
+			Text        string `json:"text"`
+			CreatedAt   string `json:"created_at"`
+			File        string `json:"file"`
+			SessionID   string `json:"session_id"`
+			SessionLink string `json:"session_link"`
+			State       string `json:"state"`
+			ConsumedBy  string `json:"consumed_by"`
+			ConsumedAt  string `json:"consumed_at"`
+		} `json:"items"`
+	}
+	apiJSON(t, h, "/api/v1/handoffs", &p)
+	if len(p.Items) != 3 {
+		t.Fatalf("items = %d: %+v", len(p.Items), p.Items)
+	}
+	third, second, first := p.Items[0], p.Items[1], p.Items[2] // newest first
+	if third.Project != "proj-b" || third.SessionID != "" || third.State != "unshown" {
+		t.Errorf("third = %+v", third)
+	}
+	if second.SessionID != "ffff0000-1111-4000-8000-000000000000" || second.SessionLink != "field" || second.State != "unshown" {
+		t.Errorf("second = %+v", second)
+	}
+	if !strings.Contains(second.Text, "<script>") {
+		t.Errorf("text must be served verbatim as data, got %q", second.Text)
+	}
+	if first.SessionID != "abcd1234-0000-4000-8000-000000000000" || first.SessionLink != "filename" ||
+		first.State != "shown" || first.ConsumedBy != "startup" || first.ConsumedAt != "2026-03-01T11:00:00Z" {
+		t.Errorf("first = %+v", first)
+	}
+	var one struct{ Items []struct{ Project string } }
+	apiJSON(t, h, "/api/v1/handoffs?project=proj-b&limit=5", &one)
+	if len(one.Items) != 1 || one.Items[0].Project != "proj-b" {
+		t.Errorf("project filter = %+v", one)
+	}
+	if code, _ := apiGet(t, h, "/api/v1/handoffs?limit=0"); code != 400 {
+		t.Errorf("limit=0 = %d", code)
 	}
 }

@@ -70,6 +70,10 @@ func uiHandler(db *sql.DB) http.Handler {
 		"/api/v1/deliverables":      a.deliverables,
 		"/api/v1/observer":          a.observer,
 		"/api/v1/privacy":           a.privacy,
+		"/api/v1/facets":            a.facets,
+		"/api/v1/timeseries":        a.timeseries,
+		"/api/v1/system":            a.system,
+		"/api/v1/handoffs":          a.handoffs,
 	} {
 		mux.HandleFunc("GET "+path, wrapAPI(fn))
 	}
@@ -489,6 +493,18 @@ func (a *uiAPI) observations(w http.ResponseWriter, r *http.Request) error {
 		for _, p := range parts {
 			args = append(args, strings.TrimSpace(p))
 		}
+	}
+	if s := q.Get("session"); s != "" {
+		where = append(where, `session_id = ?`)
+		args = append(args, s)
+	}
+	dcond, dargs, err := uiDateRange(q, "created_at")
+	if err != nil {
+		return err
+	}
+	if dcond != "" {
+		where = append(where, dcond)
+		args = append(args, dargs...)
 	}
 	filter := ""
 	if len(where) > 0 {

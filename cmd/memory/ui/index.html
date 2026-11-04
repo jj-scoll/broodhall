@@ -7,27 +7,33 @@
 <title>memory</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="app.css">
+<script src="md.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
-  <div class="brand">memory</div>
-  <nav aria-label="Views" id="nav">
-    <a href="#/overview" data-route="overview">Overview</a>
-    <a href="#/memory" data-route="memory">Memory</a>
-    <a href="#/sessions" data-route="sessions">Sessions</a>
-    <a href="#/work" data-route="work">Work</a>
-    <a href="#/observer" data-route="observer">Observer</a>
-    <a href="#/privacy" data-route="privacy">Privacy</a>
-  </nav>
+  <div class="brand"><span class="mark" aria-hidden="true"></span>memory</div>
   <div class="tools">
     <span id="health-pill" class="pill pill-wait" role="status">Checking...</span>
     <button id="theme-toggle" type="button" class="btn" aria-label="Theme: system">Theme: system</button>
   </div>
 </header>
-<div id="banner" class="banner" role="alert" hidden></div>
-<main id="main" tabindex="-1"><p class="muted">Loading...</p></main>
-<footer class="foot">Read-only view of the local memory database. Nothing here leaves this machine.</footer>
+<div class="shell">
+  <nav aria-label="Views" id="nav" class="side">
+    <a href="#/overview" data-route="overview">Overview</a>
+    <a href="#/stats" data-route="stats">Stats</a>
+    <a href="#/memory" data-route="memory">Memories</a>
+    <a href="#/sessions" data-route="sessions">Sessions</a>
+    <a href="#/work" data-route="work">Handoffs and work</a>
+    <a href="#/observer" data-route="observer">Observer</a>
+    <a href="#/privacy" data-route="privacy">Privacy</a>
+  </nav>
+  <div class="content">
+    <div id="banner" class="banner" role="alert" hidden></div>
+    <main id="main" tabindex="-1"><p class="muted">Loading...</p></main>
+    <footer class="foot">Read-only view of the local memory database. Nothing here leaves this machine.</footer>
+  </div>
+</div>
 </body>
 </html>

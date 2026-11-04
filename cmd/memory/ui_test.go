@@ -75,7 +75,7 @@ func uiEmbedded(t *testing.T) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"index.html", "app.js", "app.css"} {
+	for _, want := range []string{"index.html", "app.js", "app.css", "md.js"} {
 		if out[want] == "" {
 			t.Fatalf("embedded asset %s missing or empty", want)
 		}
@@ -102,10 +102,12 @@ func TestMemdUIScriptsAreGETOnlyAndSafe(t *testing.T) {
 	if !strings.Contains(js, "fetch(") {
 		t.Error("app.js has no fetch call (test would pass vacuously)")
 	}
-	for _, bad := range []string{"POST", "PUT", "DELETE", "PATCH", "innerHTML", "outerHTML", "insertAdjacentHTML",
-		"document.write", "eval(", "new Function", "XMLHttpRequest", "sendBeacon", "WebSocket"} {
-		if strings.Contains(js, bad) {
-			t.Errorf("app.js contains %q", bad)
+	for name, src := range map[string]string{"app.js": js, "md.js": uiEmbedded(t)["md.js"]} {
+		for _, bad := range []string{"POST", "PUT", "DELETE", "PATCH", "innerHTML", "outerHTML", "insertAdjacentHTML",
+			"document.write", "eval(", "new Function", "XMLHttpRequest", "sendBeacon", "WebSocket", "DOMParser", "createContextualFragment"} {
+			if strings.Contains(src, bad) {
+				t.Errorf("%s contains %q", name, bad)
+			}
 		}
 	}
 }
@@ -125,7 +127,7 @@ func TestMemdUIPageShape(t *testing.T) {
 	if !strings.Contains(html, `name="viewport"`) {
 		t.Error("index.html lacks a viewport meta")
 	}
-	for _, route := range []string{"overview", "memory", "sessions", "work", "observer", "privacy"} {
+	for _, route := range []string{"overview", "stats", "memory", "sessions", "work", "observer", "privacy"} {
 		if !strings.Contains(js, `"`+route+`"`) {
 			t.Errorf("app.js lacks route %q", route)
 		}
