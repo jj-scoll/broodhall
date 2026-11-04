@@ -30,7 +30,7 @@ func TestGuardCorpus(t *testing.T) {
 		wantOld, wantNew, cmd := parts[0], parts[1], strings.ReplaceAll(parts[2], `\n`, "\n")
 		n++
 		env := func() *guardEnv {
-			return &guardEnv{Now: time.Unix(1_800_000_000, 0), Session: "corpus", Cwd: "/work", Home: "/home/user", State: memState{}}
+			return &guardEnv{Now: time.Unix(1_800_000_000, 0), Session: "corpus", Cwd: "/work", Home: "/nohome/user", State: memState{}}
 		}
 		if got := decideLegacy(env(), cmd).Kind(); got != wantOld {
 			t.Errorf("legacy %q: got %s, want %s", cmd, got, wantOld)

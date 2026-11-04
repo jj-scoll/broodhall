@@ -10,7 +10,7 @@ import (
 var t0 = time.Unix(1_800_000_000, 0)
 
 func envAt(st guardState, now time.Time, cwd string) *guardEnv {
-	return &guardEnv{Now: now, Session: "s", Cwd: cwd, Home: "/home/user", State: st}
+	return &guardEnv{Now: now, Session: "s", Cwd: cwd, Home: "/nohome/user", State: st}
 }
 
 func TestSlowOpNarrowedAndStateful(t *testing.T) {

@@ -11,7 +11,7 @@ block:dangerous:rm -rf /	block:dangerous:rm -rf /	sudo rm -rf /
 block:dangerous:rm -rf /	block:dangerous:rm -rf /	cd x && rm -rf /
 block:dangerous:rm -rf /	block:dangerous:rm -rf /	rm -rf /*
 block:dangerous:rm -rf /	allow	rm -rf /tmp/claude-1000/-home-user-ask/abc/scratchpad/work
-block:dangerous:rm -rf /	allow	rm -rf /home/user/src/claude-tools-wt/guards/build
+block:dangerous:rm -rf /	allow	rm -rf /nohome/user/src/claude-tools-wt/guards/build
 block:dangerous:rm -rf /	allow	rm -rf /nix/store/abc-foo.drv
 block:dangerous:rm -rf ~	allow	rm -rf ~/.cache/some-tool
 block:dangerous:rm -rf $HOME	allow	rm -rf $HOME/projects/x/node_modules
@@ -35,7 +35,7 @@ block:dangerous:> /etc/	block:dangerous:> /etc/	echo x > /etc/hosts
 block:dangerous:dd if=	block:dangerous:dd if=	dd if=/dev/zero of=/dev/sda
 block:dangerous:chown -R	allow	chown -R user /srv
 block:privileged-container	block:privileged-container	docker run -d --privileged ubuntu
-allow	allow	docker run -v /home/user/dev:/src ubuntu
+allow	allow	docker run -v /nohome/user/dev:/src ubuntu
 warn:slow-op	context:plan-before-apply	terraform apply
 warn:slow-op	context:plan-before-apply	terraform destroy -auto-approve
 allow	context:plan-before-apply	terragrunt run-all apply
@@ -54,7 +54,7 @@ allow	block:dangerous:rm -rf /	rm -fr /
 allow	block:dangerous:rm -rf /	rm -r -f /
 block:dangerous:rm -rf /	block:dangerous:rm -rf /home	rm -rf /home
 block:dangerous:rm -rf /	block:dangerous:rm -rf /nix	rm -rf /nix
-block:dangerous:rm -rf /	block:dangerous:rm -rf ~	rm -rf /home/user
+block:dangerous:rm -rf /	block:dangerous:rm -rf ~	rm -rf /nohome/user
 block:dangerous:rm -rf /	block:dangerous:rm -rf /	echo "don't; rm -rf /
 # shell-ast port: the remaining substring rules read the parsed command
 block:dangerous:> /etc/	block:dangerous:> /etc/	cat foo >> /etc/hosts
@@ -148,6 +148,6 @@ allow	allow	echo "oops; git stash pop
 block:dangerous:chown -R	block:dangerous:chown -R	chown -R x /
 block:dangerous:chown -R	block:dangerous:chown -R	chown -R x ~
 block:dangerous:chown -R	block:dangerous:chown -R	sudo chown -R root /nix
-block:dangerous:chown -R	block:dangerous:chown -R	chown -R user /home/user/
+block:dangerous:chown -R	block:dangerous:chown -R	chown -R user /nohome/user/
 allow	block:dangerous:chown -R	chown -hR user $HOME
 block:dangerous:chown -R	block:dangerous:chown -R	bash -c 'chown -R x /storage'

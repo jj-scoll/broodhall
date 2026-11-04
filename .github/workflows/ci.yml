@@ -8,6 +8,11 @@ on:
     branches: [main]
   pull_request:
 
+# A new push to a PR cancels that PR's run still in progress; runs on main always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     strategy:
@@ -22,7 +27,16 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go vet ./cmd/claude-tools/...
-      - run: go test ./cmd/claude-tools/...
+      # Compile the test binary in its own step, so step times split build from run.
+      - run: go test -run '^$' ./cmd/claude-tools/...
+      - run: |
+          set -o pipefail
+          go test -v ./cmd/claude-tools/... | tee "$RUNNER_TEMP/go-test.log"
+      - name: Slowest tests
+        if: always()
+        run: |
+          grep -E '^ *--- (PASS|FAIL|SKIP)' "$RUNNER_TEMP/go-test.log" |
+            sed -E 's/^ *--- [A-Z]+: (.*) \(([0-9.]+)s\)$/\2 \1/' | sort -rn | head -15 || true
       - run: bash plugins/memory/test/run_test.sh
       - run: bash plugins/guardrails/test/run_test.sh
       - run: bash plugins/guardrails/test/install_test.sh
