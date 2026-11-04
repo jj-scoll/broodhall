@@ -209,6 +209,46 @@ PATH=$old_path
 expect_open "unsupported platform"
 if [ -e "$tmp/t4/curl-called" ]; then bad "unsupported platform skips the download" "curl was called"; else ok "unsupported platform skips the download"; fi
 
+# --- 4b. Linux without xz: GNU tar cannot unpack .tar.xz, so the install stops before the
+# download and says why. PATH is a farm of links to every program except xz, and uname says
+# Linux, so this runs on macOS CI too.
+newcase t4b
+mkdir -p "$tmp/t4b/path"
+old_ifs=$IFS
+IFS=:
+for d in $PATH; do
+	for f in "$d"/*; do
+		n=${f##*/}
+		[ "$n" = xz ] || [ -e "$tmp/t4b/path/$n" ] || [ ! -x "$f" ] || ln -s "$f" "$tmp/t4b/path/$n"
+	done
+done
+IFS=$old_ifs
+rm -f "$tmp/t4b/path/uname" "$tmp/t4b/path/curl"
+cat >"$tmp/t4b/path/uname" <<'EOF'
+#!/bin/sh
+case "$1" in -m) echo x86_64 ;; *) echo Linux ;; esac
+EOF
+cat >"$tmp/t4b/path/curl" <<EOF
+#!/bin/sh
+echo curl >>"$tmp/t4b/curl-called"
+exit 1
+EOF
+chmod +x "$tmp/t4b/path/uname" "$tmp/t4b/path/curl"
+old_path=$PATH
+PATH=$tmp/t4b/path
+if command -v xz >/dev/null 2>&1; then xz_hidden=no; else xz_hidden=yes; fi
+hook t4b session-start
+settle t4b
+PATH=$old_path
+if [ "$xz_hidden" = yes ]; then ok "test PATH hides xz"; else bad "test PATH hides xz" "xz still found"; fi
+expect_open "Linux without xz"
+if [ -e "$tmp/t4b/curl-called" ]; then bad "Linux without xz skips the download" "curl was called"; else ok "Linux without xz skips the download"; fi
+if grep -q 'xz not found (install xz-utils)' "$tmp/t4b/data/memory.log" 2>/dev/null; then
+	ok "Linux without xz logs the fix"
+else
+	bad "Linux without xz logs the fix" "log: $(cat "$tmp/t4b/data/memory.log" 2>/dev/null)"
+fi
+
 # --- 5. binary crashes after printing a block decision
 newcase t5
 mkstub "$tmp/t5/memory"
