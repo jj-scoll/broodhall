@@ -37,16 +37,19 @@ EOF
 	chmod +x "$1"
 }
 
-# mkrelease <dir> [checksum]: a fake release for v$ver, laid out like the GitHub download URL.
+# mkrelease <dir> [checksum] [name]: a fake release for v$ver, laid out like the GitHub
+# download URL. name is the binary and asset prefix: guardrails, or claude-tools for a release
+# made before the rename.
 mkrelease() {
-	rel=$1
+	rel=$1 name=${3:-guardrails}
+	a=${name}_${os}_$arch.tar.gz
 	mkdir -p "$rel/v$ver" "$rel/work"
-	mkstub "$rel/work/guardrails"
-	tar -czf "$rel/v$ver/$asset" -C "$rel/work" guardrails
+	mkstub "$rel/work/$name"
+	tar -czf "$rel/v$ver/$a" -C "$rel/work" "$name"
 	if [ -n "${2-}" ]; then
-		echo "$2  $asset" >"$rel/v$ver/checksums.txt"
+		echo "$2  $a" >"$rel/v$ver/checksums.txt"
 	else
-		(cd "$rel/v$ver" && $sum "$asset" >checksums.txt)
+		(cd "$rel/v$ver" && $sum "$a" >checksums.txt)
 	fi
 }
 
@@ -177,6 +180,31 @@ if [ "$rc" = 3 ] && case $out in *"args=pre-tool-use"*"stdin={\"tool_name\":\"Ba
 CLAUDE_TOOLS_RELEASE_URL=file:///nonexistent hook install
 expect_silent_allow "install: already installed is silent"
 
+# --- a release made before the rename ----------------------------------------------------
+# Main can advertise a version whose release predates the rename (its only asset is
+# claude-tools_<os>_<arch>.tar.gz holding claude-tools) until the next release ships.
+newcase install-old-release
+mkrelease "$c/rel" "" claude-tools
+CLAUDE_TOOLS_RELEASE_URL=file://$c/rel hook install
+if [ "$rc" = 0 ] && [ -z "$out" ] && [ -x "$c/data/bin/$ver/guardrails" ]; then ok "install: a pre-rename release installs as bin/<ver>/guardrails"; else bad "install: a pre-rename release installs as bin/<ver>/guardrails" "rc=$rc out=$out"; fi
+grep -q '  guardrails$' "$c/data/bin/$ver/guardrails.sha256" 2>/dev/null && ok "pre-rename release: the record names guardrails" || bad "pre-rename release: the record names guardrails" "$(cat "$c/data/bin/$ver/guardrails.sha256" 2>&1)"
+hook pre-tool-use
+if [ "$rc" = 3 ] && case $out in *"args=pre-tool-use"*) true ;; *) false ;; esac; then ok "pre-rename release: the installed binary runs"; else bad "pre-rename release: the installed binary runs" "rc=$rc out=$out"; fi
+
+newcase install-old-release-bad-checksum
+mkrelease "$c/rel" "$(printf '0%.0s' $(seq 64))" claude-tools
+CLAUDE_TOOLS_RELEASE_URL=file://$c/rel hook install
+if [ "$rc" = 0 ] && [ ! -e "$c/data/bin/$ver/guardrails" ] && case $out in *"checksum mismatch"*) true ;; *) false ;; esac; then ok "pre-rename release with a bad checksum installs nothing"; else bad "pre-rename release with a bad checksum installs nothing" "rc=$rc out=$out"; fi
+
+# This version's binary, installed under the old name by the launcher before the rename.
+newcase same-version-old-name
+mkdir -p "$c/data/bin/$ver"
+mkstub "$c/data/bin/$ver/claude-tools"
+hook pre-tool-use
+if [ "$rc" = 3 ] && case $out in *"args=pre-tool-use"*) true ;; *) false ;; esac; then ok "this version's claude-tools runs"; else bad "this version's claude-tools runs" "rc=$rc out=$out err=$err"; fi
+hook install
+expect_silent_allow "install: this version's claude-tools counts as installed"
+
 # --- run from a terminal (no CLAUDE_PLUGIN_ROOT or CLAUDE_PLUGIN_DATA) -----------------------
 # The launcher finds the data dir Claude Code uses, <config>/plugins/data/guardrails-<marketplace>,
 # from its own place in <config>/plugins/cache/<marketplace>/guardrails/<version>.
@@ -208,6 +236,10 @@ cp -R "$root/scripts" "$root/.claude-plugin" "$c/checkout/plugins/guardrails/"
 mkstub "$cfg/plugins/data/guardrails-inline/bin/$ver/guardrails"
 out=$(unset CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA && CLAUDE_CONFIG_DIR=$cfg sh "$c/checkout/plugins/guardrails/scripts/run.sh" version </dev/null 2>&1)
 case $out in *"args=version"*) ok "terminal run from a checkout finds the guardrails-* dir with a binary" ;; *) bad "terminal run from a checkout finds the guardrails-* dir with a binary" "out=$out" ;; esac
+rm "$cfg/plugins/data/guardrails-inline/bin/$ver/guardrails"
+mkstub "$cfg/plugins/data/guardrails-inline/bin/$ver/claude-tools"
+out=$(unset CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA && CLAUDE_CONFIG_DIR=$cfg sh "$c/checkout/plugins/guardrails/scripts/run.sh" version </dev/null 2>&1)
+case $out in *"args=version"*) ok "terminal run from a checkout finds this version's claude-tools" ;; *) bad "terminal run from a checkout finds this version's claude-tools" "out=$out" ;; esac
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

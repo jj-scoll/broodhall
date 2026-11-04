@@ -31,12 +31,15 @@ if [ -z "$data" ]; then
 		cfg=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
 		data=$cfg/plugins/data/guardrails
 		for d in "$cfg"/plugins/data/guardrails-*; do
-			[ -x "$d/bin/$ver/guardrails" ] && data=$d
+			[ -x "$d/bin/$ver/guardrails" ] || [ -x "$d/bin/$ver/claude-tools" ] && data=$d
 		done
 		;;
 	esac
 fi
 dest=$data/bin/$ver/guardrails
+# Main can advertise a version whose release predates the rename until the next release ships:
+# the launcher before the rename installed that version's binary as claude-tools, so use it.
+[ -x "$dest" ] || [ ! -x "${dest%/*}/claude-tools" ] || dest=${dest%/*}/claude-tools
 bin=${CLAUDE_TOOLS_BIN:-$dest}
 export CLAUDE_PLUGIN_ROOT="$root"
 
@@ -80,20 +83,24 @@ if [ "${1-}" = install ]; then
 	aarch64 | arm64) arch=arm64 ;;
 	*) fail "unsupported CPU $(uname -m)" ;;
 	esac
-	asset=guardrails_${os}_$arch.tar.gz
+	asset=guardrails_${os}_$arch.tar.gz want=$asset member=guardrails
 	mkdir -p "$data/bin" && tmp=$(mktemp -d "$data/bin/.download.XXXXXX") || fail "cannot write $data"
 	trap 'rm -rf "$tmp"' EXIT
-	curl -fsSL --max-time 60 -o "$tmp/$asset" "$base/v$ver/$asset" &&
+	# A release made before the rename has only claude-tools_<os>_<arch>.tar.gz (see dest above).
+	{ curl -fsSL --max-time 60 -o "$tmp/$asset" "$base/v$ver/$asset" || {
+		asset=claude-tools_${os}_$arch.tar.gz member=claude-tools
+		curl -fsSL --max-time 60 -o "$tmp/$asset" "$base/v$ver/$asset"
+	}; } &&
 		curl -fsSL --max-time 30 -o "$tmp/checksums.txt" "$base/v$ver/checksums.txt" ||
-		fail "download of $asset failed"
+		fail "download of $want failed"
 	if command -v sha256sum >/dev/null; then sum=sha256sum; else sum='shasum -a 256'; fi
 	# Pick the asset's line first: `$sum -c` on empty input exits 0 or errors depending on the
 	# shasum build, so an asset missing from checksums.txt is refused here, by name.
 	line=$(grep "  $asset\$" "$tmp/checksums.txt")
 	[ -n "$line" ] || fail "no checksum for $asset in checksums.txt"
 	(cd "$tmp" && printf '%s\n' "$line" | $sum -c - >/dev/null 2>&1) || fail "checksum mismatch"
-	tar -xzf "$tmp/$asset" -C "$tmp" guardrails && mkdir -p "${dest%/*}" &&
-		mv -f "$tmp/guardrails" "$dest" || fail "unpack failed"
+	tar -xzf "$tmp/$asset" -C "$tmp" "$member" && mkdir -p "${dest%/*}" &&
+		mv -f "$tmp/$member" "$dest" || fail "unpack failed"
 	# What doctor compares the binary with later: the unpacked file's hash, taken after the
 	# archive passed the release checksum.
 	$sum "$dest" | sed 's|  .*|  guardrails|' >"$dest.sha256"
