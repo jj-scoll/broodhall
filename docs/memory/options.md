@@ -33,6 +33,7 @@ starts.
 | `MEMORY_EXT_DIR` | `<state directory>/ext` | Where the daemon finds the DuckDB extensions `fts`, `httpfs` and `quack`. The launcher sets this to the extensions that came with the download, so you rarely set it. |
 | `MEMORY_SETTINGS` | `~/.config/memory/settings.json` | Path of the settings file. |
 | `MEMORY_LOOKUP_SHELL` | unset | Set to `1` to run the lookup before `Bash`, `Grep` and `Glob` too. It then needs the hook matcher to include them; the plugin's matcher is <code>Edit&#124;Write&#124;NotebookEdit</code>, so on its own this has no effect. |
+| `MEMORY_OBSERVER_CONFIG_DIR` | unset | The Claude config directory (account) the observer and summary calls run as. Unset, they run as the account that started the daemon. Set it when you have several accounts and want every note written through one of them. |
 | `MEMORY_CONFIG_DIRS` | unset | A `:`-separated list of Claude config directories. When set, the daemon reads `projects/` under exactly these instead of finding them itself. A relative path is ignored. |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | The daemon reads transcripts from `projects/` under it, and under every other `~/.claude*` directory that has a `projects/`. |
 | `CLAUDE_PROJECT_DIR` | the hook's working directory | Which project a hook or tool call belongs to. Claude Code sets it. |
@@ -66,6 +67,11 @@ There is one socket and one database file, so run only one daemon per state dire
 second daemon on the same machine exits at once if it finds the socket held. That is fine
 with several accounts (for example `~/.claude` and `~/.claude-work`): the daemon reads every
 account's transcripts, whichever account started it.
+
+The observer and summary calls run as the account that started the daemon, so one account's
+tool calls can be sent to Claude through another account. To keep that fixed, set
+`MEMORY_OBSERVER_CONFIG_DIR` to the account directory every note should go through, for
+example `~/.claude-work`, in the `env` of each account's `settings.json`.
 
 When the daemon starts, a transcript it has not seen before is read from the last time
 memory read that account's directory, at most 24 hours back. So sessions that ran while

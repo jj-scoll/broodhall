@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -90,7 +91,9 @@ var runClaude = func(ctx context.Context, argv []string, stdin []byte) ([]byte, 
 }
 
 // observerCmd builds the exec.Cmd: env MEMORY_OBSERVER=1 marks the session as the observer's,
-// and cwd memdDir()/observer-cwd (created here) makes its project dir recognisable.
+// and cwd memdDir()/observer-cwd (created here) makes its project dir recognisable. The daemon
+// serves every account, so MEMORY_OBSERVER_CONFIG_DIR, when set, is the one account
+// (CLAUDE_CONFIG_DIR) every observer and summary call runs as, whichever account started it.
 func observerCmd(ctx context.Context, argv []string, stdin []byte) (*exec.Cmd, error) {
 	dir := filepath.Join(memdDir(), "observer-cwd")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -98,7 +101,12 @@ func observerCmd(ctx context.Context, argv []string, stdin []byte) (*exec.Cmd, e
 	}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "MEMORY_OBSERVER=1")
+	env := os.Environ()
+	if cfg := os.Getenv("MEMORY_OBSERVER_CONFIG_DIR"); cfg != "" {
+		env = slices.DeleteFunc(env, func(e string) bool { return strings.HasPrefix(e, "CLAUDE_CONFIG_DIR=") })
+		env = append(env, "CLAUDE_CONFIG_DIR="+cfg)
+	}
+	cmd.Env = append(env, "MEMORY_OBSERVER=1")
 	cmd.Stdin = bytes.NewReader(stdin)
 	// A child that outlives the kill and keeps stdout open must not hang Run after ctx ends.
 	cmd.WaitDelay = 5 * time.Second
