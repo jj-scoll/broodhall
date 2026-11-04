@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,7 +28,7 @@ const fakeTool = "#!/bin/sh\necho \"args=$*\"\necho \"off=$CLAUDE_TOOLS_OFF\"\ne
 type pluginManifest struct {
 	Version    string `json:"version"`
 	UserConfig map[string]struct {
-		Default string `json:"default"`
+		Default any `json:"default"`
 	} `json:"userConfig"`
 }
 
@@ -87,7 +88,7 @@ func TestShimRunsVersionedBinary(t *testing.T) {
 	env := map[string]string{"CLAUDE_PLUGIN_DATA": data}
 
 	code, out := runShim(t, env, "IN", "pre-tool-use")
-	want := "args=pre-tool-use\noff=" + m.UserConfig["disabled_guards"].Default + "\nallow=\nstate=" + data + "\nstdin=IN\n"
+	want := "args=pre-tool-use\noff=" + fmt.Sprint(m.UserConfig["disabled_guards"].Default) + "\nallow=\nstate=" + data + "\nstdin=IN\n"
 	if code != 3 || out != want {
 		t.Fatalf("defaults: exit %d, stdout %q; want 3 and %q", code, out, want)
 	}
@@ -196,7 +197,8 @@ func TestPluginHooksUseKnownCommands(t *testing.T) {
 
 // The guards fail closed: a guard binary that crashes, is killed or hangs blocks the tool
 // call instead of letting it through unchecked. A missing binary still allows, because
-// run.sh exits 0 then. The other hooks (install, retry-breaker) fail open.
+// run.sh exits 0 then. The other hooks (install, retry-breaker, session-env, receipt, and
+// config-gate at SessionStart, where it only takes a snapshot) fail open.
 func TestPluginGuardHooksFailClosed(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(pluginDir, "hooks/hooks.json"))
 	if err != nil {
@@ -214,7 +216,7 @@ func TestPluginGuardHooksFailClosed(t *testing.T) {
 		for _, g := range groups {
 			for _, h := range g.Hooks {
 				want := ""
-				if event == "PreToolUse" {
+				if event == "PreToolUse" || event == "ConfigChange" {
 					want = "block"
 				}
 				if h.OnFailure != want {
