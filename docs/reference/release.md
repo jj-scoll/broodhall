@@ -91,6 +91,6 @@ that writes declares `contents: write` itself.
 
 ## Earlier memory releases
 
-Before 0.4.0 memory released separately under `memory-v<version>` tags (`memory-v0.1.0`).
+Before 1.0.0 memory released separately under `memory-v<version>` tags (`memory-v0.1.0`).
 That tag scheme and its workflow are gone. Installs of memory 0.1.0 keep working because
 they use `memory-v0.1.0`'s assets, which are still in place.

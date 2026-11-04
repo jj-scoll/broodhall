@@ -31,6 +31,30 @@ Requirements:
 If `CLAUDE.md` already includes the text `rtk init` wrote (an `@RTK.md` line or an RTK
 section), remove it once this plugin is on, or Claude reads both.
 
+## Install the rtk binary
+
+The fork has no release binaries, so build it from source with Rust's `cargo`
+(see [rustup.rs](https://rustup.rs) if you have none):
+
+```sh
+cargo install --git https://github.com/jj-scoll/rtk --branch develop rtk
+```
+
+The trailing `rtk` names the package; without it cargo stops with "multiple packages with
+binaries found". The binary lands in `~/.cargo/bin`, which must be on your `PATH`. Check it
+with `rtk --version` and `rtk gain`. Run the same command with `--force` to update it.
+
+Upstream install methods (`brew install rtk`, upstream's `install.sh`) give upstream rtk,
+which works but lacks the fork's filters; the plugin says so at session start.
+
+## Turn it off
+
+- **The rewrite only:** turn off the guardrails `rtk` option with
+  `/plugin configure guardrails@broodhall`.
+- **The plugin:** `claude plugin disable rtk@broodhall`, or remove it with
+  `claude plugin uninstall rtk@broodhall`.
+- **The binary:** `cargo uninstall rtk`.
+
 ## What it does
 
 At session start the hook checks the rtk on `PATH` and replies with one of these:

@@ -32,7 +32,46 @@ In a throwaway repository, ask Claude to run `git reset --hard`. Claude Code sto
 you the guard's reason before anything runs. That is the ASK response described on
 [Why](why.md). Nothing is discarded unless you approve.
 
+### memory
+
+memory downloads in the background during the first session and starts from the second. In
+the second session, check that the daemon runs and serves its page:
+
+```sh
+pgrep -f 'memory serve'
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:9495/
+```
+
+The first prints a process id, the second `200`. Open `http://127.0.0.1:9495/` in a browser
+to see the notes as they arrive. If either fails, read `memory.log` in the plugin data
+directory, `~/.claude/plugins/data/memory-broodhall/memory.log`, and see
+[Troubleshooting](troubleshooting.md#memory-does-not-start).
+
+After a few days, `memory cost --days 7` shows token cost per day and session. See
+[Token cost and cache misses](../memory/index.md#token-cost-and-cache-misses) for the full
+command.
+
+### context-guard
+
+The warning normally starts at 180000 tokens. To see it sooner, set `warn_tokens` to `1000`
+with `/plugin configure context-guard@broodhall` and start a new session. Once the session
+has more than 1000 tokens of context, which is after the first reply, each prompt shows a line
+such as `context 25k of 260k limit`. Set `warn_tokens` back to `180000` afterwards.
+
+### rtk
+
+A healthy rtk plugin shows nothing at session start; it only speaks when rtk is missing or is
+not the fork (see [RTK](../rtk/index.md#what-it-does)). To see the rewrite, turn on the
+guardrails [`rtk` option](../guardrails/options.md#rtk), start a new session and ask Claude to
+run `git status`. Then, in a terminal, run:
+
+```sh
+rtk gain --history
+```
+
+`rtk git status` is listed under "Recent Commands".
+
 ## Check the install
 
-`claude plugin list` shows whether guardrails is installed and enabled. If a guard does not
+`claude plugin list` shows which plugins are installed and enabled. If a guard does not
 fire when you expect it to, see [Troubleshooting](troubleshooting.md).

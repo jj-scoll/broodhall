@@ -3,29 +3,28 @@
 ```
 claude plugin marketplace add jj-scoll/broodhall
 claude plugin install guardrails@broodhall
-```
-
-For the [memory](../memory/index.md) plugin, add this line:
-
-```
 claude plugin install memory@broodhall
+claude plugin install context-guard@broodhall
+claude plugin install rtk@broodhall
 ```
 
-The two plugins are independent. Install either or both.
-
-The [context-guard](../context-guard/index.md) plugin needs guardrails. It declares that as a
+Install only the plugins you want. guardrails, memory and rtk work on their own.
+[context-guard](../context-guard/index.md) needs guardrails. It declares that as a
 dependency, so `claude plugin install context-guard@broodhall` installs guardrails too.
 
-Or inside a session, use the `/plugin` command and add the same marketplace and plugin.
+Or inside a session, use the `/plugin` command and add the same marketplace and plugins.
 Start a new session afterwards.
 
 ## Requirements
 
-- Linux or macOS, on amd64 or arm64. Those are the four binaries the release publishes.
+### guardrails
+
+- Linux or macOS, on amd64 or arm64. Those are the four `claude-tools` archives the release
+  publishes.
 - `curl` and `tar` on your `PATH`. The launcher uses them to fetch and unpack the binary, and
   `sha256sum` or `shasum` to check it.
 
-## Requirements for memory
+### memory
 
 - Linux or macOS, on amd64 or arm64.
 - On Linux, a glibc system (Debian, Ubuntu, Fedora and similar), glibc 2.35 or newer. musl
@@ -35,6 +34,34 @@ Start a new session afterwards.
 - `curl`, `tar`, and `sha256sum` or `shasum`, as for guardrails.
 - The `claude` command on your `PATH`, signed in. memory runs it to write its notes. Read
   [Privacy and redaction](../memory/privacy.md) before you install.
+
+### context-guard
+
+- Claude Code 2.1.317 or newer. It is a hooks module, an early-access plugin kind, and was
+  not tried on older versions. Check yours with `claude --version`.
+- The guardrails plugin, which Claude Code installs with it. Without guardrails the warn and
+  block levels still work, but the clear after a handoff does not.
+
+### rtk
+
+- rtk from the [jj-scoll/rtk](https://github.com/jj-scoll/rtk) fork on your `PATH`. The
+  plugin does not ship it. See [Install the rtk binary](../rtk/index.md#install-the-rtk-binary).
+- For the command rewrite itself, guardrails with its [`rtk` option](../guardrails/options.md#rtk)
+  on.
+
+No other plugin states a minimum Claude Code version.
+
+## Platforms
+
+- **Linux and macOS** are supported, on amd64 and arm64. CI tests both.
+- **macOS.** The launchers download with `curl`, which does not set the quarantine attribute,
+  so Gatekeeper does not stop the binary. If you download an archive yourself in a browser and
+  point `CLAUDE_TOOLS_BIN` or `MEMORY_BIN` at what it unpacks, clear the attribute first with
+  `xattr -d com.apple.quarantine <file>`.
+- **Windows** is not supported. The launchers fetch Linux and macOS binaries only, so on
+  Windows the guardrails install fails and its guards block tool calls (see
+  [`fail_open`](../guardrails/options.md#fail_open)), and memory stays off. Under WSL, Claude
+  Code sees Linux and the Linux binaries are used; that is not tested.
 
 ## What gets downloaded
 
@@ -78,7 +105,7 @@ For memory, set `MEMORY_BIN` instead. The program needs cgo and the DuckDB exten
 ## Moving from the old jj-scoll marketplace
 
 Earlier versions were installed from a marketplace named `jj-scoll`. That install keeps
-working, but it stays on 0.1.2: updating it does not move it to `broodhall`. To move over,
+working, but it stays on the version it has: updating it does not move it to `broodhall`. To move over,
 remove the old marketplace, then add the new one:
 
 ```

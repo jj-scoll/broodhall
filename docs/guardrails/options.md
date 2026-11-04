@@ -119,7 +119,7 @@ writes this to stderr, which Claude Code shows in place of the tool call (the pa
 version differ):
 
 ```text
-guardrails: BLOCKED: the guard binary claude-tools 0.2.0 is not installed (/home/you/.claude/plugins/data/guardrails/bin/0.2.0/claude-tools), so this tool call was not checked.
+guardrails: BLOCKED: the guard binary claude-tools X.Y.Z is not installed (/home/you/.claude/plugins/data/guardrails-broodhall/bin/X.Y.Z/claude-tools), so this tool call was not checked.
 Retry: start a new session (SessionStart downloads it), or run: sh "/path/to/plugin/scripts/run.sh" install
 Opt out: set the guardrails option fail_open to true (or CLAUDE_TOOLS_FAIL_OPEN=1) to allow tool calls without guards.
 ```
