@@ -56,7 +56,7 @@ No other plugin states a minimum Claude Code version.
 - **Linux and macOS** are supported, on amd64 and arm64. CI tests Linux amd64 and macOS arm64.
 - **macOS.** The launchers download with `curl`, which does not set the quarantine attribute,
   so Gatekeeper does not stop the binary. If you download an archive yourself in a browser and
-  point `CLAUDE_TOOLS_BIN` or `MEMORY_BIN` at what it unpacks, clear the attribute first with
+  point `GUARDRAILS_BIN` or `MEMORY_BIN` at what it unpacks, clear the attribute first with
   `xattr -d com.apple.quarantine <file>`.
 - **Windows** is not supported. The release has no Windows archives, so on Windows the
   guardrails install fails and its guards block tool calls (see
@@ -92,7 +92,7 @@ See [Troubleshooting](troubleshooting.md#memory-does-not-start).
 
 ## Test a local build
 
-Set `CLAUDE_TOOLS_BIN`, in the environment Claude Code runs in, to the path of a binary you
+Set `GUARDRAILS_BIN`, in the environment Claude Code runs in, to the path of a binary you
 built. The launcher then uses that binary and skips the download.
 
 ```

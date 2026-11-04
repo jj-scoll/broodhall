@@ -80,7 +80,7 @@ A value that is not a positive number counts as the default. A `block_tokens` be
 `warn_tokens` is raised to it, so the module never blocks before it warns.
 
 Outside the options, the module reads no environment variables. Its launcher honours the same
-two as guardrails: `CLAUDE_TOOLS_BIN` (a binary to run in place of the installed one) and
+two as guardrails: `GUARDRAILS_BIN` (a binary to run in place of the installed one) and
 `HANDOFF_STATE_DIR` (the state directory). `HANDOFF_AUTOCLEAR=0` is read by the guardrails
 hooks; see [Handoff gate](../guardrails/handoff-gate.md#when-a-link-is-missing).
 
@@ -94,5 +94,5 @@ guardrails data directory as the state directory, because that is where the guar
 keep `claude-handoff/`. It runs only two things: `state`, and
 `autoclear` with the arguments above.
 
-If you use `CLAUDE_TOOLS_BIN` or `HANDOFF_STATE_DIR` for guardrails, set the same values in
+If you use `GUARDRAILS_BIN` or `HANDOFF_STATE_DIR` for guardrails, set the same values in
 the environment Claude Code starts in, so both plugins see them.

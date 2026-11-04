@@ -94,6 +94,29 @@ func TestSecretFileRuleKinds(t *testing.T) {
 	}
 }
 
+// secret-paths is read and protected under both config dir names: the old one keeps working
+// after the rename, and the new one is where a fresh list goes.
+func TestSecretPathsUnderBothDirNames(t *testing.T) {
+	env := secretEnv(t) // its list is at ~/.config/claude-tools/secret-paths
+	h := env.Home
+	os.MkdirAll(filepath.Join(h, ".config/guardrails"), 0o700)
+	os.WriteFile(filepath.Join(h, ".config/guardrails/secret-paths"), []byte("~/vault/*.key\n"), 0o600)
+	os.MkdirAll(filepath.Join(h, "vault"), 0o700)
+	os.WriteFile(filepath.Join(h, "vault/a.key"), []byte("x\n"), 0o600)
+	for _, c := range []struct{ cmd, want string }{
+		{"cat ~/secrets/prod.env", "context:secret-file:mask"}, // old list
+		{"cat ~/vault/a.key", "context:secret-file:mask"},      // new list
+		{"cat ~/.config/guardrails/secret-paths", "context:secret-file:mask"},
+		{"echo x >> ~/.config/guardrails/secret-paths", "ask:secret-file:echo"},
+		{"cat ~/.local/state/guardrails/pii-key", "context:secret-file:mask"},
+		{"cat ~/.local/state/claude-tools/pii-key", "context:secret-file:mask"},
+	} {
+		if got := decide(env, c.cmd).Kind(); got != c.want {
+			t.Errorf("%q: got %s, want %s", c.cmd, got, c.want)
+		}
+	}
+}
+
 func TestSecretArgAsks(t *testing.T) {
 	env := secretEnv(t)
 	for _, cmd := range []string{

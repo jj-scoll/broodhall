@@ -44,7 +44,7 @@ masks:
 - Email and phone shapes in any string, such as inside a free-text `notes` cell.
 
 The tag is six hex digits of a keyed hash of the value. The key is a random local file
-(by default `~/.local/state/claude-tools/pii-key`, created on first use), so tags differ per machine and
+(by default `~/.local/state/guardrails/pii-key`, created on first use), so tags differ per machine and
 equal values share a tag. Empty and `NULL` cells stay as they are. Columns that match no rule,
 such as `id`, `amount` and the coarse `city`, pass through.
 
@@ -71,7 +71,7 @@ id,email,notes,city,amount
 ```
 
 Addresses you own stay readable: your global `git config user.email`, and the full addresses
-in `CLAUDE_TOOLS_PII_ALLOW` (the `allowed_email_domains` option). An `@domain` entry is
+in `GUARDRAILS_PII_ALLOW` (the `allowed_email_domains` option). An `@domain` entry is
 honored by [Egress](egress.md) but not here: the mask only skips exact addresses.
 
 Gaps: SQL run inside `bash -c`, a script, `ssh` or `ssm`; a second result set in one
@@ -88,14 +88,14 @@ BLOCKED: duckdb .mode changes how or where results print, so PII masking can't a
 
 ### The PII rules file: BLOCK
 
-The rules live in `~/.config/claude-tools/pii-columns.json` (see [Options](options.md)).
+The rules live in `~/.config/guardrails/pii-columns.json` (see [Options](options.md)).
 Claude cannot change them: an Edit, Write, MultiEdit or NotebookEdit on that file, a Bash
 command that writes it (a redirect, `sed -i`, `tee`, `mv`, `rm`, `cp` onto it, an editor, an
 interpreter near a write), and a Bash command that sets `HOME` or `XDG_CONFIG_HOME` while
 running `guardrails` are all blocked. Reading the file passes.
 
 ```text
-BLOCKED: PII rules (~/.config/claude-tools/pii-columns.json) are the user's to edit, not the model's.
+BLOCKED: PII rules (pii-columns.json) are the user's to edit, not the model's.
 ```
 
 ### Raw client data: ASK
@@ -118,11 +118,11 @@ S3 object in a configured bucket.
 Two options say what is client data in your setup. Nothing is configured by default, so
 without them only local parquet paths ask and no path is exempt.
 
-- `client_data_buckets` (`CLAUDE_TOOLS_CLIENT_BUCKETS` outside the plugin): comma-separated
+- `client_data_buckets` (`GUARDRAILS_CLIENT_BUCKETS` outside the plugin): comma-separated
   S3 bucket names, where `*` matches any run of name characters. With
   `*-clientdata, acme-raw`, Python text that names `s3://acme-prod-clientdata/exports/` or
   `s3://acme-raw/a.parquet` asks, and `s3://acme-own/a.parquet` does not.
-- `masked_copy_dirs` (`CLAUDE_TOOLS_MASKED_DIRS`): comma-separated directories that hold
+- `masked_copy_dirs` (`GUARDRAILS_MASKED_DIRS`): comma-separated directories that hold
   masked copies of the data. A local parquet path that contains one does not ask. With
   `~/.cache/masked/`, `python3 q.py ~/.cache/masked/acme/x.parquet` passes and
   `python3 q.py exports/x.parquet` still asks. A leading `~` matches any home directory.

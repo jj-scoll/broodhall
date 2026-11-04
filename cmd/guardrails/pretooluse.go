@@ -175,8 +175,8 @@ func preToolUseRun(data []byte, self string, rtk func([]byte) ([]byte, []byte, i
 	}
 	home, _ := os.UserHomeDir()
 	xdg := os.Getenv("XDG_CONFIG_HOME")
-	off := guardsOff(os.Getenv("CLAUDE_TOOLS_OFF"))
-	observe := observeOn(os.Getenv("CLAUDE_TOOLS_OBSERVE"))
+	off := guardsOff(settingEnv("OFF"))
+	observe := observeOn(settingEnv("OBSERVE"))
 	if in.ToolName != "Bash" {
 		var raw struct {
 			ToolInput map[string]any `json:"tool_input"`

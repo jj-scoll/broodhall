@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 )
@@ -51,6 +52,17 @@ func TestGuardsOffHook(t *testing.T) {
 	if _, out, _ := runPreHook(t, sql, ""); strings.Contains(out, "redact") {
 		t.Fatalf("pii off: want no wrap, got %q", out)
 	}
+	// The new name wins over the old one, even set empty (every family on).
+	t.Setenv("GUARDRAILS_OFF", "")
+	if _, out, _ := runPreHook(t, sql, ""); !strings.Contains(out, "redact --pii") {
+		t.Fatalf("GUARDRAILS_OFF empty beats CLAUDE_TOOLS_OFF=pii: want the wrap, got %q", out)
+	}
+	t.Setenv("GUARDRAILS_OFF", "pii")
+	t.Setenv("CLAUDE_TOOLS_OFF", "")
+	if _, out, _ := runPreHook(t, sql, ""); strings.Contains(out, "redact") {
+		t.Fatalf("GUARDRAILS_OFF=pii: want no wrap, got %q", out)
+	}
+	os.Unsetenv("GUARDRAILS_OFF")
 
 	saved := egressOwn
 	egressOwn = func() ([]string, string) { return []string{"me@example.com"}, "example.com" }
