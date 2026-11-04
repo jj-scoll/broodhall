@@ -98,8 +98,9 @@ alphabetical order. MDM and server-managed settings are other ways to deliver th
   only there does not draw a "plugin enabled" warning. Server-managed settings and MDM
   profiles are not files doctor can read, so a plugin enabled only through those still gets
   that `WARN` at every session start.
-- A managed `observe` option or `allowed_email_domains` entry is judged by config-gate like a
-  user one: it only guards against a change made in a running session.
+- Config-gate does not watch managed settings. It judges the user, project and local settings
+  files, so a change to `observe` or `allowed_email_domains` in `managed-settings.json` is not
+  checked. Only an administrator can write that file.
 
 ## After the rollout
 

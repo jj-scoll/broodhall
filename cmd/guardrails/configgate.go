@@ -221,6 +221,8 @@ func (s settingsDoc) observeOption(id string) bool {
 		return v
 	case string:
 		return observeOn(v)
+	case float64:
+		return v != 0 // Claude Code may hand the guard "1" for a number
 	}
 	return false
 }
@@ -228,11 +230,20 @@ func (s settingsDoc) observeOption(id string) bool {
 // allowedDomains returns the entries of the allowed_email_domains option for id, lower-cased.
 func (s settingsDoc) allowedDomains(id string) map[string]bool {
 	out := map[string]bool{}
-	if v, ok := s.PluginConfigs[id].Options["allowed_email_domains"].(string); ok {
-		for _, d := range strings.Split(v, ",") {
-			if d = strings.ToLower(strings.TrimSpace(d)); d != "" {
-				out[d] = true
+	var parts []string
+	switch v := s.PluginConfigs[id].Options["allowed_email_domains"].(type) {
+	case string:
+		parts = strings.Split(v, ",")
+	case []any: // an array option: each element may itself hold a comma list
+		for _, e := range v {
+			if str, ok := e.(string); ok {
+				parts = append(parts, strings.Split(str, ",")...)
 			}
+		}
+	}
+	for _, d := range parts {
+		if d = strings.ToLower(strings.TrimSpace(d)); d != "" {
+			out[d] = true
 		}
 	}
 	return out
@@ -299,11 +310,23 @@ func settingsDiff(old, next []byte) (weakened, egress []string, err error) {
 			weakened = append(weakened, "hook added: "+k)
 		}
 	}
-	for _, id := range slices.Sorted(maps.Keys(a.EnabledPlugins)) {
-		if !strings.HasPrefix(id, guardsPlugin) || !a.pluginEnabled(id) {
+	// Options are judged for every guardrails id either file mentions, since the plugin may be
+	// enabled in another file (project or managed settings) while this one holds its options.
+	// Disabling the plugin is judged only for a file that had enabled it.
+	ids := map[string]bool{}
+	for _, d := range []settingsDoc{a, b} {
+		for id := range d.EnabledPlugins {
+			ids[id] = true
+		}
+		for id := range d.PluginConfigs {
+			ids[id] = true
+		}
+	}
+	for _, id := range slices.Sorted(maps.Keys(ids)) {
+		if !strings.HasPrefix(id, guardsPlugin) {
 			continue
 		}
-		if !b.pluginEnabled(id) {
+		if a.pluginEnabled(id) && !b.pluginEnabled(id) {
 			weakened = append(weakened, "plugin disabled: "+id)
 			continue
 		}

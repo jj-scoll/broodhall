@@ -72,7 +72,11 @@ settings, never from a project file. This is what `/plugin configure` writes too
 
 `setup -write` changes your settings file without naming it, so the guardrails
 settings-file guard treats it like any other model write to `settings.json` and asks you to
-approve it. This holds for the plugin launcher and for the binary under either name.
+approve it. This holds for the plugin launcher and for the binary under either name, and
+through the usual shell forms: line continuations, `env`, `timeout`, `sudo`, `bash -c`, `if`
+and `for`, `$( )`, `eval` and pipes into `xargs`. It is a speed bump, not a lock: a binary
+that was copied or symlinked under another name, `go run`, and a path built from a variable
+are not seen.
 
 [Config-gate](config-gate.md) also treats two of these options as loosening a guard, the way
 it treats `disabled_guards`: turning `observe` on, and adding an entry to

@@ -34,9 +34,18 @@ type installedPlugin struct {
 func (p installedPlugin) appliesTo(projectDir string) bool {
 	switch p.Scope {
 	case "project", "local":
-		return projectDir != "" && p.ProjectPath != "" && filepath.Clean(p.ProjectPath) == filepath.Clean(projectDir)
+		return projectDir != "" && p.ProjectPath != "" && resolvedPath(p.ProjectPath) == resolvedPath(projectDir)
 	}
 	return true
+}
+
+// resolvedPath follows symlinks (macOS /tmp is /private/tmp), falling back to the cleaned path
+// when the directory is gone.
+func resolvedPath(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return filepath.Clean(p)
 }
 
 // broodhallPlugins are the plugins that share this repository's version. rtk lives in another
@@ -294,6 +303,9 @@ func managedSettingsRoot() string {
 	}
 	return "/etc/claude-code"
 }
+
+// managedRoot is a variable so a test can point it at a temp directory.
+var managedRoot = managedSettingsRoot
 
 // managedSettingsFilesIn lists managed-settings.json, then the managed-settings.d/*.json
 // drop-ins in alphabetical order, the order Claude Code merges them. Missing files are fine.

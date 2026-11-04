@@ -113,7 +113,7 @@ func defaultSettingsFiles() []string {
 	if proj := projectDir(); proj != "" {
 		files = append(files, filepath.Join(proj, ".claude", "settings.json"), filepath.Join(proj, ".claude", "settings.local.json"))
 	}
-	return append(files, managedSettingsFilesIn(managedSettingsRoot())...)
+	return append(files, managedSettingsFilesIn(managedRoot())...)
 }
 
 func doctor(w io.Writer, e doctorEnv) int {
