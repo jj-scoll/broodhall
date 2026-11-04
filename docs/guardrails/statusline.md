@@ -114,6 +114,7 @@ Line 2:
 | `five`, `reset` | 5-hour rate-limit use and the time to its reset. |
 | `week` | 7-day rate-limit use. |
 | `handoff` | Progress of the [auto-handoff](handoff-gate.md) for this session, only while it applies. See below. |
+| `rc` | `⇄ rc` when the transcript shows [Remote Control](https://code.claude.com/docs/en/remote-control) connected for this session. Nothing otherwise. A best guess; see below. |
 | `guards` | What the guards masked, asked about, blocked or noted this session. |
 | `drift` | A warning when the last 60 tool calls repeat one read, command or edit. |
 
@@ -139,6 +140,31 @@ Turn it off by leaving `handoff` out of `-segments`.
 
 A `writing` marker older than 15 minutes is taken for a dead writer and ignored. A new gate
 mark newer than the last writer start shows `next-steps` in place of an earlier outcome.
+
+### The rc segment
+
+Claude Code does not pass Remote Control state to a `statusLine` command, so the segment
+reads the session transcript. Claude Code writes a `bridge-session` line into it about every
+20 to 40 entries. That line is not a heartbeat: it keeps coming after Remote Control
+disconnects. So the segment shows `⇄ rc` only when both hold:
+
+- a `bridge-session` line is among the last 100 lines, and
+- the newest connection notice in the last 1 MiB or so is not "Remote Control disconnected" or
+  "Remote Control not started here". An "is active" notice, or no notice at all, passes.
+
+It reads at most the last 4 MiB of the file. A missing or unreadable transcript shows
+nothing. Turn it off by leaving `rc` out of `-segments`.
+
+It can be wrong in these ways:
+
+- Turning Remote Control off yourself may leave no notice. The segment then stays lit. This
+  case is unverified.
+- A resumed or forked session inherits the `bridge-session` line. It shows `⇄ rc` until a
+  notice says otherwise, even if this terminal never connected.
+- A disconnect notice more than about 1 MiB back is not seen. In a sample of real sessions
+  about one disconnected period in five ran that long.
+- Some "account changed" disconnects may reconnect without a notice. The segment then stays
+  dark until the next "is active" notice. This is inferred, not confirmed.
 
 ## Examples
 

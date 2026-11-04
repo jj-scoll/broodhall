@@ -447,7 +447,7 @@ func cmdOut(name string, args ...string) (string, bool) {
 // slSegmentNames is every segment -segments can name, in line order: the identity line
 // (account, session, pr, worktree, effort, style) and the main line.
 const slSegmentNames = "account,session,pr,worktree,effort,style," +
-	"host,user,dir,branch,time,model,elapsed,ctx,cache,ttl,keepalive,totals,reqs,five,reset,week,handoff,guards,drift"
+	"host,user,dir,branch,time,model,elapsed,ctx,cache,ttl,keepalive,totals,reqs,five,reset,week,handoff,rc,guards,drift"
 
 // slConfig is the statusline's options, set by flags in the statusLine command.
 type slConfig struct {
@@ -740,6 +740,10 @@ func statusline(args []string) int {
 		if text, col := handoffSegment(stateDir(), alt(in, "", "session_id"), nowSec); text != "" {
 			add("handoff", 1, "\033[38;5;%dm%s\033[0m", col, text)
 		}
+	}
+	// Remote Control: a bounded tail read of the transcript, only while the segment is shown
+	if cfg.segments["rc"] && remoteControlActive(tpath) {
+		add("rc", 2, "\033[38;5;80m⇄ rc\033[0m")
 	}
 	if g := guardSummary(alt(in, "", "session_id")); g != "" {
 		add("guards", 3, "\033[38;5;245m%s\033[0m", g)
