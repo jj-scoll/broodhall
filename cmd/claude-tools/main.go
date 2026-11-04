@@ -14,12 +14,15 @@ var commands = map[string]func(args []string) int{
 	"redact":           redactCmd,
 	"pii-rules":        piiRulesCmd,
 	"retry-breaker":    retryBreaker,
+	"config-gate":      configGate,
+	"session-env":      sessionEnv,
+	"receipt":          receipt,
 	"version":          versionCmd,
 }
 
 func main() {
 	if len(os.Args) < 2 || commands[os.Args[1]] == nil {
-		fmt.Fprintln(os.Stderr, "usage: claude-tools <pre-tool-use|read-dedup|large-read-guard|retry-breaker|redact|pii-rules|version> [args]")
+		fmt.Fprintln(os.Stderr, "usage: claude-tools <pre-tool-use|read-dedup|large-read-guard|retry-breaker|config-gate|session-env|receipt|redact|pii-rules|version> [args]")
 		os.Exit(2)
 	}
 	os.Exit(commands[os.Args[1]](os.Args[2:]))

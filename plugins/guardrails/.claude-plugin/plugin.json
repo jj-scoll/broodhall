@@ -23,6 +23,12 @@
       "description": "Comma-separated addresses or @domains the egress guard treats as yours, such as @example.com. The domain of your global git user.email always counts.",
       "default": ""
     },
+    "aws_session_tag": {
+      "type": "boolean",
+      "title": "Tag AWS calls with the session id",
+      "description": "Off by default. When on, each session sets AWS_SDK_UA_APP_ID=claude-<first 8 characters of the session id>, so AWS CLI and SDK calls made from Bash carry it in their User-Agent and CloudTrail records which session made them.",
+      "default": false
+    },
     "rtk": {
       "type": "boolean",
       "title": "Rewrite commands with RTK",
