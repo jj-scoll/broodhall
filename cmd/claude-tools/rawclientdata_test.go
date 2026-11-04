@@ -14,10 +14,18 @@ func withClientBuckets(t *testing.T, re *regexp.Regexp) {
 	t.Cleanup(func() { clientDataS3RE = saved })
 }
 
+// withMaskedDirs sets the masked-copy directories for one test.
+func withMaskedDirs(t *testing.T, dirs []string) {
+	saved := maskedCopyDirs
+	maskedCopyDirs = dirs
+	t.Cleanup(func() { maskedCopyDirs = saved })
+}
+
 var testClientBuckets = regexp.MustCompile(`s3://[^/\s'"]*-clientdata/[^\s'"]*`)
 
 func TestRawClientDataAsk(t *testing.T) {
 	withClientBuckets(t, testClientBuckets)
+	withMaskedDirs(t, []string{"/.cache/mirror/"})
 	env := envAt(memState{}, t0, "/w")
 	asks := []string{
 		`python3 -c "import duckdb; print(duckdb.sql(\"from 's3://acme-prod-clientdata/data/x.parquet'\").fetchall())"`,
@@ -33,8 +41,8 @@ func TestRawClientDataAsk(t *testing.T) {
 	}
 	allows := []string{
 		`python3 -c "print(1)"`,
-		`python3 q.py ~/.cache/pii-safe/acme-prod-clientdata/data/x.parquet`,
-		`python3 q.py /home/user/.cache/pii-safe/acme-prod-clientdata/data/x.parquet`,
+		`python3 q.py ~/.cache/mirror/acme-prod-clientdata/data/x.parquet`,
+		`python3 q.py /home/user/.cache/mirror/acme-prod-clientdata/data/x.parquet`,
 		`python3 -c "import duckdb; print(duckdb.sql(\"from 's3://acme-own-bucket/runs/a.parquet'\"))"`,
 		`duckdb -csv -c "from 's3://acme-prod-clientdata/data/x.parquet'"`,
 		`aws s3 ls s3://acme-prod-clientdata/data/`,

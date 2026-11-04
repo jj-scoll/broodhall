@@ -1,6 +1,6 @@
 # Options
 
-Five plugin options, two files under `~/.config/claude-tools/`, and one environment variable.
+Nine plugin options, two files under `~/.config/claude-tools/`, and two environment variables.
 
 Set the plugin options with `/plugin configure guardrails@broodhall`, or from `/config`.
 
@@ -9,8 +9,8 @@ Set the plugin options with `/plugin configure guardrails@broodhall`, or from `/
 | | |
 | --- | --- |
 | Title | Disabled guard families |
-| Default | `pii,raw-client-data,session-url` |
-| Description | Comma-separated families to turn off: pii, raw-client-data, session-url, egress, git. The core blocks (rm -rf of home or root, git push --force, dd, fork bombs) cannot be turned off. |
+| Default | empty (every guard on) |
+| Description | Comma-separated families to turn off: pii, raw-client-data, session-url, egress, git. Every guard is on when this is empty. The core blocks (rm -rf of home or root, git push --force, dd, fork bombs) cannot be turned off. |
 
 The five family names, and what each one controls:
 
@@ -19,8 +19,8 @@ The five family names, and what each one controls:
 | `git` | The asks before `git reset --hard`, `checkout .`, `restore .`, `clean -f`, `branch -D` and `stash`. See [Git](git.md). |
 | `egress` | The asks when a command sends a secret, an outside email address or a phone number. See [Egress](egress.md). |
 | `pii` | The SQL-output mask, the block on duckdb dot-commands and the block on edits to the PII rules file. See [PII](pii.md). |
-| `raw-client-data` | The ask before Python reads a local parquet file. See [PII](pii.md#raw-client-data-ask). |
-| `session-url` | The block on a push or PR that carries a session link. See [Session URLs](session-urls.md). |
+| `raw-client-data` | The ask before Python reads a local parquet file or a configured client-data S3 bucket. See [PII](pii.md#raw-client-data-ask). |
+| `session-url` | The block on a commit, push or PR that carries a session link. See [Session URLs](session-urls.md). |
 
 Core blocks have no switch. [Bash core](bash-core.md), the `git push --force` block,
 [Settings files](settings-files.md) and [Secret files](secret-files.md) stay on whatever
@@ -29,8 +29,8 @@ this option says. [Nudges](nudges.md), [Read limits](read-limits.md) and
 
 Names are separated by commas, and spaces around a name are ignored. A name that is not one of
 the five has no effect. An empty value turns every family on. The launcher falls back to the
-`CLAUDE_TOOLS_OFF` environment variable, then to the three default names. The binary run on
-its own treats an unset `CLAUDE_TOOLS_OFF` as every family on.
+`CLAUDE_TOOLS_OFF` environment variable, then to empty: every family on. The binary run on
+its own treats an unset `CLAUDE_TOOLS_OFF` as every family on too.
 
 ## `allowed_email_domains`
 
@@ -47,6 +47,55 @@ Outside the plugin the same list is read from `CLAUDE_TOOLS_PII_ALLOW`.
 - In the [PII](pii.md) mask, only full addresses stay readable (and your git address). An
   `@domain` entry has no effect there.
 
+## `fail_open`
+
+| | |
+| --- | --- |
+| Title | Allow tool calls when the guard binary is missing |
+| Default | off |
+| Description | By default a tool call is blocked, with a message saying how to retry, when the guard binary is not installed (a failed download or checksum). Turn this on to let tool calls through unguarded instead. |
+
+The guards (`pre-tool-use`, `read-dedup`, `large-read-guard` and `config-gate`) fail closed;
+the other hooks exit 0 silently, so a missing binary never stops Claude from ending its turn
+or compacting. With no binary at the expected
+path (never downloaded, a failed download, a checksum mismatch), the launcher exits 2 and
+writes this to stderr, which Claude Code shows in place of the tool call (the path and
+version differ):
+
+```text
+guardrails: BLOCKED: the guard binary claude-tools 0.2.0 is not installed (/home/you/.claude/plugins/data/guardrails/bin/0.2.0/claude-tools), so this tool call was not checked.
+Retry: start a new session (SessionStart downloads it), or run: sh "/path/to/plugin/scripts/run.sh" install
+Opt out: set the guardrails option fail_open to true (or CLAUDE_TOOLS_FAIL_OPEN=1) to allow tool calls without guards.
+```
+
+Set `fail_open` to `true` and the launcher exits 0 and prints nothing instead, so every call
+runs unguarded and the failed-install notice says so. Outside the plugin the same switch is
+the `CLAUDE_TOOLS_FAIL_OPEN` environment variable; `true`, `1` and `yes` turn it on. The
+session-start install itself never blocks: a failed download only shows a notice and retries
+at the next session.
+
+## `client_data_buckets`
+
+| | |
+| --- | --- |
+| Title | Client-data S3 buckets |
+| Default | empty |
+| Description | Comma-separated S3 bucket names that hold raw client data; * matches any run of characters, for example *-clientdata. The raw-client-data guard asks before Python reads s3://<bucket>/... Empty means no buckets. |
+
+Outside the plugin the same list is read from `CLAUDE_TOOLS_CLIENT_BUCKETS`. See
+[PII](pii.md#raw-client-data-ask).
+
+## `masked_copy_dirs`
+
+| | |
+| --- | --- |
+| Title | Masked-copy directories |
+| Default | empty |
+| Description | Comma-separated directories that hold masked copies of client data, for example ~/.cache/masked/. The raw-client-data guard does not ask about parquet paths under them. Empty means no exemption. |
+
+Outside the plugin the same list is read from `CLAUDE_TOOLS_MASKED_DIRS`. See
+[PII](pii.md#raw-client-data-ask).
+
 ## `handoff_tokens`
 
 | | |
@@ -57,6 +106,22 @@ Outside the plugin the same list is read from `CLAUDE_TOOLS_PII_ALLOW`.
 
 Outside the plugin the same number is read from `HANDOFF_TOKENS`. A value that is not a
 whole number counts as empty. See [Handoff gate](handoff-gate.md).
+
+## `aws_session_tag`
+
+| | |
+| --- | --- |
+| Title | Tag AWS calls with the session id |
+| Default | off |
+| Description | Off by default. When on, each session sets AWS_SDK_UA_APP_ID=claude-<first 8 characters of the session id>, so AWS CLI and SDK calls made from Bash carry it in their User-Agent and CloudTrail records which session made them. |
+
+Opt in to have the `session-env` `SessionStart` hook append
+`export AWS_SDK_UA_APP_ID=claude-<id>` to the session's environment file. AWS calls made from
+Bash then show `app/claude-<id>` in their User-Agent, and CloudTrail's `userAgent` field names
+the session. A session resumed or compacted adds no second line; a new session id adds one.
+
+The hook never blocks and prints nothing. It writes nothing for a missing or unsafe session id.
+Outside the plugin, set `CLAUDE_TOOLS_AWS_SESSION_TAG=1`; a set plugin option wins over it.
 
 ## `rtk`
 
@@ -181,5 +246,5 @@ path of your own build to run that instead, for example one you built from this 
 
 The download is skipped only when the path is executable. If the path is not an executable
 file, the session-start step downloads the release copy anyway, but the hooks still look
-at your path, find nothing to run, and let every call through, so the guards are off. Check the
-path before you rely on it.
+at your path and find nothing to run, so every call is blocked (or, with
+[`fail_open`](#fail_open), let through unguarded). Check the path before you rely on it.

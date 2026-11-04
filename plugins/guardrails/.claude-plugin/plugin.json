@@ -14,8 +14,8 @@
     "disabled_guards": {
       "type": "string",
       "title": "Disabled guard families",
-      "description": "Comma-separated families to turn off: pii, raw-client-data, session-url, egress, git. The core blocks (rm -rf of home or root, git push --force, dd, fork bombs) cannot be turned off.",
-      "default": "pii,raw-client-data,session-url"
+      "description": "Comma-separated families to turn off: pii, raw-client-data, session-url, egress, git. Every guard is on when this is empty. The core blocks (rm -rf of home or root, git push --force, dd, fork bombs) cannot be turned off.",
+      "default": ""
     },
     "allowed_email_domains": {
       "type": "string",
@@ -23,11 +23,35 @@
       "description": "Comma-separated addresses or @domains the egress guard treats as yours, such as @example.com. The domain of your global git user.email always counts.",
       "default": ""
     },
+    "fail_open": {
+      "type": "boolean",
+      "title": "Allow tool calls when the guard binary is missing",
+      "description": "By default a tool call is blocked, with a message saying how to retry, when the guard binary is not installed (a failed download or checksum). Turn this on to let tool calls through unguarded instead.",
+      "default": false
+    },
+    "client_data_buckets": {
+      "type": "string",
+      "title": "Client-data S3 buckets",
+      "description": "Comma-separated S3 bucket names that hold raw client data; * matches any run of characters, for example *-clientdata. The raw-client-data guard asks before Python reads s3://<bucket>/... Empty means no buckets.",
+      "default": ""
+    },
+    "masked_copy_dirs": {
+      "type": "string",
+      "title": "Masked-copy directories",
+      "description": "Comma-separated directories that hold masked copies of client data, for example ~/.cache/masked/. The raw-client-data guard does not ask about parquet paths under them. Empty means no exemption.",
+      "default": ""
+    },
     "handoff_tokens": {
       "type": "string",
       "title": "Handoff threshold (tokens)",
       "description": "Context size at which the Stop gate asks Claude, once per session, to write a handoff. Leave empty for 80% of CLAUDE_CODE_AUTO_COMPACT_WINDOW (240000 for the default 300000 window).",
       "default": ""
+    },
+    "aws_session_tag": {
+      "type": "boolean",
+      "title": "Tag AWS calls with the session id",
+      "description": "Off by default. When on, each session sets AWS_SDK_UA_APP_ID=claude-<first 8 characters of the session id>, so AWS CLI and SDK calls made from Bash carry it in their User-Agent and CloudTrail records which session made them.",
+      "default": false
     },
     "rtk": {
       "type": "boolean",

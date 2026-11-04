@@ -7,16 +7,26 @@ the third column. A dash means the field is absent from the entry.
 | Event | Matcher | Subcommand | onFailure |
 | --- | --- | --- | --- |
 | `SessionStart` | — | `install` | — |
+| `SessionStart` | — | `config-gate` | — |
+| `SessionStart` | — | `session-env` | — |
+| `ConfigChange` | <code>user_settings&#124;project_settings&#124;local_settings</code> | `config-gate` | `block` |
+| `Stop` | — | `gate` | — |
+| `Stop` | — | `receipt` | — |
 | `PreToolUse` | <code>Bash&#124;Edit&#124;Write&#124;MultiEdit&#124;NotebookEdit&#124;mcp__.*</code> | `pre-tool-use` | `block` |
 | `PreToolUse` | `Read` | `read-dedup` | `block` |
 | `PreToolUse` | `Read` | `large-read-guard` | `block` |
 | `PostToolUse` | `Bash` | `retry-breaker` | — |
 | `PostToolUseFailure` | `Bash` | `retry-breaker` | — |
-| `Stop` | — | `gate` | — |
 | `PreCompact` | — | `compact-guard` | — |
 
-The entries with `onFailure: block` are the ones that fail closed. The `SessionStart` entry
-sets a timeout of 120 seconds.
+The entries with `onFailure: block` fail closed when the binary crashes or hangs. Those same
+subcommands (`pre-tool-use`, `read-dedup`, `large-read-guard`, `config-gate`) also fail closed
+when the binary is not installed: `run.sh` exits 2 with a message on stderr, unless the
+[`fail_open`](../guardrails/options.md#fail_open) option is on. Every other entry exits 0
+silently then, so a missing binary never blocks a stop or a compaction. The `install` entry
+sets a timeout of 120 seconds and never blocks. `config-gate` at `SessionStart` only takes a
+snapshot; `session-env` does nothing unless the
+[`aws_session_tag`](../guardrails/options.md#aws_session_tag) option is on.
 
 ## memory
 

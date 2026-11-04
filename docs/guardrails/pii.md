@@ -2,10 +2,10 @@
 
 <span class="badge badge-mask">MASK</span> personal values in the output of SQL clients.
 <span class="badge badge-block">BLOCK</span> a duckdb command that would print around the mask, and edits to the PII rules file.
-<span class="badge badge-ask">ASK</span> before Python reads a local parquet file.
+<span class="badge badge-ask">ASK</span> before Python reads a local parquet file, or a client-data S3 bucket you configure.
 
-This guard is **off by default**. The plugin's default `disabled_guards` list turns off
-`pii` and `raw-client-data`; see [Turning it off](#turning-it-off) for how to turn it on.
+This guard is **on by default**, like every family. See [Turning it off](#turning-it-off) to
+turn it off.
 
 !!! why "Why it exists"
     Whatever Claude reads goes into the conversation and the transcript. A query result with
@@ -102,16 +102,32 @@ BLOCKED: PII rules (~/.config/claude-tools/pii-columns.json) are the user's to e
 
 The mask only covers SQL clients, because it needs the column names. Python that reads data
 prints it unmasked. So, as its own family, `raw-client-data`, the guard asks before Python
-reads a local parquet file. In the public build that is the whole check: a `python`,
-`python3.x`, `ipython` or `uv run python` command whose text names a `.parquet` path.
+reads raw client data: a `python`, `python3.x`, `ipython` or `uv run python` command whose
+text names a local `.parquet` path, or an `s3://` object in a bucket you listed.
 
 ```text
 ASK: Python reading raw client data (claims.parquet): its output is not PII-masked. Prefer the duckdb CLI, whose output is masked. Confirm with the user before running it.
 ```
 
 You approve or refuse. This check reads the command text only: a script that opens the
-file by itself is not seen, and a parquet path that is a URL (`s3://...`) is not checked in
-this build.
+file by itself is not seen, and a parquet path that is a URL is not checked unless it is an
+S3 object in a configured bucket.
+
+#### Your client data
+
+Two options say what is client data in your setup. Nothing is configured by default, so
+without them only local parquet paths ask and no path is exempt.
+
+- `client_data_buckets` (`CLAUDE_TOOLS_CLIENT_BUCKETS` outside the plugin): comma-separated
+  S3 bucket names, where `*` matches any run of name characters. With
+  `*-clientdata, acme-raw`, Python text that names `s3://acme-prod-clientdata/exports/` or
+  `s3://acme-raw/a.parquet` asks, and `s3://acme-own/a.parquet` does not.
+- `masked_copy_dirs` (`CLAUDE_TOOLS_MASKED_DIRS`): comma-separated directories that hold
+  masked copies of the data. A local parquet path that contains one does not ask. With
+  `~/.cache/masked/`, `python3 q.py ~/.cache/masked/acme/x.parquet` passes and
+  `python3 q.py exports/x.parquet` still asks. A leading `~` matches any home directory.
+
+These do not change the `duckdb` rules above: a `duckdb` command is never a Python read.
 
 ## What passes
 
@@ -121,6 +137,8 @@ this build.
   `-help`, `-ui`).
 - `duckdb -c "select * from read_parquet('claims.parquet')"`, which runs under the mask.
 - `echo "claims.parquet"` and any command without Python in it.
+- A parquet path under a `masked_copy_dirs` directory, and an S3 bucket that
+  `client_data_buckets` does not name.
 - The Raw client data ask passes when `raw-client-data` is in `disabled_guards`, even with
   `pii` on, and the reverse also holds.
 
@@ -130,7 +148,6 @@ past any of these checks.
 ## Turning it off
 
 `pii` and `raw-client-data` are two families in `disabled_guards`, and the plugin's default
-list is `pii,raw-client-data,session-url`, so both are off until you change it. Remove `pii` to
-turn the mask, the dot-command block and the rules-file block on. Remove `raw-client-data` to
-turn on the parquet ask. Set the option to an empty string to turn every family on. See
-[Options](options.md).
+list is empty, so both are on until you change it. Add `pii` to turn the mask, the
+dot-command block and the rules-file block off. Add `raw-client-data` to turn off the Python
+parquet ask. See [Options](options.md).
