@@ -34,13 +34,18 @@ commit messages since the last `v*` tag:
 
 | Bump | When |
 |---|---|
-| major | a `BREAKING CHANGE` line, a `type!:` title (for example `feat!:`), or `#major` anywhere |
-| minor | a `feat:` or `feat(scope):` title line, `#minor` anywhere, or plugin versions that differ (the release realigns them) |
+| major | a `type!:` or `type(scope)!:` title (for example `feat!:`), `#major` in a title, or a `BREAKING CHANGE: ` / `BREAKING-CHANGE: ` footer |
+| minor | a `feat:` or `feat(scope):` title, `#minor` in a title, or plugin versions that differ (the release realigns them) |
 | patch | everything else |
 
-Pull requests are merged with a merge commit, so the PR title is a line of the commit
-message and counts as a title. Put `#minor` or `#major` in the PR title or description to
-force a bump.
+Only a commit's title (first line) counts, apart from the breaking-change footer, which must
+start a line in the body and be followed by a colon and a space (the Conventional Commits
+footer). Prose in a body that mentions `#major` or `feat:` does nothing.
+
+Pull requests are merged with a merge commit. The workflow reads the commits since the last tag
+with `--no-merges`, so the "Merge pull request #N from ..." commit, and with it the PR title
+and description, never counts, while the PR's own commits do. To force a bump, put `#minor`
+or `#major` in the title of one of the PR's commits, or use a `feat:` or `type!:` title.
 
 ## Assets
 
