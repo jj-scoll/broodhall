@@ -42,6 +42,7 @@ type hwEnv struct {
 	transcript string
 	next       string
 	resps      int
+	stands     string // Where Things Stand in the canned reply, when set
 }
 
 func hwSetup(t *testing.T) *hwEnv {
@@ -115,6 +116,9 @@ func (e *hwEnv) respondStructured(badPath string) {
 	out["decisions_and_constraints"] = "- Billing: Login, chosen by the person."
 	if badPath != "" {
 		out["locations"] = "- " + badPath
+	}
+	if e.stands != "" {
+		out["where_things_stand"] = e.stands
 	}
 	e.respond(0, map[string]any{"result": "", "structured_output": out, "total_cost_usd": 0.02,
 		"usage": map[string]any{"input_tokens": 1000, "cache_read_input_tokens": 500, "output_tokens": 400}})
@@ -663,18 +667,17 @@ func TestWriteHandoffPromptAsksForImpersonalPhrasing(t *testing.T) {
 	}
 }
 
-func TestFactsCapsAndDedupesBackgroundJobs(t *testing.T) {
+// bgTranscript writes a transcript that starts one background job per description, job0 first.
+func bgTranscript(t *testing.T, descs []string) string {
+	t.Helper()
 	var b strings.Builder
 	add := func(m map[string]any) {
 		j, _ := json.Marshal(m)
 		b.Write(j)
 		b.WriteByte('\n')
 	}
-	for i := 0; i < 30; i++ {
-		id, desc := "job"+strconv.Itoa(i), "Wait for PR "+strconv.Itoa(100+i)
-		if i >= 20 { // ten distinct jobs at the end
-			desc = "Distinct task " + strings.Repeat("z", i-19)
-		}
+	for i, desc := range descs {
+		id := "job" + strconv.Itoa(i)
 		add(map[string]any{"type": "assistant", "timestamp": "2026-10-27T10:00:00Z", "message": map[string]any{"role": "assistant", "content": []any{
 			map[string]any{"type": "tool_use", "id": "u" + id, "name": "Bash", "input": map[string]any{"command": "sleep 1", "run_in_background": true, "description": desc}}}}})
 		add(map[string]any{"type": "user", "timestamp": "2026-10-27T10:00:01Z", "message": map[string]any{"role": "user", "content": []any{
@@ -684,21 +687,101 @@ func TestFactsCapsAndDedupesBackgroundJobs(t *testing.T) {
 	if err := os.WriteFile(p, []byte(b.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	return p
+}
+
+// addJobs appends background jobs to the hwSetup transcript.
+func (e *hwEnv) addJobs(descs []string) {
+	e.t.Helper()
+	f, err := os.OpenFile(e.transcript, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(hwRead(e.t, bgTranscript(e.t, descs))); err != nil {
+		e.t.Fatal(err)
+	}
+	// The reply names every job, so verifyGaps finds nothing and no fix call is made.
+	var ids []string
+	for i := range descs {
+		ids = append(ids, "job"+strconv.Itoa(i))
+	}
+	e.stands = "Running: " + strings.Join(ids, ", ") + "."
+	e.respondStructured("")
+}
+
+// Issue #17: watchers for different PRs differ only in digits and are different work.
+func TestFactsKeepsJobsThatDifferOnlyInDigits(t *testing.T) {
+	p := bgTranscript(t, []string{"Wait for PR 834 CI", "Wait for PR 836 CI", "Wait for PR 837 CI",
+		"Wait for PR 839 CI", "Watch the deploy", "Watch the deploy"})
 	facts, err := buildFacts(p, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	section := facts[strings.Index(facts, "### Background jobs"):]
-	if n := strings.Count(section, "\n- job"); n > maxBgJobs {
-		t.Errorf("%d job lines, cap %d:\n%s", n, maxBgJobs, section)
+	for _, pr := range []string{"834", "836", "837", "839"} {
+		if !strings.Contains(section, "Wait for PR "+pr+" CI") {
+			t.Errorf("PR %s watcher missing:\n%s", pr, section)
+		}
 	}
-	if n := strings.Count(section, "Wait for PR"); n > 1 {
-		t.Errorf("%d near-identical Wait for PR lines, want 1 (the latest):\n%s", n, section)
+	if n := strings.Count(section, "Watch the deploy"); n != 1 {
+		t.Errorf("%d identical deploy watchers listed, want 1:\n%s", n, section)
 	}
-	if !strings.Contains(section, "- job29:") || strings.Contains(section, "- job0:") {
+	if !strings.Contains(section, "- job5:") || strings.Contains(section, "- job4:") {
+		t.Errorf("identical jobs should keep the latest (job5):\n%s", section)
+	}
+	if !strings.Contains(section, "(1 more background job") {
+		t.Errorf("want a note that 1 job is not listed:\n%s", section)
+	}
+}
+
+// Issue #17: the writer model dropped the "N more omitted" line, so the handoff header carries it.
+func TestWriteHandoffHeaderSaysHowManyJobsAreNotListed(t *testing.T) {
+	e := hwSetup(t)
+	var descs []string
+	for i := 0; i < maxBgJobs+3; i++ {
+		descs = append(descs, "Wait for PR "+strconv.Itoa(800+i))
+	}
+	e.addJobs(descs)
+	path, err := e.run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	head, _, _ := strings.Cut(hwRead(t, path), "## Goal")
+	if !strings.Contains(head, "3 more background jobs") {
+		t.Errorf("header does not say 3 jobs are not listed:\n%s", head)
+	}
+}
+
+func TestWriteHandoffHeaderOmitsTheJobNoteWhenAllAreListed(t *testing.T) {
+	e := hwSetup(t)
+	e.addJobs([]string{"Wait for PR 1", "Wait for PR 2"})
+	path, err := e.run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if head, _, _ := strings.Cut(hwRead(t, path), "## Goal"); strings.Contains(head, "background job") {
+		t.Errorf("header mentions background jobs though all are listed:\n%s", head)
+	}
+}
+
+func TestFactsCapsBackgroundJobs(t *testing.T) {
+	var descs []string
+	for i := 0; i < 30; i++ {
+		descs = append(descs, "Wait for PR "+strconv.Itoa(100+i))
+	}
+	facts, err := buildFacts(bgTranscript(t, descs), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	section := facts[strings.Index(facts, "### Background jobs"):]
+	if n := strings.Count(section, "\n- job"); n != maxBgJobs {
+		t.Errorf("%d job lines, want the cap %d:\n%s", n, maxBgJobs, section)
+	}
+	if !strings.Contains(section, "- job29:") || strings.Contains(section, "- job19:") {
 		t.Errorf("did not keep the latest jobs:\n%s", section)
 	}
-	if !strings.Contains(section, "omitted") {
-		t.Errorf("no note on how many jobs were dropped:\n%s", section)
+	if !strings.Contains(section, "(20 more background jobs still running are not listed") {
+		t.Errorf("no note that 20 jobs were left out:\n%s", section)
 	}
 }

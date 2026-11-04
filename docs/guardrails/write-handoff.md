@@ -41,8 +41,9 @@ ending in `.md` is replaced by the default name.
    a setting). Over the cap, the oldest tool-result lines go first, then the oldest lines of
    any kind, and a line at the top says how many were omitted; the recent end is kept and
    the run never fails for size. The facts block is never cut, except that the background-jobs
-   list shows the latest 10 jobs (descriptions that differ only in digits count as one) and
-   says how many were left out.
+   list shows the latest 10 jobs (identical descriptions count as one; "Wait for PR 834" and
+   "Wait for PR 836" are two jobs) and says how many were left out. That count is also copied
+   into the handoff's header, so a reader knows more jobs were running.
 2. Sends the memory plugin's handoff skill, the digest, the facts and the next steps to one
    `claude -p` call that answers with a JSON object, one key per section: Goal, Where Things
    Stand, Next Action, Dead Ends, Decisions and Constraints, Locations, Open Questions.
