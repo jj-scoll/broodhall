@@ -240,6 +240,15 @@ rm "$cfg/plugins/data/guardrails-inline/bin/$ver/guardrails"
 mkstub "$cfg/plugins/data/guardrails-inline/bin/$ver/claude-tools"
 out=$(unset CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA && CLAUDE_CONFIG_DIR=$cfg sh "$c/checkout/plugins/guardrails/scripts/run.sh" version </dev/null 2>&1)
 case $out in *"args=version"*) ok "terminal run from a checkout finds this version's claude-tools" ;; *) bad "terminal run from a checkout finds this version's claude-tools" "out=$out" ;; esac
+# Another version's claude-tools does not make a guardrails-* dir this version's.
+newcase terminal-checkout-other-version
+cfg=$c/cfg
+mkdir -p "$c/checkout/plugins/guardrails" "$cfg/plugins/data/guardrails-old/bin/0.0.1" "$cfg/plugins/data/guardrails/bin/$ver"
+cp -R "$root/scripts" "$root/.claude-plugin" "$c/checkout/plugins/guardrails/"
+mkstub "$cfg/plugins/data/guardrails-old/bin/0.0.1/claude-tools"
+mkstub "$cfg/plugins/data/guardrails/bin/$ver/guardrails"
+out=$(unset CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA && CLAUDE_CONFIG_DIR=$cfg sh "$c/checkout/plugins/guardrails/scripts/run.sh" version </dev/null 2>&1)
+case $out in *"args=version"*) ok "terminal run from a checkout skips a dir with only another version's claude-tools" ;; *) bad "terminal run from a checkout skips a dir with only another version's claude-tools" "out=$out" ;; esac
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]
