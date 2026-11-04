@@ -17,6 +17,13 @@ var (
 	trailerLine    = "Claude-Session: " + fakeSessionURL
 )
 
+// testSessionURL is the short fixture a person types by hand; the 16-character minimum used
+// to let it through.
+const (
+	testSessionURL = "https://claude.ai/code/session_TEST"
+	testTrailer    = "Claude-Session: " + testSessionURL
+)
+
 func sessEnv(unpushed func(dir string) string) *guardEnv {
 	return &guardEnv{Now: t0, Session: "s", Cwd: "/repo", Home: "/home/user", State: memState{}, GitUnpushed: unpushed}
 }
@@ -36,6 +43,16 @@ func TestSessionURLRuleCommandText(t *testing.T) {
 		{"after cd and &&", `cd sub && gh pr create --body "` + fakeSessionURL + `"`, true},
 		{"gh with repo flag", `gh -R org/repo pr create --body "` + fakeSessionURL + `"`, true},
 		{"commit then push in one command", `git commit -m "feat` + "\n\n" + trailerLine + `" && git push`, true},
+		{"commit -m with session link", `git commit -m "feat: x ` + testSessionURL + ` more"`, true},
+		{"commit -m with realistic id", `git commit -m "feat: x ` + fakeSessionURL + `"`, true},
+		{"commit -m with trailer line", "git commit -m \"feat: x\n\n" + testTrailer + "\"", true},
+		{"commit trailer line, non-claude URL", "git commit -m \"feat: x\n\nClaude-Session: https://example.invalid/s/1\"", true},
+		{"commit trailer line, bare id", "git commit -m \"feat: x\n\nClaude-Session: session_TEST\"", true},
+		{"commit second -m paragraph", `git commit -m "feat: x" -m "` + testSessionURL + `"`, true},
+		{"commit heredoc", "git commit -F - <<'EOF'\nfeat: x\n\n" + testTrailer + "\nEOF", true},
+		{"commit amend", `git commit --amend -m "x ` + testSessionURL + `"`, true},
+		{"commit after add", `git add -A && git commit -m "x ` + testSessionURL + `"`, true},
+		{"git -C commit", `git -C sub commit -m "x ` + testSessionURL + `"`, true},
 		{"id with trailing punctuation", `gh pr create --body "(` + fakeSessionURL + `)."`, true},
 
 		// rule text and mentions must pass: 128 Write/Edit calls in the history carry it
@@ -46,7 +63,11 @@ func TestSessionURLRuleCommandText(t *testing.T) {
 		{"pr view is not an egress", `gh pr view 12 --comments # ` + fakeSessionURL, false},
 		{"echo is not an egress", `echo ` + fakeSessionURL, false},
 		{"grep for it is not an egress", `grep -rn "` + fakeSessionID + `" docs/`, false},
-		{"commit alone is not checked", `git commit -m "x ` + fakeSessionURL + `"`, false},
+		{"git log is not a commit", `git log --grep "` + fakeSessionURL + `"`, false},
+		{"commit with plain trailer name", "git commit -m \"docs: the Claude-Session: trailer is banned\"", false},
+		{"commit with rule text placeholder", `git commit -m "docs: no claude.ai/code/session_<id> links"`, false},
+		{"commit clean", `git commit -m "feat: add thing"`, false},
+		{"trailer line outside any egress", "echo hi\n" + trailerLine, false},
 		{"gh pr create clean", `gh pr create --title t --body "plain"`, false},
 		{"git push clean", `git push -u origin feat`, false},
 	}
@@ -150,6 +171,22 @@ func TestSessionURLRuleGitPush(t *testing.T) {
 	})
 }
 
+// git commit -F <file> reads the message from a file the command text does not show.
+func TestSessionURLRuleCommitFile(t *testing.T) {
+	dir := t.TempDir()
+	dirty, clean := filepath.Join(dir, "dirty.txt"), filepath.Join(dir, "clean.txt")
+	os.WriteFile(dirty, []byte("feat: x\n\n"+testTrailer+"\n"), 0o644)
+	os.WriteFile(clean, []byte("feat: x\n"), 0o644)
+	for _, c := range []string{"git commit -F " + dirty, "git commit --file=" + dirty, "git commit -F" + dirty} {
+		if d := sessionURLRule(sessEnv(nil), c); d.Exit != 2 || d.Rule != "session-url" {
+			t.Errorf("%q: %s, want block:session-url", c, d.Kind())
+		}
+	}
+	if d := sessionURLRule(sessEnv(nil), "git commit -F "+clean); d.Exit != 0 {
+		t.Errorf("clean commit file: %s", d.Kind())
+	}
+}
+
 // Real git: unpushed commit blocks, amended commit allows, a commit already on a remote
 // ref is not this gate's business (history rewrite is the user's call).
 func TestSessionURLGitIntegration(t *testing.T) {
@@ -195,6 +232,22 @@ func TestSessionURLGitIntegration(t *testing.T) {
 	env.Cwd = root
 	if d := sessionURLRule(env, "git push"); d.Exit != 0 {
 		t.Errorf("non-repo: %s", d.Kind())
+	}
+}
+
+// The reported case, end to end: a commit message with a session link is blocked before it
+// is written, and the message does not echo the link back.
+func TestPreToolUseBlocksSessionURLInCommit(t *testing.T) {
+	t.Setenv("HANDOFF_STATE_DIR", t.TempDir())
+	for _, cmd := range []string{
+		`git commit -m "fix: thing ` + testSessionURL + ` done"`,
+		"git commit -m \"fix: thing\n\n" + testTrailer + "\"",
+	} {
+		in := bashInput("PreToolUse", "sess-c", "/tmp", cmd, "")
+		code, out, errOut := runHook(t, preToolUse, in)
+		if code != 2 || out != "" || !strings.Contains(errOut, "BLOCKED") || strings.Contains(errOut, "session_TEST") {
+			t.Errorf("%q: exit %d stdout %q stderr %q", cmd, code, out, errOut)
+		}
 	}
 }
 

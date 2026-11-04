@@ -3,8 +3,9 @@
 ## Every tool call is blocked
 
 Once installed, the guards fail closed: if the binary fails while checking a call, that call
-is blocked. If a broken binary blocks everything, turn the plugin off from a terminal and
-start a new session:
+is blocked, and so is every call while the binary is not installed. If that blocks
+everything, either turn on the `fail_open` option (it only affects a missing binary), or turn
+the plugin off from a terminal and start a new session:
 
 ```
 claude plugin disable guardrails@broodhall
@@ -15,8 +16,10 @@ Use `claude plugin enable guardrails@broodhall` to turn it back on.
 ## "guardrails: could not install claude-tools"
 
 The launcher prints this at session start, with the plugin version and a reason in
-parentheses, and leaves the guards off for that session. Tool calls run normally and the
-next session start retries. The reasons:
+parentheses. The session still starts, but until the binary installs every tool call is
+blocked with a message that says how to retry and opt out; with `fail_open` set they run
+unguarded instead. The next session start retries, and so does
+`sh "<plugin dir>/scripts/run.sh" install`. The reasons:
 
 | Reason | Meaning |
 | --- | --- |
@@ -34,14 +37,15 @@ passes it. It never blocks a session.
 
 ## Guards seem to be off
 
-- The binary may be missing. With no binary, the launcher allows every call. Start a new
-  session and look for the notice above.
-- A guard family may be disabled. `pii`, `raw-client-data` and `session-url` are off by
-  default. Check the plugin's options with `claude plugin configure guardrails@broodhall`,
+- The binary may be missing and `fail_open` on. With no binary the launcher allows every call
+  only when `fail_open` (or `CLAUDE_TOOLS_FAIL_OPEN`) is set. Start a new session and look
+  for the notice above.
+- A guard family may be disabled. Every family is on by
+  default, so check `disabled_guards`. Check the plugin's options with `claude plugin configure guardrails@broodhall`,
   and see [Options](../guardrails/options.md).
 - `CLAUDE_TOOLS_BIN` may point at a binary that does not exist or is not executable. The
   launcher uses that path in place of the downloaded binary, and with no executable there it
-  allows every call.
+  blocks every call (or allows every call under `fail_open`).
 
 If you installed from the old `jj-scoll` marketplace, see [Moving from the old jj-scoll marketplace](install.md#moving-from-the-old-jj-scoll-marketplace).
 

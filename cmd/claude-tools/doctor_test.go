@@ -427,3 +427,38 @@ func TestDoctorDuplicatesNeedThePlugin(t *testing.T) {
 		t.Errorf("duplicate reported with no plugin installed:\n%s", out.String())
 	}
 }
+
+// Every subcommand the plugin runs from hooks.json, except install, is one a settings.json
+// entry would run twice, so the duplicate check must know all of them.
+func TestDoctorGuardListMatchesPluginHooks(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(pluginDir, "hooks/hooks.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Hooks map[string][]struct{ Hooks []struct{ Command string } }
+	}
+	if err := json.Unmarshal(b, &f); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{}
+	for _, groups := range f.Hooks {
+		for _, g := range groups {
+			for _, h := range g.Hooks {
+				if sub := h.Command[strings.LastIndex(h.Command, " ")+1:]; sub != "install" {
+					want[sub] = true
+				}
+			}
+		}
+	}
+	for sub := range want {
+		if !guardSubcommands[sub] {
+			t.Errorf("hooks.json runs %q but guardSubcommands lacks it", sub)
+		}
+	}
+	for sub := range guardSubcommands {
+		if !want[sub] {
+			t.Errorf("guardSubcommands has %q but hooks.json never runs it", sub)
+		}
+	}
+}

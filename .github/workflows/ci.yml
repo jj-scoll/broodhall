@@ -24,6 +24,8 @@ jobs:
       - run: go vet ./cmd/claude-tools/...
       - run: go test ./cmd/claude-tools/...
       - run: bash plugins/memory/test/run_test.sh
+      - run: bash plugins/guardrails/test/run_test.sh
+      - run: bash plugins/guardrails/test/install_test.sh
       - if: runner.os == 'Linux'
         run: shellcheck -s sh plugins/guardrails/scripts/run.sh plugins/memory/scripts/run.sh
 

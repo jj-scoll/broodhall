@@ -36,9 +36,11 @@ import (
 func init() { commands["doctor"] = doctorCmd }
 
 // guardSubcommands are the hooks the plugin itself runs; a settings.json entry for one of
-// them makes the guard run twice.
+// them makes the guard run twice. TestDoctorGuardListMatchesPluginHooks keeps it equal to
+// hooks.json minus install.
 var guardSubcommands = map[string]bool{
 	"pre-tool-use": true, "read-dedup": true, "large-read-guard": true, "retry-breaker": true,
+	"config-gate": true, "session-env": true, "receipt": true, "gate": true, "compact-guard": true,
 }
 
 // doctorEnv is what doctor looks at. PluginRoot is empty when the binary runs outside a

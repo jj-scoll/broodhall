@@ -12,7 +12,9 @@ claude plugin marketplace add jj-scoll/broodhall
 claude plugin install guardrails@broodhall
 ```
 
-Once installed, the guards fail closed. If a broken binary blocks every tool call, run
+Once installed, the guards fail closed, and so do tool calls while the binary is missing (a
+failed download or checksum). Set the `fail_open` option to allow them unguarded instead. If a
+broken binary blocks every tool call, run
 `claude plugin disable guardrails@broodhall` in a terminal and start a new session.
 
 Documentation: https://jj-scoll.github.io/broodhall/
