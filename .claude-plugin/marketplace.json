@@ -23,6 +23,17 @@
       "source": "./plugins/memory",
       "description": "Persistent memory for Claude Code: indexes session transcripts into a local DuckDB, injects context at session start, and serves search tools over MCP. Fails open: a missing binary or a down daemon never blocks a session.",
       "category": "productivity"
+    },
+    {
+      "name": "rtk",
+      "source": {
+        "source": "git-subdir",
+        "url": "jj-scoll/rtk",
+        "path": "claude-plugin",
+        "ref": "develop"
+      },
+      "description": "Tells Claude how rtk-condensed command output reads, and warns at session start when rtk is missing or is not the jj-scoll/rtk fork. It does not rewrite commands: turn on the guardrails rtk option for that. Needs the fork's rtk on PATH.",
+      "category": "productivity"
     }
   ]
 }

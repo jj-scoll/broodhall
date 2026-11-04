@@ -67,6 +67,8 @@ nav:
       - Privacy and redaction: memory/privacy.md
       - Options: memory/options.md
       - UI and Quack: memory/ui-and-quack.md
+  - RTK:
+      - Overview: rtk/index.md
   - Reference:
       - Build: reference/build.md
       - Release: reference/release.md

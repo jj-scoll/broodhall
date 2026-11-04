@@ -21,6 +21,13 @@ Memory, a separate plugin that keeps notes of your sessions in a local database,
 claude plugin install memory@broodhall
 ```
 
+RTK, a plugin that tells Claude how [rtk](https://github.com/jj-scoll/rtk)-condensed command
+output reads, installs with:
+
+```sh
+claude plugin install rtk@broodhall
+```
+
 Documentation: https://jj-scoll.github.io/broodhall/
 
 ## License
