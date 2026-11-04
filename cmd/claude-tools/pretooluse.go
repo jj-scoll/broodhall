@@ -37,6 +37,13 @@ func decide(env *guardEnv, cmd string) decision {
 	if d := shellRules(env, cmd); d.Exit != 0 {
 		return d
 	}
+	// Text the parser cannot read gets the rm and force-push rules on loose words (shellloose.go).
+	if _, ok := parseShell(cmd); !ok {
+		if what := looseDestructive(cmd, env.Home); what != "" {
+			return decision{Ask: true, Rule: "unparsed-destructive",
+				Msg: "ASK: " + what + ". Confirm with the user before running it; rewrite it as plain bash if it is safe."}
+		}
+	}
 	// Session links must not leave the machine (git push, gh pr create|edit).
 	if d := sessionURLRule(env, cmd); d.Exit != 0 && !env.Off["session-url"] && !env.observed(d) {
 		return d
@@ -58,6 +65,23 @@ func decide(env *guardEnv, cmd string) decision {
 	}
 	if g := askDecision(rule, what); rule != "" && !env.Off["git"] && !env.observed(g) {
 		return g
+	}
+	// Git commands that skip hooks or signing: the same confirmation, the same family.
+	if !env.Off["git"] {
+		var bRule, bWhat string
+		if cmds, ok := parseShell(cmd); ok {
+			bRule, bWhat = gitHookBypass(cmds, env.Cwd)
+		} else {
+			bRule, bWhat = gitHookBypassText(cmd, env.Cwd)
+		}
+		if bRule != "" {
+			return decision{Ask: true, Rule: bRule,
+				Msg: "ASK: " + bWhat + ". A failing hook or a signing error is the repository's own check; fix the cause, or confirm with the user before skipping it."}
+		}
+	}
+	// Code that comes off the network and runs unread: the user confirms (downloadexec.go).
+	if d := downloadExecRule(cmd); d.Ask {
+		return d
 	}
 	// Python reading raw client data prints it unmasked: the user confirms.
 	if d := rawClientDataRule(cmd); d.Ask && !env.Off["raw-client-data"] && !env.observed(d) {

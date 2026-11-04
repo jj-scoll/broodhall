@@ -15,7 +15,8 @@ real reply for each.
 | Guard | Response | What it does |
 | --- | --- | --- |
 | [Bash core](bash-core.md) | <span class="badge badge-block">BLOCK</span> | Stops `rm -rf` of `/`, your home directory and a few system directories, `dd if=`, fork bombs, writes into `/etc/`, `chmod -R 777` and `chown -R` on those targets, and privileged containers. No switch. |
-| [Git](git.md) | <span class="badge badge-block">BLOCK</span> <span class="badge badge-ask">ASK</span> | Blocks `git push --force` and `-f` (not `--force-with-lease`). Asks before `reset --hard`, `checkout .`, `restore .`, `clean -f`, `branch -D` and `stash`. |
+| [Git](git.md) | <span class="badge badge-block">BLOCK</span> <span class="badge badge-ask">ASK</span> | Blocks `git push --force` and `-f` (not `--force-with-lease`). Asks before `reset --hard`, `checkout .`, `restore .`, `clean -f`, `branch -D` and `stash`, and before a command that skips hooks or signing (`--no-verify`, `core.hooksPath`, `HUSKY=0`, `--no-gpg-sign`). |
+| [Download and run](download-exec.md) | <span class="badge badge-ask">ASK</span> | Asks before a download runs unread: `curl` or `wget` piped into a shell, `bash <(curl ...)`, `sh -c "$(curl ...)"`, and a file downloaded then run in the same command. No switch. |
 | [Settings files](settings-files.md) | <span class="badge badge-ask">ASK</span> | Asks before Claude edits or writes a Claude Code `settings.json` or `settings.local.json`. No switch. |
 | [Config gate](config-gate.md) | <span class="badge badge-block">BLOCK</span> | Blocks a settings change that disables this plugin, turns guard families off, or adds hooks or permissions that step around the guards, and reports new ways for data to leave the machine. No switch. |
 | [Secret files](secret-files.md) | <span class="badge badge-mask">MASK</span> <span class="badge badge-ask">ASK</span> <span class="badge badge-block">BLOCK</span> | Masks a Bash read of a credentials or key file, blocks the Read tool on it, and asks before any other use or an edit. No switch. |
@@ -37,9 +38,9 @@ real reply for each.
 The `disabled_guards` option takes a comma-separated list of families: `pii`,
 `raw-client-data`, `session-url`, `egress` and `git`. The plugin's default is empty, so every
 guard is on. Of the guards above, only the destructive local git
-commands, Egress, PII (with `raw-client-data`, its Python-reads-data check) and Session URLs
+commands and the skipped-hook asks, Egress, PII (with `raw-client-data`, its Python-reads-data check) and Session URLs
 are controlled by it.
 
-The core blocks have no switch: Bash core, the git force-push block, Settings files and
-Secret files stay on whatever `disabled_guards` says. Nudges, Read limits and Retry loops
+The core blocks have no switch: Bash core, the git force-push block, Download and run,
+Settings files and Secret files stay on whatever `disabled_guards` says. Nudges, Read limits and Retry loops
 have no family name in it either. See [Options](options.md).

@@ -28,6 +28,15 @@ The call does not run. The hook exits with status 2 and the message goes back to
 The rules read the parsed command, so they also see these inside `sudo`, `cd x && ...`,
 `bash -c '...'` and `ssh host '...'`.
 
+They also see through the commands that only run another command: `doas`, `env` (including
+`env -S '...'`), `timeout`, `nice`, `ionice`, `nohup`, `setsid`, `stdbuf`, `flock`, `time`,
+`command`, `builtin`, `exec`, `xargs` and `parallel`. A `-c` string given to `su`, `script`
+or `flock`, the command line of `watch`, a `trap` handler and the commands of `find -exec`,
+`-execdir` and `-ok` are read the same way. So `timeout 5 rm -fr /` and
+`find . -exec rm -fr / {} \;` block like the bare command. A target that arrives later is not known: `echo / | xargs rm -rf`
+passes. `find / -delete` is not read as an `rm` (it asks only because the Secret files guard
+asks about `find`). Commands inside `python -c` or `perl -e` pass too.
+
 ```text
 BLOCKED: 'rm -rf ~' is a high-risk destructive operation. Confirm with the user before attempting this.
 ```
@@ -64,7 +73,10 @@ Only the exact targets above block. These all run:
   `chown -R user /srv`, `docker run -v /home/user/dev:/src ubuntu`.
 
 If a command cannot be parsed, for example it has an unterminated quote, the guard falls back
-to the older text match for that command: `echo "don't; rm -rf /` blocks. A `docker` or
+to the older text match for that command: `echo "don't; rm -rf /` blocks. The spellings that
+match misses (`rm -fr /`, `rm  -rf  /`, `git push  -f`) ask instead of blocking, because the
+text may not be what a shell would run. This also covers zsh-only syntax such as `${(f)x}`.
+A `docker` or
 `podman` command is checked by running the rules on the command it runs inside the
 container, with bind mounts mapped back to host paths: `docker run -v /:/host ubuntu rm -rf
 /host` blocks as `rm -rf /`, while `docker run ubuntu rm -rf /` (the container's own root)

@@ -17,14 +17,15 @@ The five family names, and what each one controls:
 
 | Family | Controls |
 | --- | --- |
-| `git` | The asks before `git reset --hard`, `checkout .`, `restore .`, `clean -f`, `branch -D` and `stash`. See [Git](git.md). |
+| `git` | The asks before `git reset --hard`, `checkout .`, `restore .`, `clean -f`, `branch -D` and `stash`, and before a git command that skips hooks or signing. See [Git](git.md). |
 | `egress` | The asks when a command sends a secret, an outside email address or a phone number. See [Egress](egress.md). |
 | `pii` | The SQL-output mask, the block on duckdb dot-commands and the block on edits to the PII rules file. See [PII](pii.md). |
 | `raw-client-data` | The ask before Python reads a local parquet file or a configured client-data S3 bucket. See [PII](pii.md#raw-client-data-ask). |
 | `session-url` | The block on a commit, push or PR that carries a session link. See [Session URLs](session-urls.md). |
 
 Core blocks have no switch. [Bash core](bash-core.md), the `git push --force` block,
-[Settings files](settings-files.md) and [Secret files](secret-files.md) stay on whatever
+[Download and run](download-exec.md), [Settings files](settings-files.md) and
+[Secret files](secret-files.md) stay on whatever
 this option says. [Nudges](nudges.md), [Read limits](read-limits.md) and
 [Retry loops](retry-loops.md) have no family name either.
 

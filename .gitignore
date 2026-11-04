@@ -6,3 +6,4 @@
 
 # session handoff notes
 .handoff-next-*.md
+/cmd/claude-tools/claude-tools
