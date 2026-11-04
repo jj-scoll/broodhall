@@ -1,6 +1,6 @@
 # Options
 
-Five plugin options, two files under `~/.config/claude-tools/`, and one environment variable.
+Six plugin options, two files under `~/.config/claude-tools/`, and one environment variable.
 
 Set the plugin options with `/plugin configure guardrails@broodhall`, or from `/config`.
 
@@ -57,6 +57,22 @@ Outside the plugin the same list is read from `CLAUDE_TOOLS_PII_ALLOW`.
 
 Outside the plugin the same number is read from `HANDOFF_TOKENS`. A value that is not a
 whole number counts as empty. See [Handoff gate](handoff-gate.md).
+
+## `aws_session_tag`
+
+| | |
+| --- | --- |
+| Title | Tag AWS calls with the session id |
+| Default | off |
+| Description | Off by default. When on, each session sets AWS_SDK_UA_APP_ID=claude-<first 8 characters of the session id>, so AWS CLI and SDK calls made from Bash carry it in their User-Agent and CloudTrail records which session made them. |
+
+Opt in to have the `session-env` `SessionStart` hook append
+`export AWS_SDK_UA_APP_ID=claude-<id>` to the session's environment file. AWS calls made from
+Bash then show `app/claude-<id>` in their User-Agent, and CloudTrail's `userAgent` field names
+the session. A session resumed or compacted adds no second line; a new session id adds one.
+
+The hook never blocks and prints nothing. It writes nothing for a missing or unsafe session id.
+Outside the plugin, set `CLAUDE_TOOLS_AWS_SESSION_TAG=1`; a set plugin option wins over it.
 
 ## `rtk`
 
