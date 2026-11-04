@@ -32,12 +32,20 @@ These files, plus the ones you add:
 
 `~/.aws/credentials`, `~/.aws/sso/cache/*.json`, `~/.aws/cli/cache/*.json`,
 `~/.ssh/id_rsa`, `id_ecdsa`, `id_ed25519` (and the `_sk` variants), `~/.netrc`, `~/.pgpass`,
-`~/.docker/config.json`, `~/.config/gh/hosts.yml`, `~/.claude/.credentials.json`,
-the same credentials file in a second Claude config directory, one more tool's config file, and
-`~/.local/state/guardrails/pii-key`.
+`~/.docker/config.json`, `~/.config/gh/hosts.yml`, `~/.config/mark.toml`,
+`.credentials.json` in every Claude config directory, and the PII key.
+
+- A Claude config directory is the session's `CLAUDE_CONFIG_DIR`, whatever its name, or a
+  directory right in your home whose name starts with `.claude`: `~/.claude`,
+  `~/.claude-work`, `~/.claude-personal`. A config directory with another name that this
+  session does not use is not covered. Add it to `secret-paths`.
+- The PII key is `~/.local/state/guardrails/pii-key`, or under `$XDG_STATE_HOME/guardrails/`
+  when `XDG_STATE_HOME` is set. That is where the plugin keeps it.
+- `~/.config/mark.toml` is the config of [mark](https://github.com/kovetskiy/mark), a
+  Markdown-to-Confluence tool. It holds an Atlassian API token in plain text.
 
 Add a path or glob per line to `~/.config/guardrails/secret-paths` (`~` allowed, `#`
-comments). That list adds to the defaults, and the list file is protected too. See
+comments). With `XDG_CONFIG_HOME` set, the file is `$XDG_CONFIG_HOME/guardrails/secret-paths`. That list adds to the defaults, and the list file is protected too. See
 [Options](options.md).
 
 ## What it does

@@ -1,6 +1,7 @@
 package main
 
-// Secret-file guard (pre-tool-use). The protected files are secretPathsDefault plus the
+// Secret-file guard (pre-tool-use). The protected files are secretPathsDefault, the Claude
+// credentials in each config directory (claudeConfigDirs), the PII key, plus the
 // lines of ~/.config/guardrails/secret-paths and ~/.config/claude-tools/secret-paths (a path or
 // glob per line, ~ allowed, # comments). Each list adds to the defaults and is protected
 // itself. Claude sees the
@@ -30,9 +31,13 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
+// secretPathsDefault is the fixed part of the list. secretPaths adds the Claude credentials in
+// each config directory and the PII key under XDG_STATE_HOME. ~/.config/mark.toml is the
+// config of mark (github.com/kovetskiy/mark, Markdown to Confluence), which holds an
+// Atlassian API token in plain text. No broodhall code reads it; it stays as a well-known
+// tool's credentials file, like gh's hosts.yml.
 var secretPathsDefault = []string{
 	"~/.config/mark.toml",
-	"~/.claude/.credentials.json", "~/.claude-work/.credentials.json",
 	"~/.aws/credentials", "~/.aws/sso/cache/*.json", "~/.aws/cli/cache/*.json",
 	"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed25519", "~/.ssh/id_ecdsa_sk", "~/.ssh/id_ed25519_sk",
 	"~/.netrc", "~/.pgpass", "~/.docker/config.json", "~/.config/gh/hosts.yml",
@@ -55,6 +60,12 @@ var (
 // secretPaths is every protected path pattern, absolute and cleaned.
 func secretPaths(home, xdg string) []string {
 	ps := append([]string{}, secretPathsDefault...)
+	for _, d := range claudeConfigDirs(home) {
+		ps = append(ps, filepath.Join(d, ".credentials.json"))
+	}
+	if st := os.Getenv("XDG_STATE_HOME"); st != "" { // where redact keeps the key (stateBase)
+		ps = append(ps, userPaths(st, "pii-key")...)
+	}
 	if base := configBase(xdg, home); base != "" {
 		for _, list := range userPaths(base, "secret-paths") {
 			ps = append(ps, list)

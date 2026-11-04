@@ -1,17 +1,18 @@
 package main
 
 // Settings-file guard (pre-tool-use). Claude Code settings files hold the hooks and
-// permission rules that every other guard depends on, and ~/.claude/settings.json is shared
-// with ~/.claude-work. A model write to one asks: settings.json or settings.local.json in a
-// .claude or .claude-work directory (user or project). Claude Code 2.1.312 stages some model
-// edits for review, but not one an allow rule covers (probed: Edit with --allowedTools=Edit
-// wrote straight to disk), so this asks first. config-gate (configgate.go) is the second
+// permission rules that every other guard depends on. A model write to one asks:
+// settings.json or settings.local.json in a project's .claude directory or a Claude config
+// directory (isClaudeConfigDir). Claude Code 2.1.312 stages some model edits for review, but
+// not one an allow rule covers (probed: Edit with --allowedTools=Edit wrote straight to
+// disk), so this asks first. config-gate (configgate.go) is the second
 // line: it judges what a change does when Claude Code reloads it.
 //
 // Bash writes are found by fileWriteOp, the pii-rules guard's detector, so the same speed
 // bump caveats apply: a script written earlier or a path built from variables gets past it.
 
 import (
+	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -27,15 +28,60 @@ func settingsAsk(op string) decision {
 	return decision{Ask: true, Rule: "settings:" + op, Msg: settingsAskMsg}
 }
 
-func isClaudeDir(p string) bool {
-	b := filepath.Base(p)
-	return b == ".claude" || b == ".claude-work"
+// claudeConfigEnv is the session's CLAUDE_CONFIG_DIR, absolute and cleaned, or "".
+func claudeConfigEnv(home string) string {
+	cfg := expandHome(os.Getenv("CLAUDE_CONFIG_DIR"), home)
+	if !filepath.IsAbs(cfg) {
+		return ""
+	}
+	return filepath.Clean(cfg)
+}
+
+// isClaudeConfigDir reports whether the absolute path p is a Claude config directory: the
+// session's CLAUDE_CONFIG_DIR, whatever its name, or a directory right in home whose name
+// starts with .claude (~/.claude, ~/.claude-work, ~/.claude-personal). Claude Code keeps no
+// list of config directories, and ~/.claude-<name> is the usual name for another account's.
+// The settings-file guard asks before a write to the settings in one, and the secret-file
+// guard protects the credentials in each (claudeConfigDirs).
+func isClaudeConfigDir(p, home string) bool {
+	if cfg := claudeConfigEnv(home); cfg != "" && (p == cfg || p == resolveForCompare(cfg, "/")) {
+		return true
+	}
+	return home != "" && filepath.Dir(p) == filepath.Clean(home) && strings.HasPrefix(filepath.Base(p), ".claude")
+}
+
+// claudeConfigDirs lists the Claude config directories (isClaudeConfigDir) that can hold a
+// file now: ~/.claude, CLAUDE_CONFIG_DIR, and the ~/.claude* directories that exist.
+func claudeConfigDirs(home string) []string {
+	var ds []string
+	if home != "" {
+		ds = append(ds, filepath.Join(home, ".claude"))
+		ents, _ := os.ReadDir(home)
+		for _, e := range ents {
+			p := filepath.Join(home, e.Name())
+			if strings.HasPrefix(e.Name(), ".claude") && e.Name() != ".claude" {
+				if fi, err := os.Stat(p); err == nil && fi.IsDir() {
+					ds = append(ds, p)
+				}
+			}
+		}
+	}
+	if cfg := claudeConfigEnv(home); cfg != "" {
+		ds = append(ds, cfg)
+	}
+	return ds
+}
+
+// isClaudeDir reports whether p holds settings Claude Code loads: a project's .claude
+// directory or a Claude config directory.
+func isClaudeDir(p, home string) bool {
+	return filepath.Base(p) == ".claude" || isClaudeConfigDir(p, home)
 }
 
 // isSettingsPath reports whether the absolute path p is, or is a glob that can match, a
 // settings file in a Claude config directory.
-func isSettingsPath(p string) bool {
-	if !isClaudeDir(filepath.Dir(p)) {
+func isSettingsPath(p, home string) bool {
+	if !isClaudeDir(filepath.Dir(p), home) {
 		return false
 	}
 	base := filepath.Base(p)
@@ -208,7 +254,8 @@ func settingsGuard(env *guardEnv, cmd string) decision {
 	if setupWriteCall(cmd) {
 		return settingsAsk("guardrails setup -write")
 	}
-	if !strings.Contains(cmd, ".claude") && !strings.Contains(cmd, "settings") {
+	cfg := claudeConfigEnv(env.Home)
+	if !strings.Contains(cmd, ".claude") && !strings.Contains(cmd, "settings") && (cfg == "" || !strings.Contains(cmd, filepath.Base(cfg))) {
 		return decision{}
 	}
 	expand := func(tok string) string {
@@ -222,14 +269,14 @@ func settingsGuard(env *guardEnv, cmd string) decision {
 		return filepath.Clean(tok)
 	}
 	// dirRef: the command (or the cwd) is in a config dir, so a bare settings.json is one.
-	dirRef := isClaudeDir(env.Cwd)
+	dirRef := isClaudeDir(env.Cwd, env.Home)
 	for _, t := range tokSplitRE.Split(cmd, -1) {
-		dirRef = dirRef || t != "" && isClaudeDir(expand(t))
+		dirRef = dirRef || t != "" && isClaudeDir(expand(t), env.Home)
 	}
 	isFile := func(tok string) bool {
-		return tok != "" && (isSettingsPath(expand(tok)) || dirRef && settingsNameRE.MatchString(tok))
+		return tok != "" && (isSettingsPath(expand(tok), env.Home) || dirRef && settingsNameRE.MatchString(tok))
 	}
-	isDir := func(tok string) bool { return tok != "" && isClaudeDir(expand(tok)) }
+	isDir := func(tok string) bool { return tok != "" && isClaudeDir(expand(tok), env.Home) }
 	// Per segment, so a pass below can't hide a write later in the command. rmdir removes
 	// only empty directories, and find writes only with -delete or a writing -exec
 	// (guard-replay: `rmdir .claude/worktrees .claude`, `find ~/.claude -exec ls -l {} \;`).
@@ -278,7 +325,7 @@ func settingsFileToolDecision(tool string, input map[string]any, cwd, home strin
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(cwd, p)
 		}
-		if isSettingsPath(filepath.Clean(p)) || isSettingsPath(resolveForCompare(p, cwd)) {
+		if isSettingsPath(filepath.Clean(p), home) || isSettingsPath(resolveForCompare(p, cwd), home) {
 			return settingsAsk(tool), true
 		}
 	}

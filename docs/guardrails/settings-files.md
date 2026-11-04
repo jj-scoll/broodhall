@@ -10,8 +10,15 @@
 
 ## What it catches
 
-The target is `settings.json` or `settings.local.json` in a `.claude` directory or a
-second Claude config directory, the user's own or a project's.
+The target is `settings.json` or `settings.local.json` in one of these:
+
+- a project's `.claude` directory;
+- the session's `CLAUDE_CONFIG_DIR`, whatever its name;
+- a directory right in your home whose name starts with `.claude`, such as `~/.claude`,
+  `~/.claude-work` or `~/.claude-personal`.
+
+This is the same rule the [Secret files](secret-files.md) guard uses for credentials. A
+config directory with another name that this session does not use is not covered.
 
 - **Edit, Write, MultiEdit and NotebookEdit** on one of those files. Symlinks are resolved,
   so a link that points at one counts.

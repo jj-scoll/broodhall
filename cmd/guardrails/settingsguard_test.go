@@ -47,6 +47,53 @@ func TestSettingsGuardAsksOnWrites(t *testing.T) {
 	}
 }
 
+// A Claude config dir is the session's CLAUDE_CONFIG_DIR, whatever its name, or a dir right in
+// home named .claude*: the same rule as the secret-file guard's credentials.
+func TestSettingsGuardFollowsConfigDirs(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, "claude"))
+	for name, p := range map[string]string{
+		"CLAUDE_CONFIG_DIR":  filepath.Join(home, "claude", "settings.json"),
+		"tilde config dir":   "~/claude/settings.local.json",
+		"~/.claude-personal": filepath.Join(home, ".claude-personal", "settings.json"),
+		"~/.claude-work":     filepath.Join(home, ".claude-work", "settings.json"),
+	} {
+		t.Run("Edit/"+name, func(t *testing.T) {
+			code, out := runToolHookOut(t, home, "Edit", map[string]any{"file_path": p})
+			if code != 0 || !strings.Contains(out, `"ask"`) {
+				t.Errorf("exit %d out %q, want ask", code, out)
+			}
+		})
+	}
+	for name, p := range map[string]string{
+		"other dir in home":      filepath.Join(home, "claude-notes", "settings.json"),
+		".claude-* below home":   filepath.Join(home, "src", "app", ".claude-plugin", "settings.json"),
+		"subdir of a config dir": filepath.Join(home, "claude", "x", "settings.json"),
+	} {
+		t.Run("Edit passes/"+name, func(t *testing.T) {
+			if code, out := runToolHookOut(t, home, "Edit", map[string]any{"file_path": p}); code != 0 || strings.Contains(out, `"ask"`) {
+				t.Errorf("exit %d out %q, want allow", code, out)
+			}
+		})
+	}
+	env := &guardEnv{Cwd: "/work", Home: home}
+	for _, cmd := range []string{
+		"echo '{}' > ~/claude/settings.json",
+		"sed -i 's/a/b/' ~/.claude-personal/settings.local.json",
+		"cd ~/claude && sed -i 's/a/b/' settings.json",
+		"rm -rf ~/claude",
+	} {
+		t.Run("Bash/"+cmd, func(t *testing.T) {
+			if d := settingsGuard(env, cmd); !d.Ask || !strings.HasPrefix(d.Rule, "settings:") {
+				t.Errorf("got %s, want ask:settings:*", d.Kind())
+			}
+		})
+	}
+	if d := settingsGuard(env, "echo '{}' > ~/claude-notes/settings.json"); d.Ask {
+		t.Errorf("other dir: got %s, want allow", d.Kind())
+	}
+}
+
 func TestSettingsGuardAllowsReads(t *testing.T) {
 	allowed := []string{
 		"cat ~/.claude/settings.json",
