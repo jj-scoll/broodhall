@@ -13,12 +13,12 @@ claude plugin disable guardrails@broodhall
 
 Use `claude plugin enable guardrails@broodhall` to turn it back on.
 
-## "guardrails: could not install claude-tools"
+## "guardrails: could not install guardrails"
 
 The launcher prints this at session start, with the plugin version and a reason in
-parentheses. The session still starts, but until the binary installs every tool call is
-blocked with a message that says how to retry and opt out; with `fail_open` set they run
-unguarded instead. The next session start retries, and so does
+parentheses (older releases say `could not install claude-tools`). The session still starts,
+but until the binary installs every tool call is blocked with a message that says how to retry
+and opt out; with `fail_open` set they run unguarded instead. The next session start retries, and so does
 `sh "<plugin dir>/scripts/run.sh" install`. The reasons:
 
 | Reason | Meaning |
@@ -31,7 +31,7 @@ unguarded instead. The next session start retries, and so does
 
 ## A doctor message at session start
 
-The launcher runs `claude-tools doctor -hook` after the install step and shows its message
+The launcher runs `guardrails doctor -hook` after the install step and shows its message
 only when something is wrong. [Doctor](../guardrails/doctor.md) lists each check and what
 passes it. It never blocks a session.
 

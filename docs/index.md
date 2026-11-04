@@ -16,8 +16,10 @@ claude plugin install guardrails@broodhall
 
 Install the others the same way, by name. Start a new session afterwards.
 
-The guardrails hooks are one static Go binary named `claude-tools`, so that name shows up in
-paths and commands.
+The guardrails hooks are one static Go binary, also named `guardrails` (in older releases,
+`claude-tools`). Its config and state directories (`~/.config/claude-tools`,
+`~/.local/state/claude-tools`) and its `CLAUDE_TOOLS_*` environment variables keep the old
+name.
 
 - [Why it exists](guide/why.md): the problem, the four ways it answers, and what it is not.
 - [Install](guide/install.md): requirements per plugin, platforms, what gets downloaded, and

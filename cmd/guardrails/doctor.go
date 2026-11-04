@@ -107,7 +107,7 @@ func doctor(w io.Writer, e doctorEnv) int {
 	report := func(level, subject, problem string) {
 		if problem != "" {
 			failed = true
-			fmt.Fprintf(w, "claude-tools doctor: %s %s: %s\n", level, subject, problem)
+			fmt.Fprintf(w, "guardrails doctor: %s %s: %s\n", level, subject, problem)
 		} else if !e.Hook {
 			fmt.Fprintf(w, "ok   %s\n", subject)
 		}
@@ -315,7 +315,7 @@ func checkPluginHooks(root string) string {
 }
 
 // checkHookCommand returns why a hook command could not start, or "". Only plugin launcher
-// commands (`sh <script> <subcommand>`) and direct claude-tools calls are understood; the
+// commands (`sh <script> <subcommand>`) and direct calls of this binary are understood; the
 // subcommand must be one of this binary's, or the launcher's own `install`.
 func checkHookCommand(cmd string) string {
 	words := strings.Fields(strings.ReplaceAll(cmd, `"`, ""))
@@ -335,10 +335,10 @@ func checkHookCommand(cmd string) string {
 	}
 	sub := ""
 	switch {
-	case filepath.Base(prog) == "claude-tools" && len(words) > 1:
+	case isGuardBinary(prog) && len(words) > 1:
 		sub = words[1]
-	case filepath.Base(prog) == "claude-tools":
-		return "claude-tools: no subcommand given"
+	case isGuardBinary(prog):
+		return filepath.Base(prog) + ": no subcommand given"
 	case (prog == "sh" || prog == "bash") && len(words) > 1:
 		script := words[1]
 		if _, err := os.Stat(script); err != nil {
@@ -349,7 +349,7 @@ func checkHookCommand(cmd string) string {
 		}
 	}
 	if sub != "" && sub != "install" && commands[sub] == nil {
-		return fmt.Sprintf("claude-tools has no subcommand %q (in %q)", sub, cmd)
+		return fmt.Sprintf("guardrails has no subcommand %q (in %q)", sub, cmd)
 	}
 	return ""
 }
@@ -364,7 +364,7 @@ func duplicateGuards(files []string) []string {
 			for i := 0; i+1 < len(words); i++ {
 				base := filepath.Base(words[i])
 				launcher := base == "run.sh" && strings.Contains(words[i], "guardrails")
-				if (base == "claude-tools" || launcher) && guardSubcommands[words[i+1]] && !seen[c] {
+				if (isGuardBinary(base) || launcher) && guardSubcommands[words[i+1]] && !seen[c] {
 					seen[c] = true
 					out = append(out, fmt.Sprintf("settings hook %q runs %s, which the guardrails plugin runs too: every tool call is guarded twice; remove the settings entry", c, words[i+1]))
 				}

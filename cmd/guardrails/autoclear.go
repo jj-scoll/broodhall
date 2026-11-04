@@ -6,7 +6,7 @@ package main
 // runs /clear and submits "Continue from the handoff in <file>." in the fresh session (or
 // carries a prompt typed meanwhile into it), then reports with --done.
 //
-// The handoff is written by `claude-tools write-handoff` in the background (about 1.5
+// The handoff is written by `guardrails write-handoff` in the background (about 1.5
 // minutes); its stderr summary or traceback goes to <state>/writer.log. Never blocks the
 // stop. Once per handoff. Every outcome is logged to writer.log. Opt out of the clear with
 // HANDOFF_AUTOCLEAR=0 (the handoff is still written).

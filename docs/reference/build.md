@@ -4,7 +4,7 @@ The hooks are one Go program, built without cgo into a static binary. From a che
 repository:
 
 ```sh
-CGO_ENABLED=0 go build -o claude-tools ./cmd/claude-tools
+CGO_ENABLED=0 go build -o guardrails ./cmd/guardrails
 CGO_ENABLED=0 go vet ./...
 CGO_ENABLED=0 go test ./...
 claude plugin validate --strict .
@@ -22,7 +22,7 @@ To try a local build in place of the downloaded one, set `CLAUDE_TOOLS_BIN` to i
 ## memory
 
 memory is built with cgo, because DuckDB needs it. `CGO_ENABLED=0 go build ./...` fails on
-`./cmd/memory`, so keep the guardrails commands above pointed at `./cmd/claude-tools`.
+`./cmd/memory`, so keep the guardrails commands above pointed at `./cmd/guardrails`.
 
 ```sh
 CGO_ENABLED=1 go build -trimpath -ldflags "-s -w" -o memory ./cmd/memory

@@ -3,7 +3,7 @@
 After you install, start a new session. At session start the plugin checks for the binary
 for its version and downloads it if it is missing, as described on the
 [Install](install.md) page. A failed download shows a one-line notice that starts
-`guardrails: could not install claude-tools`. Until the binary installs, tool calls are blocked
+`guardrails: could not install guardrails`. Until the binary installs, tool calls are blocked
 with a message that says how to retry; the notice and the [`fail_open`](../guardrails/options.md#fail_open)
 option cover the alternative. The next session start tries again.
 
@@ -21,7 +21,7 @@ If you do not want a guard to stop you yet, turn on the
 The git, PII, raw-client-data and most egress guards then let the call run and record
 what they would have done. You see a `would ask` or `would block` count in the receipt line.
 
-After a few days, run `claude-tools guard-report` to see which rules fired and how often. Then
+After a few days, run `guardrails guard-report` to see which rules fired and how often. Then
 turn `observe` off. Some guards stay enforced in observe mode too: the core blocks, the
 settings-file and secret-file guards, config-gate, compact-guard, the large-read block, the
 session-URL block and egress asks about a secret. See [options](../guardrails/options.md).

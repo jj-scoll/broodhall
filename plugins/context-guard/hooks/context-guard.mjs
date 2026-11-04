@@ -131,7 +131,7 @@ async function launcher($, args) {
   return $.process.run(['sh', `${$.plugin.root}/scripts/run.sh`, ...args])
 }
 
-// The continue prompt of the clear `claude-tools autoclear` armed for this session
+// The continue prompt of the clear `guardrails autoclear` armed for this session
 // (`autoclear --claim` takes it, once), else null.
 async function claimClear($) {
   try {

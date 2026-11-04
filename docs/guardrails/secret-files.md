@@ -17,7 +17,7 @@ The same file gets a different answer depending on how Claude reaches it.
 
 | How | Answer |
 | --- | --- |
-| Bash, a plain reader: `cat`, `head`, `tail`, `grep`, `rg`, `sed -n 'Np'`, `jq .`, `yq .` | **MASK.** The call runs, rewritten to go through `claude-tools redact --secrets`. |
+| Bash, a plain reader: `cat`, `head`, `tail`, `grep`, `rg`, `sed -n 'Np'`, `jq .`, `yq .` | **MASK.** The call runs, rewritten to go through `guardrails redact --secrets`. |
 | Bash, anything else that names the file: `base64`, `cp`, `python`, a redirect, `find -exec` | **ASK.** |
 | The Read tool | **BLOCK**, with a pointer to `cat` in Bash, which is masked. |
 | Edit, Write, MultiEdit, NotebookEdit | **ASK.** |
@@ -47,13 +47,13 @@ comments). That list adds to the defaults, and the list file is protected too. S
 For `cat ~/.aws/credentials`, the guard lets the call run but replaces the command:
 
 ```text
-claude-tools redact --secrets -- cat ~/.aws/credentials
+guardrails redact --secrets -- cat ~/.aws/credentials
 ```
 
 and tells Claude why, in a note that rides along:
 
 ```text
-pre-tool-use masked this read of a protected secret file (`claude-tools redact --secrets`): token shapes show as [kind:tag] and values under secret-looking keys as [secret:tag]; equal values share a tag. The real values stay in the file: run the tool that uses it rather than copying values.
+pre-tool-use masked this read of a protected secret file (`guardrails redact --secrets`): token shapes show as [kind:tag] and values under secret-looking keys as [secret:tag]; equal values share a tag. The real values stay in the file: run the tool that uses it rather than copying values.
 ```
 
 For a file holding AWS's documentation example keys, Claude sees:

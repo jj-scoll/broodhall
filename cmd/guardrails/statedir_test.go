@@ -16,16 +16,16 @@ var (
 	builtErr  error
 )
 
-// builtBinary compiles claude-tools once per test run and returns its path.
+// builtBinary compiles guardrails once per test run and returns its path.
 func builtBinary(t *testing.T) string {
 	t.Helper()
 	builtOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "claude-tools-bin-")
+		dir, err := os.MkdirTemp("", "guardrails-bin-")
 		if err != nil {
 			builtErr = err
 			return
 		}
-		builtBin = filepath.Join(dir, "claude-tools")
+		builtBin = filepath.Join(dir, "guardrails")
 		if out, err := exec.Command("go", "build", "-o", builtBin, ".").CombinedOutput(); err != nil {
 			builtErr = fmt.Errorf("go build: %v\n%s", err, out)
 		}
@@ -78,7 +78,7 @@ func statuslineAt(t *testing.T, bin string, set bool, val string) string {
 
 // The status line is started straight from settings.json, not through run.sh, so
 // HANDOFF_STATE_DIR is unset. It must still find the state run.sh's hooks keep in
-// <data>/claude-handoff, where <data>/bin/<version>/claude-tools is the binary.
+// <data>/claude-handoff, where <data>/bin/<version>/guardrails is the binary.
 func TestStateDirFromExecutableLocation(t *testing.T) {
 	// "/nohome"-style fake HOMEs and symlinked temp dirs (macOS /var -> /private/var) are
 	// both covered: the data dir is reached through a symlink.
@@ -88,17 +88,17 @@ func TestStateDirFromExecutableLocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := filepath.Join(real, "plugins", "data", "guardrails-broodhall")
-	installAt(t, filepath.Join(data, "bin", "0.0.0", "claude-tools"))
+	installAt(t, filepath.Join(data, "bin", "0.0.0", "guardrails"))
 	state := filepath.Join(data, "claude-handoff")
 	if err := os.MkdirAll(state, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	slMark(t, state, "writing", fmt.Sprint(slNow-23), 23)
 
-	other := filepath.Join(t.TempDir(), "elsewhere", "claude-tools")
+	other := filepath.Join(t.TempDir(), "elsewhere", "guardrails")
 	installAt(t, other)
 
-	viaLink := filepath.Join(link, "plugins", "data", "guardrails-broodhall", "bin", "0.0.0", "claude-tools")
+	viaLink := filepath.Join(link, "plugins", "data", "guardrails-broodhall", "bin", "0.0.0", "guardrails")
 	tests := []struct {
 		name string
 		bin  string
@@ -106,11 +106,11 @@ func TestStateDirFromExecutableLocation(t *testing.T) {
 		val  string
 		want bool
 	}{
-		{"unset, binary in <data>/bin/<ver>", filepath.Join(data, "bin", "0.0.0", "claude-tools"), false, "", true},
+		{"unset, binary in <data>/bin/<ver>", filepath.Join(data, "bin", "0.0.0", "guardrails"), false, "", true},
 		{"unset, binary reached through a symlink", viaLink, false, "", true},
 		{"unset, binary outside a plugin data dir", other, false, "", false},
-		{"explicit empty value wins (-> /tmp)", filepath.Join(data, "bin", "0.0.0", "claude-tools"), true, "", false},
-		{"explicit value wins", filepath.Join(data, "bin", "0.0.0", "claude-tools"), true, t.TempDir(), false},
+		{"explicit empty value wins (-> /tmp)", filepath.Join(data, "bin", "0.0.0", "guardrails"), true, "", false},
+		{"explicit value wins", filepath.Join(data, "bin", "0.0.0", "guardrails"), true, t.TempDir(), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -124,6 +124,10 @@ func TestStateDirFromExecutableLocation(t *testing.T) {
 
 func TestPluginDataBase(t *testing.T) {
 	tests := []struct{ exe, want string }{
+		{"/h/.claude/plugins/data/guardrails-broodhall/bin/1.6.0/guardrails", "/h/.claude/plugins/data/guardrails-broodhall"},
+		{"/h/.claude/plugins/data/guardrails/bin/1.6.0/guardrails", "/h/.claude/plugins/data/guardrails"},
+		{"/h/.claude/plugins/data/other/bin/1.6.0/guardrails", ""},
+		// The binary's old name: an older plugin version's binary keeps its state dir.
 		{"/h/.claude/plugins/data/guardrails-broodhall/bin/0.3.2/claude-tools", "/h/.claude/plugins/data/guardrails-broodhall"},
 		{"/h/.claude/plugins/data/guardrails/bin/1.0.0/claude-tools", "/h/.claude/plugins/data/guardrails"},
 		{"/h/.claude/plugins/data/other/bin/1.0.0/claude-tools", ""},

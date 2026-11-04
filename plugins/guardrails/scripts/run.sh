@@ -1,7 +1,7 @@
 #!/bin/sh
-# guardrails hook launcher: runs this plugin version's claude-tools binary on the hook's stdin.
+# guardrails hook launcher: runs this plugin version's guardrails binary on the hook's stdin.
 # `run.sh install` (the SessionStart hook) downloads the binary from the GitHub release the
-# first time a version runs, records its sha256 next to it, then runs `claude-tools doctor
+# first time a version runs, records its sha256 next to it, then runs `guardrails doctor
 # -hook`, which says nothing unless the install has a problem. A failed install or a failed
 # doctor never stops the session start. The guards
 # (pre-tool-use, read-dedup, large-read-guard, config-gate) fail CLOSED: with no binary they exit
@@ -10,6 +10,9 @@
 # exit 2 at Stop would keep Claude from ending its turn and at PreCompact would block compaction.
 # The opt-out is the fail_open option (CLAUDE_PLUGIN_OPTION_FAIL_OPEN) or, outside the plugin,
 # CLAUDE_TOOLS_FAIL_OPEN: either one set to true, 1 or yes makes a missing binary exit 0 silently.
+# The binary was named claude-tools before the rename; the CLAUDE_TOOLS_* variables keep that
+# name. Each plugin version downloads its own release, so older versions still fetch
+# claude-tools_<os>_<arch>.tar.gz from their own tags.
 # shellcheck disable=SC2015 # `a && b || fail`: fail when any step fails, which is intended
 set -u
 root=${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
@@ -28,12 +31,12 @@ if [ -z "$data" ]; then
 		cfg=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
 		data=$cfg/plugins/data/guardrails
 		for d in "$cfg"/plugins/data/guardrails-*; do
-			[ -x "$d/bin/$ver/claude-tools" ] && data=$d
+			[ -x "$d/bin/$ver/guardrails" ] && data=$d
 		done
 		;;
 	esac
 fi
-dest=$data/bin/$ver/claude-tools
+dest=$data/bin/$ver/guardrails
 bin=${CLAUDE_TOOLS_BIN:-$dest}
 export CLAUDE_PLUGIN_ROOT="$root"
 
@@ -67,7 +70,7 @@ if [ "${1-}" = install ]; then
 		else
 			effect="so tool calls are blocked until it installs (set the fail_open option to allow them unguarded)"
 		fi
-		printf '{"systemMessage":"guardrails: could not install claude-tools %s (%s), %s. It retries at the next session start."}\n' "$ver" "$1" "$effect"
+		printf '{"systemMessage":"guardrails: could not install guardrails %s (%s), %s. It retries at the next session start."}\n' "$ver" "$1" "$effect"
 		exit 0
 	}
 	base=${CLAUDE_TOOLS_RELEASE_URL:-https://github.com/jj-scoll/broodhall/releases/download}
@@ -77,7 +80,7 @@ if [ "${1-}" = install ]; then
 	aarch64 | arm64) arch=arm64 ;;
 	*) fail "unsupported CPU $(uname -m)" ;;
 	esac
-	asset=claude-tools_${os}_$arch.tar.gz
+	asset=guardrails_${os}_$arch.tar.gz
 	mkdir -p "$data/bin" && tmp=$(mktemp -d "$data/bin/.download.XXXXXX") || fail "cannot write $data"
 	trap 'rm -rf "$tmp"' EXIT
 	curl -fsSL --max-time 60 -o "$tmp/$asset" "$base/v$ver/$asset" &&
@@ -89,11 +92,11 @@ if [ "${1-}" = install ]; then
 	line=$(grep "  $asset\$" "$tmp/checksums.txt")
 	[ -n "$line" ] || fail "no checksum for $asset in checksums.txt"
 	(cd "$tmp" && printf '%s\n' "$line" | $sum -c - >/dev/null 2>&1) || fail "checksum mismatch"
-	tar -xzf "$tmp/$asset" -C "$tmp" claude-tools && mkdir -p "${dest%/*}" &&
-		mv -f "$tmp/claude-tools" "$dest" || fail "unpack failed"
+	tar -xzf "$tmp/$asset" -C "$tmp" guardrails && mkdir -p "${dest%/*}" &&
+		mv -f "$tmp/guardrails" "$dest" || fail "unpack failed"
 	# What doctor compares the binary with later: the unpacked file's hash, taken after the
 	# archive passed the release checksum.
-	$sum "$dest" | sed 's|  .*|  claude-tools|' >"$dest.sha256"
+	$sum "$dest" | sed 's|  .*|  guardrails|' >"$dest.sha256"
 	doctor
 fi
 
@@ -105,7 +108,7 @@ if [ ! -x "$bin" ]; then
 	esac
 	[ -n "$fail_open" ] && exit 0
 	{
-		printf 'guardrails: BLOCKED: the guard binary claude-tools %s is not installed (%s), so this tool call was not checked.\n' "$ver" "$bin"
+		printf 'guardrails: BLOCKED: the guard binary guardrails %s is not installed (%s), so this tool call was not checked.\n' "$ver" "$bin"
 		printf 'Retry: start a new session (SessionStart downloads it), or run: sh "%s/scripts/run.sh" install\n' "$root"
 		printf 'Opt out: set the guardrails option fail_open to true (or CLAUDE_TOOLS_FAIL_OPEN=1) to allow tool calls without guards.\n'
 	} >&2

@@ -10,7 +10,7 @@ package main
 // The calls run `claude -p` on the user's own Claude Code login; an inherited
 // ANTHROPIC_API_KEY is dropped from the child's environment so it cannot bill an API account.
 //
-//	claude-tools write-handoff <transcript.jsonl> <next-steps file> <cwd> <session id>
+//	guardrails write-handoff <transcript.jsonl> <next-steps file> <cwd> <session id>
 //
 // Prints the handoff path; a one-line summary (time, cost, gaps) goes to stderr.
 // The next-steps file: optional first line "file: HANDOFF<name>.md", then the session's
@@ -431,7 +431,7 @@ func writeHandoffFile(transcript, nextPath, cwd, session string) (string, string
 		}
 		body[i] = "## " + s + "\n\n" + pyStrip(pyStr(v))
 	}
-	text := strings.ReplaceAll(fmt.Sprintf("# Handoff\n\n> Written %s by claude-tools write-handoff (%s) from the transcript %s\n> Project: %s\n\n",
+	text := strings.ReplaceAll(fmt.Sprintf("# Handoff\n\n> Written %s by guardrails write-handoff (%s) from the transcript %s\n> Project: %s\n\n",
 		time.Now().Format("2006-01-02 15:04 MST"), writerModel, transcript, cwd)+strings.Join(body, "\n\n"), atEsc, at)
 	known := strings.Join([]string{facts, dig, next, transcript, cwd}, "\n") // header paths are known
 	found := verifyGaps(text, facts, known)
@@ -486,7 +486,7 @@ func writeHandoffFile(transcript, nextPath, cwd, session string) (string, string
 
 func writeHandoff(args []string) int {
 	if len(args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: claude-tools write-handoff <transcript.jsonl> <next-steps file> <cwd> <session id>")
+		fmt.Fprintln(os.Stderr, "usage: guardrails write-handoff <transcript.jsonl> <next-steps file> <cwd> <session id>")
 		return 2
 	}
 	path, summary, err := writeHandoffFile(args[0], args[1], args[2], args[3])

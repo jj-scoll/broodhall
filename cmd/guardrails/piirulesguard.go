@@ -11,7 +11,7 @@ package main
 //     install/ln/rsync with it as destination, editors, and interpreters (python, perl...)
 //     that name it next to a write marker. Reading (cat, rg, jq, cp FROM it) passes.
 //   - Bash assignments of XDG_CONFIG_HOME or HOME are blocked when the command also runs
-//     claude-tools: either would point the loader at a file the model wrote.
+//     guardrails: either would point the loader at a file the model wrote.
 //
 // None of this is a security boundary: the model runs as the user and can write the file by
 // ways no regex sees (a script written earlier, indirection through variables). It makes
@@ -115,13 +115,12 @@ var (
 	destOps = map[string]bool{"cp": true, "install": true, "ln": true, "rsync": true}
 )
 
-// runsClaudeTools reports whether any segment of cmd executes the claude-tools binary (any
-// path). The command word is found after env/export/sudo-style wrappers, flags and VAR=
+// runsGuardBinary reports whether any segment of cmd executes this binary (any path, either
+// name). The command word is found after env/export/sudo-style wrappers, flags and VAR=
 // assignments; a shell segment (bash -c ...) is scanned in full since its string is a command.
-func runsClaudeTools(cmd string) bool {
+func runsGuardBinary(cmd string) bool {
 	isTool := func(tok string) bool {
-		tok = strings.Trim(tok, "\"'`$()")
-		return filepath.Base(tok) == "claude-tools"
+		return isGuardBinary(strings.Trim(tok, "\"'`$()"))
 	}
 	for _, seg := range segSplitRE.Split(cmd, -1) {
 		fields := strings.Fields(seg)
@@ -148,8 +147,8 @@ func runsClaudeTools(cmd string) bool {
 
 // piiRulesGuard is the Bash half of the guard.
 func piiRulesGuard(env *guardEnv, cmd string) decision {
-	if envAssignRE.MatchString(cmd) && runsClaudeTools(cmd) {
-		return rulesDeny("pii-rules:env", "Setting XDG_CONFIG_HOME or HOME would point claude-tools at a different rules file.")
+	if envAssignRE.MatchString(cmd) && runsGuardBinary(cmd) {
+		return rulesDeny("pii-rules:env", "Setting XDG_CONFIG_HOME or HOME would point guardrails at a different rules file.")
 	}
 	files := rulesFiles(env.Home, env.XDGConfig)
 	if len(files) == 0 || !strings.Contains(cmd, "pii-columns") && !strings.Contains(cmd, "claude-tools") {

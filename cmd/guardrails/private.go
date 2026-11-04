@@ -8,7 +8,7 @@ import (
 // <private> blocks keep client data out of a memory tool: it strips balanced <private>…</private>
 // from tool output before storing observations. redact --private wraps masked output in
 // blocks of at most privateChunk lines (each closed, so one stray tag cannot unbalance the rest);
-// stripPrivate drops those blocks from text claude-tools itself persists (ingest, write-handoff).
+// stripPrivate drops those blocks from text guardrails itself persists (ingest, write-handoff).
 
 const privateChunk = 50
 

@@ -1,6 +1,6 @@
 # Status line
 
-`claude-tools statusline` prints a two-line status line from the JSON Claude Code pipes to a
+`guardrails statusline` prints a two-line status line from the JSON Claude Code pipes to a
 `statusLine` command: the working directory, git branch, model, context use, prompt-cache
 state, rate limits, and a count of what the guards did this session. It reads the
 transcript's tail for cache data and never fails: a payload it cannot read still prints a
@@ -11,15 +11,15 @@ line.
 A plugin cannot set `statusLine`. Claude Code reads only the `agent` and
 `subagentStatusLine` keys from a plugin's own settings, so the status line is wired by hand
 in your `settings.json`. Point `command` at the binary the launcher installed, which lives
-at `bin/<version>/claude-tools` under the plugin's data directory (`CLAUDE_PLUGIN_DATA`).
-Run `claude-tools doctor` from a shell where that variable is set, or read the `ok binary`
+at `bin/<version>/guardrails` under the plugin's data directory (`CLAUDE_PLUGIN_DATA`).
+Run `guardrails doctor` from a shell where that variable is set, or read the `ok binary`
 line of its report, to see the exact path.
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "/path/to/claude-tools statusline",
+    "command": "/path/to/guardrails statusline",
     "refreshInterval": 30
   }
 }
@@ -33,11 +33,14 @@ version each time it runs:
 {
   "statusLine": {
     "type": "command",
-    "command": "sh -c 'c=${CLAUDE_CONFIG_DIR:-$HOME/.claude}; b=$(ls -d \"$c\"/plugins/data/guardrails-broodhall/bin/*/claude-tools 2>/dev/null | sort -V | tail -1); [ -z \"$b\" ] || exec \"$b\" statusline'",
+    "command": "sh -c 'c=${CLAUDE_CONFIG_DIR:-$HOME/.claude}; b=$(ls -d \"$c\"/plugins/data/guardrails-broodhall/bin/*/guardrails 2>/dev/null | sort -V | tail -1); [ -z \"$b\" ] || exec \"$b\" statusline'",
     "refreshInterval": 30
   }
 }
 ```
+
+A command copied from an older version of this page looks for `bin/*/claude-tools`, so it keeps
+running the last binary with that name. Replace it with the one above.
 
 This command needs no `HANDOFF_STATE_DIR`: the binary finds the handoff state in the plugin
 data directory it lives in (see [handoff-gate.md](handoff-gate.md#state)).
@@ -142,13 +145,13 @@ mark newer than the last writer start shows `next-steps` in place of an earlier 
 Only the essentials:
 
 ```json
-"command": "/path/to/claude-tools statusline -segments dir,branch,model,ctx,five,week"
+"command": "/path/to/guardrails statusline -segments dir,branch,model,ctx,five,week"
 ```
 
 Two accounts, with a keep-alive counter and a widget file:
 
 ```json
-"command": "/path/to/claude-tools statusline -account-default main -account .claude-second=second -keepalive-marker 'keep-alive ping' -usage-cache /home/me/.cache/widget/usage.json"
+"command": "/path/to/guardrails statusline -account-default main -account .claude-second=second -keepalive-marker 'keep-alive ping' -usage-cache /home/me/.cache/widget/usage.json"
 ```
 
 ## The usage cache

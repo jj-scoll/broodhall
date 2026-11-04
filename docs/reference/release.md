@@ -52,8 +52,10 @@ or `#major` in the title of one of the PR's commits, or use a `feat:` or `type!:
 The `release` workflow stops unless the tag equals `v<version>` and all three versions are
 equal, then runs the tests and builds:
 
-- `claude-tools_<os>_<arch>.tar.gz` (guardrails): static binaries for linux and darwin on
-  amd64 and arm64, built with `CGO_ENABLED=0`.
+- `guardrails_<os>_<arch>.tar.gz` (guardrails): static binaries for linux and darwin on
+  amd64 and arm64, built with `CGO_ENABLED=0`. Older releases name it
+  `claude-tools_<os>_<arch>.tar.gz`; each plugin version downloads from its own tag, so older
+  versions keep working.
 - `memory_<os>_<arch>.tar.xz` (memory): the program and `ext/` (the DuckDB extensions it
   loads), built with cgo on four native runners: Linux amd64 and arm64 (on Ubuntu 22.04, which
   sets the glibc floor at 2.35), and macOS amd64 and arm64. The tests run with the extensions

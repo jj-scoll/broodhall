@@ -288,7 +288,7 @@ test('a carried prompt leaves a newer draft in the box alone', async ($, on) => 
   expect(w.box.text).toBe('something else')
 })
 
-test('a failed /clear is reported, re-armed by claude-tools, and not retried by the watch', async ($, on) => {
+test('a failed /clear is reported, re-armed by guardrails, and not retried by the watch', async ($, on) => {
   const w = handoffWorld(on, { files: ARMED, clearFails: true })
 
   await $.turn.complete(mainTurnEnd)

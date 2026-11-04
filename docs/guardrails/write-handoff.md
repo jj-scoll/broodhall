@@ -1,6 +1,6 @@
 # Write handoff
 
-<span class="badge badge-note">NOTE</span> A subcommand, not a hook: `claude-tools write-handoff` writes a session's handoff from its transcript, outside the session.
+<span class="badge badge-note">NOTE</span> A subcommand, not a hook: `guardrails write-handoff` writes a session's handoff from its transcript, outside the session.
 
 !!! why "Why it exists"
     The `handoff` skill of the [memory plugin](../memory/index.md) asks the session itself to
@@ -12,7 +12,7 @@
 ## Use
 
 ```text
-claude-tools write-handoff <transcript.jsonl> <next-steps file> <cwd> <session id>
+guardrails write-handoff <transcript.jsonl> <next-steps file> <cwd> <session id>
 ```
 
 | Argument | Meaning |

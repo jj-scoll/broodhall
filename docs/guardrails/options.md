@@ -56,7 +56,7 @@ Outside the plugin the same list is read from `CLAUDE_TOOLS_PII_ALLOW`.
 | --- | --- |
 | Title | Observe mode (log only) |
 | Default | off |
-| Description | Off by default. When on, the optional guards (git, egress, pii, raw-client-data, sweep) allow the call and record what they would have asked or blocked, instead of stopping it. These stay enforced: the core blocks, the settings-file and secret-file guards, config-gate, compact-guard, the large-read block, the session-URL block and egress asks about a secret. Run claude-tools guard-report to see the counts. |
+| Description | Off by default. When on, the optional guards (git, egress, pii, raw-client-data, sweep) allow the call and record what they would have asked or blocked, instead of stopping it. These stay enforced: the core blocks, the settings-file and secret-file guards, config-gate, compact-guard, the large-read block, the session-URL block and egress asks about a secret. Run guardrails guard-report to see the counts. |
 
 Use it to see what the guards would do before you let them stop anything. It is one switch
 for all guards, not one per guard.
@@ -84,7 +84,7 @@ What you and Claude see:
 - You see the [receipt](receipt.md) line `would ask 1 (git-stash)` or `would block 1
   (pii-rules)`, and the statusline `guards` count shows the same.
 - The guard ledger records `would-ask` or `would-block` with the rule id. Run
-  `claude-tools guard-report` for the counts across sessions.
+  `guardrails guard-report` for the counts across sessions.
 
 Rules are checked in order and the first enforced decision ends the check. A rule after it is
 not evaluated, so it is not counted, and a call that an enforced guard stops leaves no
@@ -94,7 +94,7 @@ not evaluated, so it is not counted, and a call that an enforced guard stops lea
 Outside the plugin, set `CLAUDE_TOOLS_OBSERVE=1`; `true` and `yes` also turn it on. A set
 plugin option wins over it. Turn the option off to enforce again.
 
-`claude-tools guard-report` prints one row per rule with how many times it fired, split by
+`guardrails guard-report` prints one row per rule with how many times it fired, split by
 kind. For asks it also shows `ran-after-ask` (the tool ran after the ask, so you approved)
 and `not-run` (no follow-up by the session's Stop, or none within 10 minutes for older asks).
 A denial and an abandoned prompt look the same, so the report cannot say "denied". A rule
@@ -119,7 +119,7 @@ writes this to stderr, which Claude Code shows in place of the tool call (the pa
 version differ):
 
 ```text
-guardrails: BLOCKED: the guard binary claude-tools X.Y.Z is not installed (/home/you/.claude/plugins/data/guardrails-broodhall/bin/X.Y.Z/claude-tools), so this tool call was not checked.
+guardrails: BLOCKED: the guard binary guardrails X.Y.Z is not installed (/home/you/.claude/plugins/data/guardrails-broodhall/bin/X.Y.Z/guardrails), so this tool call was not checked.
 Retry: start a new session (SessionStart downloads it), or run: sh "/path/to/plugin/scripts/run.sh" install
 Opt out: set the guardrails option fail_open to true (or CLAUDE_TOOLS_FAIL_OPEN=1) to allow tool calls without guards.
 ```
@@ -291,8 +291,8 @@ Email and phone shapes in any value are masked whatever the file says.
 Your file replaces the built-in rules. It does not add to them. If it is missing, unreadable,
 not valid JSON, has a bad pattern or an unknown category, or has no active rule, the built-in
 rules are used and nothing is reported at mask time. To start from the built-in rules and
-edit them, run `claude-tools pii-rules init`, which writes the file and will not overwrite an
-existing one. To check a file, run `claude-tools pii-rules check [path]`:
+edit them, run `guardrails pii-rules init`, which writes the file and will not overwrite an
+existing one. To check a file, run `guardrails pii-rules check [path]`:
 
 ```text
 ok /home/you/.config/claude-tools/pii-columns.json: 28 rules active (33 in file), 1 explicit columns
@@ -305,7 +305,7 @@ invalid bad.json: pii-columns.json: rule 0 ("x"): unknown category "bogus"
 ## `CLAUDE_TOOLS_BIN`
 
 The hooks run one binary. By default that is the copy the plugin downloads for its version, to
-`bin/<version>/claude-tools` under the plugin's data directory. Set `CLAUDE_TOOLS_BIN` to the
+`bin/<version>/guardrails` under the plugin's data directory. Set `CLAUDE_TOOLS_BIN` to the
 path of your own build to run that instead, for example one you built from this repository.
 
 The download is skipped only when the path is executable. If the path is not an executable

@@ -1,18 +1,19 @@
 #!/bin/sh
-# context-guard launcher: the mod calls it to reach the claude-tools binary that the guardrails
+# context-guard launcher: the mod calls it to reach the guardrails binary that the guardrails
 # plugin installed, and to learn where guardrails keeps its per-session handoff state.
 #   run.sh state              prints the state base dir ($base/claude-handoff holds the marks)
-#   run.sh autoclear <args>   runs `claude-tools autoclear <args>` with that dir
+#   run.sh autoclear <args>   runs `guardrails autoclear <args>` with that dir
 # With no binary or no state dir it prints nothing and exits 1, so the mod skips the clear.
 # Both lookups mirror guardrails' launcher: CLAUDE_TOOLS_BIN names a binary, HANDOFF_STATE_DIR
 # names the state dir (an empty value means /tmp, as in the binary), and otherwise the state
-# dir is guardrails' plugin data dir, where its launcher unpacks bin/<version>/claude-tools.
+# dir is guardrails' plugin data dir, where its launcher unpacks bin/<version>/guardrails
+# (bin/<version>/claude-tools before the rename; a guardrails that old is found too).
 set -u
 cfg=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
 
 # The most recently installed guardrails binary.
 newest=
-for f in "$cfg"/plugins/data/guardrails-*/bin/*/claude-tools; do
+for f in "$cfg"/plugins/data/guardrails-*/bin/*/guardrails "$cfg"/plugins/data/guardrails-*/bin/*/claude-tools; do
 	[ -x "$f" ] || continue
 	if [ -z "$newest" ] || [ "$f" -nt "$newest" ]; then newest=$f; fi
 done
@@ -20,7 +21,7 @@ base=
 if [ "${HANDOFF_STATE_DIR+set}" ]; then
 	base=${HANDOFF_STATE_DIR:-/tmp}
 elif [ -n "$newest" ]; then
-	base=${newest%/bin/*/claude-tools}
+	base=${newest%/bin/*/*}
 fi
 bin=${CLAUDE_TOOLS_BIN-$newest}
 

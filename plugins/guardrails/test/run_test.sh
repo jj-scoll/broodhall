@@ -23,7 +23,7 @@ bad() { fail=$((fail + 1)); printf 'FAIL %s: %s\n' "$1" "$2"; }
 if command -v sha256sum >/dev/null; then sum=sha256sum; else sum='shasum -a 256'; fi
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 case $(uname -m) in x86_64 | amd64) arch=amd64 ;; *) arch=arm64 ;; esac
-asset=claude-tools_${os}_$arch.tar.gz
+asset=guardrails_${os}_$arch.tar.gz
 
 # A stub binary: records its argv, the env the launcher sets and stdin, exits 3. `doctor` is
 # silent, as a healthy install's doctor is (install_test.sh covers what doctor prints).
@@ -41,8 +41,8 @@ EOF
 mkrelease() {
 	rel=$1
 	mkdir -p "$rel/v$ver" "$rel/work"
-	mkstub "$rel/work/claude-tools"
-	tar -czf "$rel/v$ver/$asset" -C "$rel/work" claude-tools
+	mkstub "$rel/work/guardrails"
+	tar -czf "$rel/v$ver/$asset" -C "$rel/work" guardrails
 	if [ -n "${2-}" ]; then
 		echo "$2  $asset" >"$rel/v$ver/checksums.txt"
 	else
@@ -110,6 +110,22 @@ for sub in retry-breaker ask-outcome record-edit gate receipt compact-guard sess
 	expect_silent_allow "no binary: $sub exits 0 silently"
 done
 
+# The messages name the binary guardrails, not its old name claude-tools.
+newcase messages-name
+hook pre-tool-use
+case $err in *"the guard binary guardrails $ver is not installed ($c/data/bin/$ver/guardrails)"*) ok "BLOCKED message names guardrails and its path" ;; *) bad "BLOCKED message names guardrails and its path" "$err" ;; esac
+case $err in *claude-tools*) bad "BLOCKED message has no claude-tools" "$err" ;; *) ok "BLOCKED message has no claude-tools" ;; esac
+hook install
+case $out in *"could not install guardrails $ver (download of guardrails_${os}_$arch.tar.gz failed)"*) ok "install failure names guardrails and its asset" ;; *) bad "install failure names guardrails and its asset" "$out" ;; esac
+case $out in *claude-tools*) bad "install failure has no claude-tools" "$out" ;; *) ok "install failure has no claude-tools" ;; esac
+
+# An older version's binary, under the old name, is not this version's binary.
+newcase old-version-old-name
+mkdir -p "$c/data/bin/0.0.1"
+mkstub "$c/data/bin/0.0.1/claude-tools"
+hook pre-tool-use
+expect_blocked "only an older version's claude-tools: pre-tool-use blocks"
+
 newcase missing-optout-option
 CLAUDE_PLUGIN_OPTION_FAIL_OPEN=true hook pre-tool-use
 expect_silent_allow "no binary + fail_open=true allows silently"
@@ -134,11 +150,15 @@ newcase install-bad-checksum
 mkrelease "$c/rel" "$(printf '0%.0s' $(seq 64))"
 CLAUDE_TOOLS_RELEASE_URL=file://$c/rel hook install
 if [ "$rc" = 0 ] && case $out in *"checksum mismatch"*) true ;; *) false ;; esac; then ok "install: bad checksum warns, exits 0"; else bad "install: bad checksum warns, exits 0" "rc=$rc out=$out"; fi
-if [ -e "$c/data/bin/$ver/claude-tools" ]; then bad "bad checksum installs nothing" "binary present"; else ok "bad checksum installs nothing"; fi
+if [ -e "$c/data/bin/$ver/guardrails" ]; then bad "bad checksum installs nothing" "binary present"; else ok "bad checksum installs nothing"; fi
 hook pre-tool-use
 expect_blocked "after bad checksum: pre-tool-use blocks"
 CLAUDE_PLUGIN_OPTION_FAIL_OPEN=true hook pre-tool-use
 expect_silent_allow "after bad checksum + fail_open: allows"
+CLAUDE_TOOLS_FAIL_OPEN=yes hook pre-tool-use
+expect_silent_allow "after bad checksum + CLAUDE_TOOLS_FAIL_OPEN=yes: allows"
+CLAUDE_TOOLS_FAIL_OPEN=yes hook install
+case $out in *"guards are off"*) ok "install failure with CLAUDE_TOOLS_FAIL_OPEN says guards are off" ;; *) bad "install failure with CLAUDE_TOOLS_FAIL_OPEN says guards are off" "$out" ;; esac
 
 newcase install-fail-open-message
 CLAUDE_PLUGIN_OPTION_FAIL_OPEN=true hook install
@@ -151,7 +171,7 @@ newcase install-good
 mkrelease "$c/rel"
 export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
 hook install
-if [ "$rc" = 0 ] && [ -z "$out" ] && [ -x "$c/data/bin/$ver/claude-tools" ]; then ok "install: good release installs silently"; else bad "install: good release installs silently" "rc=$rc out=$out"; fi
+if [ "$rc" = 0 ] && [ -z "$out" ] && [ -x "$c/data/bin/$ver/guardrails" ]; then ok "install: good release installs silently"; else bad "install: good release installs silently" "rc=$rc out=$out"; fi
 hook pre-tool-use
 if [ "$rc" = 3 ] && case $out in *"args=pre-tool-use"*"stdin={\"tool_name\":\"Bash\"}"*) true ;; *) false ;; esac; then ok "installed binary runs with args, stdin and its exit code"; else bad "installed binary runs" "rc=$rc out=$out"; fi
 CLAUDE_TOOLS_RELEASE_URL=file:///nonexistent hook install
@@ -166,7 +186,7 @@ for cfgcase in home config-dir; do
 	p=$cfg/plugins/cache/broodhall/guardrails/$ver
 	mkdir -p "$p" "$cfg/plugins/data/guardrails-broodhall/bin/$ver" "$cfg/plugins/data/guardrails"
 	cp -R "$root/scripts" "$root/.claude-plugin" "$p/"
-	mkstub "$cfg/plugins/data/guardrails-broodhall/bin/$ver/claude-tools"
+	mkstub "$cfg/plugins/data/guardrails-broodhall/bin/$ver/guardrails"
 	if [ "$cfgcase" = home ]; then
 		out=$(unset CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA CLAUDE_CONFIG_DIR && sh "$p/scripts/run.sh" version </dev/null 2>&1)
 	else
@@ -176,7 +196,7 @@ for cfgcase in home config-dir; do
 	# With nothing installed, the BLOCKED message (and so `run.sh install`) names that dir too.
 	rm -rf "$cfg/plugins/data"
 	out=$(unset CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA && CLAUDE_CONFIG_DIR=$cfg sh "$p/scripts/run.sh" pre-tool-use </dev/null 2>&1)
-	case $out in *"/plugins/data/guardrails-broodhall/bin/$ver/claude-tools"*) ok "no binary: terminal run targets guardrails-<marketplace> ($cfgcase)" ;; *) bad "no binary: terminal run targets guardrails-<marketplace> ($cfgcase)" "out=$out" ;; esac
+	case $out in *"/plugins/data/guardrails-broodhall/bin/$ver/guardrails"*) ok "no binary: terminal run targets guardrails-<marketplace> ($cfgcase)" ;; *) bad "no binary: terminal run targets guardrails-<marketplace> ($cfgcase)" "out=$out" ;; esac
 done
 
 # A checkout (outside the plugin cache) uses the guardrails-* data dir under CLAUDE_CONFIG_DIR
@@ -185,7 +205,7 @@ newcase terminal-checkout
 cfg=$c/cfg
 mkdir -p "$c/checkout/plugins/guardrails" "$cfg/plugins/data/guardrails-inline/bin/$ver" "$cfg/plugins/data/guardrails"
 cp -R "$root/scripts" "$root/.claude-plugin" "$c/checkout/plugins/guardrails/"
-mkstub "$cfg/plugins/data/guardrails-inline/bin/$ver/claude-tools"
+mkstub "$cfg/plugins/data/guardrails-inline/bin/$ver/guardrails"
 out=$(unset CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA && CLAUDE_CONFIG_DIR=$cfg sh "$c/checkout/plugins/guardrails/scripts/run.sh" version </dev/null 2>&1)
 case $out in *"args=version"*) ok "terminal run from a checkout finds the guardrails-* dir with a binary" ;; *) bad "terminal run from a checkout finds the guardrails-* dir with a binary" "out=$out" ;; esac
 

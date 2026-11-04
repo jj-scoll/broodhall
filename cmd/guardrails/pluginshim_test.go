@@ -22,7 +22,7 @@ import (
 
 const pluginDir = "../../plugins/guardrails"
 
-// fakeTool stands in for claude-tools: it prints its args, the env the shim sets, and stdin.
+// fakeTool stands in for the guardrails binary: it prints its args, the env the shim sets, and stdin.
 const fakeTool = "#!/bin/sh\necho \"args=$*\"\necho \"off=$CLAUDE_TOOLS_OFF\"\necho \"allow=$CLAUDE_TOOLS_PII_ALLOW\"\necho \"state=$HANDOFF_STATE_DIR\"\necho \"stdin=$(cat)\"\nexit 3\n"
 
 type pluginManifest struct {
@@ -131,7 +131,7 @@ func TestDefaultGuardsAllOn(t *testing.T) {
 func TestShimRunsVersionedBinary(t *testing.T) {
 	m := readManifest(t)
 	data := t.TempDir()
-	writeExe(t, filepath.Join(data, "bin", m.Version, "claude-tools"), fakeTool)
+	writeExe(t, filepath.Join(data, "bin", m.Version, "guardrails"), fakeTool)
 	env := map[string]string{"CLAUDE_PLUGIN_DATA": data}
 
 	code, out := runShim(t, env, "IN", "pre-tool-use")
@@ -154,18 +154,18 @@ func TestShimRunsVersionedBinary(t *testing.T) {
 	}
 }
 
-// release writes v<version>/claude-tools_<os>_<arch>.tar.gz and checksums.txt under a temp
+// release writes v<version>/guardrails_<os>_<arch>.tar.gz and checksums.txt under a temp
 // dir, laid out like a GitHub release download URL, and returns its file:// URL.
 func release(t *testing.T, version, sum string) string {
 	t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	tw.WriteHeader(&tar.Header{Name: "claude-tools", Mode: 0o755, Size: int64(len(fakeTool))})
+	tw.WriteHeader(&tar.Header{Name: "guardrails", Mode: 0o755, Size: int64(len(fakeTool))})
 	tw.Write([]byte(fakeTool))
 	tw.Close()
 	gz.Close()
-	asset := "claude-tools_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
+	asset := "guardrails_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
 	if sum == "" {
 		h := sha256.Sum256(buf.Bytes())
 		sum = hex.EncodeToString(h[:])
@@ -204,7 +204,7 @@ func TestShimInstallRejectsBadChecksum(t *testing.T) {
 	if code != 0 || json.Unmarshal([]byte(out), &msg) != nil || !strings.Contains(msg.SystemMessage, "blocked") {
 		t.Fatalf("bad checksum: exit %d, stdout %q; want 0 and a systemMessage", code, out)
 	}
-	if _, err := os.Stat(filepath.Join(data, "bin", m.Version, "claude-tools")); err == nil {
+	if _, err := os.Stat(filepath.Join(data, "bin", m.Version, "guardrails")); err == nil {
 		t.Fatal("bad checksum: binary installed anyway")
 	}
 	if code, out := runShim(t, env, "{}", "pre-tool-use"); code != 2 || out != "" {
@@ -287,7 +287,7 @@ func TestShimPassesRTKOptions(t *testing.T) {
 		t.Fatal("plugin.json needs an rtk_command option")
 	}
 	data := t.TempDir()
-	writeExe(t, filepath.Join(data, "bin", m.Version, "claude-tools"), "#!/bin/sh\necho \"rtk=$CLAUDE_TOOLS_RTK cmd=$CLAUDE_TOOLS_RTK_CMD\"\n")
+	writeExe(t, filepath.Join(data, "bin", m.Version, "guardrails"), "#!/bin/sh\necho \"rtk=$CLAUDE_TOOLS_RTK cmd=$CLAUDE_TOOLS_RTK_CMD\"\n")
 	env := map[string]string{"CLAUDE_PLUGIN_DATA": data}
 	if _, out := runShim(t, env, "", "pre-tool-use"); out != "rtk= cmd=\n" {
 		t.Errorf("defaults: %q", out)
