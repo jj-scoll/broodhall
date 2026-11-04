@@ -93,16 +93,24 @@ func usageFromLine(path string, d *obj, st *memdFileState) *memdUsage {
 	return row
 }
 
-// numField reads a non-negative integer field; anything else is 0.
+// numFieldMax bounds a token count (2^40, about 1.1e12); no response has more. A larger
+// value is a corrupt line and counts as 0, so it cannot overflow int64 or poison the totals.
+const numFieldMax = 1 << 40
+
+// numField reads a non-negative integer field; anything else, or a value above
+// numFieldMax, is 0.
 func numField(o *obj, k string) int64 {
 	n, ok := o.get(k).(json.Number)
 	if !ok {
 		return 0
 	}
-	if i, err := n.Int64(); err == nil && i > 0 {
-		return i
+	if i, err := n.Int64(); err == nil {
+		if i > 0 && i <= numFieldMax {
+			return i
+		}
+		return 0
 	}
-	if f, err := n.Float64(); err == nil && f > 0 {
+	if f, err := n.Float64(); err == nil && f > 0 && f <= numFieldMax {
 		return int64(f)
 	}
 	return 0

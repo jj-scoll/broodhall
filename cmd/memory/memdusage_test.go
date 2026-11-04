@@ -352,3 +352,25 @@ func TestUsageMigratesTranscriptOffsetsWithoutResetColumn(t *testing.T) {
 		t.Fatalf("row = %d %q (%v)", off, k, err)
 	}
 }
+
+func TestNumFieldOutOfRange(t *testing.T) {
+	for in, want := range map[string]int64{
+		`{"n":1e30}`:                 0,
+		`{"n":99999999999999999999}`: 0,
+		`{"n":9223372036854775807}`:  0,
+		`{"n":1099511627776}`:        1099511627776,
+		`{"n":1099511627777}`:        0,
+		`{"n":-5}`:                   0,
+		`{"n":2.7}`:                  2,
+		`{"n":"12"}`:                 0,
+		`{"n":9.3e18}`:               0, // just above int64
+	} {
+		v, err := decodeJSON([]byte(in))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := numField(v.(*obj), "n"); got != want {
+			t.Errorf("numField(%s) = %d, want %d", in, got, want)
+		}
+	}
+}

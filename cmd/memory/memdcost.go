@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -49,6 +50,9 @@ var costCauseOrder = []struct{ key, label string }{
 	{causeOther, "(d) unexplained"},
 }
 
+// costMaxDays: a larger window means all time.
+const costMaxDays = 36500
+
 type costOpts struct {
 	Days      int // 0: all time
 	Sidechain bool
@@ -76,12 +80,19 @@ var costPrices = map[string]modelPrice{
 	"claude-mythos-5":   {10, 50, 12.5, 20, 1},
 	"claude-opus-5-5":   {4, 20, 5, 8, 0.20},
 	"claude-opus-5":     {5, 25, 6.25, 10, 0.50},
-	"claude-opus-4":     {5, 25, 6.25, 10, 0.50}, // 4.5 to 4.8; Opus 4.1 and earlier cost more and are not priced
-	"claude-sonnet-5-5": {2, 10, 2.5, 4, 0.10},
-	"claude-sonnet-5":   {2, 10, 2.5, 4, 0.20},
-	"claude-sonnet-4":   {3, 15, 3.75, 6, 0.30},
-	"claude-haiku-5-5":  {0.10, 0.50, 0.125, 0.20, 0.01},
-	"claude-haiku-4-5":  {1, 5, 1.25, 2, 0.10},
+	"claude-opus-4-5":   {5, 25, 6.25, 10, 0.50},
+	"claude-opus-4-6":   {5, 25, 6.25, 10, 0.50},
+	"claude-opus-4-7":   {5, 25, 6.25, 10, 0.50},
+	"claude-opus-4-8":   {5, 25, 6.25, 10, 0.50},
+	// Opus 4.1 and the original Opus 4 (dated ids like claude-opus-4-20250514) cost 3x as much.
+	// The page lists 4.1 and says earlier releases keep their pricing, so Opus 4 uses the same row.
+	"claude-opus-4-1":    {15, 75, 18.75, 30, 1.50},
+	"claude-opus-4-2025": {15, 75, 18.75, 30, 1.50},
+	"claude-sonnet-5-5":  {2, 10, 2.5, 4, 0.10},
+	"claude-sonnet-5":    {2, 10, 2.5, 4, 0.20},
+	"claude-sonnet-4":    {3, 15, 3.75, 6, 0.30},
+	"claude-haiku-5-5":   {0.10, 0.50, 0.125, 0.20, 0.01},
+	"claude-haiku-4-5":   {1, 5, 1.25, 2, 0.10},
 }
 
 // haikuLongPrice is Claude Haiku 5.5 for prompts over 100,000 tokens.
@@ -271,6 +282,9 @@ func humanDur(d time.Duration) string {
 func buildCostReport(db *sql.DB, o costOpts) (string, error) {
 	if o.Now.IsZero() {
 		o.Now = time.Now()
+	}
+	if o.Days > costMaxDays { // beyond any history, and time.Duration overflows near 106,000 days
+		o.Days = 0
 	}
 	var start time.Time
 	if o.Days > 0 {
@@ -467,9 +481,13 @@ func memCostTo(args []string, sock string, out, errw io.Writer) int {
 	if *side {
 		q.Set("include_sidechain", "1")
 	}
-	body, err := memGet(sock, "/cost?"+q.Encode(), 30*time.Second)
+	status, body, err := memGetStatus(sock, "/cost?"+q.Encode(), 30*time.Second)
 	if err != nil {
 		fmt.Fprintf(errw, "memory cost: %v (is `memory serve` running?)\n", err)
+		return 1
+	}
+	if status != http.StatusOK {
+		fmt.Fprintf(errw, "memory cost: %s\n", strings.TrimSpace(string(body)))
 		return 1
 	}
 	out.Write(body)

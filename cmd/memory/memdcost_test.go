@@ -230,3 +230,50 @@ func TestCostEndpointAndCommand(t *testing.T) {
 		t.Fatalf("no daemon: exit %d, stderr %q", code, errw.String())
 	}
 }
+
+func TestPriceOldOpus(t *testing.T) {
+	for _, m := range []string{"claude-opus-4-1-20250805", "claude-opus-4-20250514", "claude-opus-4-1"} {
+		got, ok := priceFor(m, 1)
+		if !ok || got != (modelPrice{15, 75, 18.75, 30, 1.50}) {
+			t.Errorf("%s = %+v ok=%v, want the $15/$75 row", m, got, ok)
+		}
+	}
+	for _, m := range []string{"claude-opus-4-5", "claude-opus-4-5-20251101", "claude-opus-4-8", "claude-opus-4-6"} {
+		if got, _ := priceFor(m, 1); got != (modelPrice{5, 25, 6.25, 10, 0.50}) {
+			t.Errorf("%s = %+v, want the $5/$25 row", m, got)
+		}
+	}
+}
+
+func TestCostDaysOverflowAndServerError(t *testing.T) {
+	db := seedReport(t)
+	h := memdHandler(db)
+	_, all, _ := httpDo(t, h, "GET", "/cost?days=0", "")
+	for _, d := range []string{"400000", "9223372036854775807"} {
+		code, got, _ := httpDo(t, h, "GET", "/cost?days="+d, "")
+		// The header line names the window; compare the rest.
+		if code != 200 || strings.SplitN(got, "\n", 2)[1] != strings.SplitN(all, "\n", 2)[1] {
+			t.Errorf("days=%s differs from all-time (code %d):\n%s", d, code, got)
+		}
+	}
+
+	// A bad value is the server's message, not the "is memory serve running?" hint.
+	dir, err := os.MkdirTemp("/tmp", "mc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	sock := filepath.Join(dir, "m.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: h}
+	go srv.Serve(ln)
+	t.Cleanup(func() { srv.Close() })
+	var out, errw bytes.Buffer
+	if code := memCostTo([]string{"--days=-1"}, sock, &out, &errw); code != 1 ||
+		!strings.Contains(errw.String(), "days must be a non-negative integer") || strings.Contains(errw.String(), "memory serve") {
+		t.Fatalf("exit %d, stderr %q", code, errw.String())
+	}
+}
