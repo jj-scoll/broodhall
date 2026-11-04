@@ -206,7 +206,9 @@ wait_install() {
 case ${1-} in
 install-locked) # the detached child of start_install, which took the lock
 	echo $$ >"$lock/pid" 2>/dev/null
-	install_bin
+	# Another install can land between the guard's binary check and its lock: check again.
+	pick_dest
+	[ -x "$curbin" ] || install_bin
 	rm -rf "$lock"
 	exit 0
 	;;
@@ -227,6 +229,9 @@ install)
 	fi
 	echo $$ >"$lock/pid" 2>/dev/null
 	trap 'rm -rf "$lock"' EXIT
+	# Another installer can finish between the check above and this lock: check again.
+	pick_dest
+	[ -x "$curbin" ] && doctor
 	install_bin || exit 0
 	pick_dest
 	doctor

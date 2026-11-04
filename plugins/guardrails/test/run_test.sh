@@ -431,6 +431,39 @@ wait "$p1" "$p2"
 (cd "$c/data/bin/$ver" && printf '%s\n' "$($sum guardrails | cut -d' ' -f1)  guardrails" | cmp -s - guardrails.sha256) && ok "the sha256 record matches the installed binary" || bad "the sha256 record matches the installed binary" "$(cat "$c/data/bin/$ver/guardrails.sha256")"
 ls -A "$c/data/bin" | grep -q '^\.download\.' && bad "no download temp dirs left behind" "$(ls -A "$c/data/bin")" || ok "no download temp dirs left behind"
 
+# The other installer can finish between this one's binary check and its lock: it checked
+# before the binary landed and took the lock after it was freed. A mkdir on PATH plays that
+# installer, putting the binary in place just before the lock is made, with no timing involved.
+newcase install-lands-before-lock
+mkrelease "$c/rel"
+mkslowcurl "$c/path" 0
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+realmkdir=$(command -v mkdir)
+cat >"$c/path/mkdir" <<EOF
+#!/bin/sh
+for a; do last=\$a; done
+case \$last in */.install-lock) $realmkdir -p "$c/data/bin/$ver" && cp "$c/rel/work/guardrails" "$c/data/bin/$ver/guardrails" ;; esac
+exec $realmkdir "\$@"
+EOF
+chmod +x "$c/path/mkdir"
+PATH=$c/path:$PATH sh "$run_sh" install </dev/null >"$c/o1" 2>&1
+n=$(grep -c 'tar.gz' "$c/path/curl.log" 2>/dev/null)
+[ "${n:-0}" = 0 ] && [ ! -s "$c/o1" ] && ok "install: a binary that lands before the lock is not downloaded again" || bad "install: a binary that lands before the lock is not downloaded again" "downloads: ${n:-0} out: $(cat "$c/o1")"
+[ ! -d "$c/data/bin/.install-lock" ] && ok "install: the lock is freed when the binary is already there" || bad "install: the lock is freed when the binary is already there" "lock left"
+
+# The guards' detached installer has the same gap: the guard checked, another install landed,
+# then the guard took the lock and spawned install-locked.
+newcase locked-already-installed
+mkrelease "$c/rel"
+mkslowcurl "$c/path" 0
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+mkdir -p "$c/data/bin/$ver" "$c/data/bin/.install-lock"
+mkstub "$c/data/bin/$ver/guardrails"
+PATH=$c/path:$PATH sh "$run_sh" install-locked </dev/null >"$c/o1" 2>&1
+n=$(grep -c 'tar.gz' "$c/path/curl.log" 2>/dev/null)
+[ "${n:-0}" = 0 ] && ok "install-locked: an installed binary is not downloaded again" || bad "install-locked: an installed binary is not downloaded again" "downloads: $n"
+[ ! -d "$c/data/bin/.install-lock" ] && ok "install-locked: the lock is freed" || bad "install-locked: the lock is freed" "lock left"
+
 # A lock whose process is gone does not hold anything up.
 newcase dead-lock
 mkrelease "$c/rel"
