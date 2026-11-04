@@ -81,7 +81,9 @@ versions to the same `X.Y.Z`, commit, then tag that commit `vX.Y.Z` and push the
 
 To rebuild a release whose workflow failed after the tag was pushed, run the `release`
 workflow by hand (Actions, release, Run workflow) with the existing tag. If the GitHub
-release was already created, delete it first. A failed automatic run leaves `main` and the tags
+release was already created, delete it first. For a tag from before the binary was renamed
+(its source has `cmd/claude-tools`), pick that tag under "Use workflow from", so the build
+makes the `claude-tools_*` assets its launcher downloads. A failed automatic run leaves `main` and the tags
 as they were; re-run it, or merge the next change.
 
 ## Setup
