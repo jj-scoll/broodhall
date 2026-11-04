@@ -1,7 +1,7 @@
 {
   "name": "context-guard",
   "displayName": "Context guard",
-  "version": "1.10.0",
+  "version": "1.10.1",
   "description": "Runs the /clear at the end of the guardrails handoff chain: once the handoff is written it clears the session and continues from it, carrying over a prompt typed meanwhile. It also warns as the context grows and blocks new prompts past a limit.",
   "author": {
     "name": "jj-scoll",
