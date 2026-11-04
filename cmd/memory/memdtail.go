@@ -212,12 +212,17 @@ func (t *memdTailer) commit(path string, f *memdTailFile, events []memdEvent, in
 
 	newest := time.Time{}
 	var sessionID string
+	var usage []memdUsage
 	for _, e := range events {
 		if e.At.After(newest) {
 			newest = e.At
 		}
 		if e.SessionID != "" {
 			sessionID = e.SessionID
+		}
+		if e.Kind == "usage" { // an idempotent upsert, so the startedAt filter does not apply
+			usage = append(usage, *e.Usage)
+			continue
 		}
 		if !f.resumed && !e.At.IsZero() && e.At.Before(t.startedAt) {
 			continue
@@ -233,6 +238,9 @@ func (t *memdTailer) commit(path string, f *memdTailFile, events []memdEvent, in
 			return 0, err
 		}
 		inserted += n
+	}
+	if err := writeUsage(tx, usage); err != nil {
+		return 0, err
 	}
 	for _, p := range f.st.Pending {
 		if p.At.After(newest) {
@@ -410,6 +418,11 @@ func (t *memdTailer) Run(ctx context.Context) error {
 	for root := range t.roots {
 		watchTree(w, root)
 	}
+	go func() { // history is read once, off the live path
+		if err := t.BackfillUsage(ctx); err != nil && ctx.Err() == nil {
+			fmt.Fprintln(os.Stderr, "memory usage backfill:", err)
+		}
+	}()
 	if _, err := t.Scan(); err != nil {
 		fmt.Fprintln(os.Stderr, "memory tail:", err)
 	}
