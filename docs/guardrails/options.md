@@ -34,7 +34,7 @@ this option says. [Nudges](nudges.md), [Read limits](read-limits.md) and
 Names are separated by commas, and spaces around a name are ignored. A name that is not one of
 the six has no effect. An empty value turns every family on. The launcher falls back to the
 `GUARDRAILS_OFF` environment variable, then to empty: every family on. The binary run on
-its own treats an unset `GUARDRAILS_OFF` as every family on too.
+its own reads `CLAUDE_TOOLS_OFF` when `GUARDRAILS_OFF` is unset, and treats both unset as every family on.
 
 ## `allowed_email_domains`
 
