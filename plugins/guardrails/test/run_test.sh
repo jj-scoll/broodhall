@@ -173,7 +173,21 @@ for cfgcase in home config-dir; do
 		out=$(unset CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA && CLAUDE_CONFIG_DIR=$cfg sh "$p/scripts/run.sh" version </dev/null 2>&1)
 	fi
 	case $out in *"args=version"*) ok "terminal run finds plugins/data/guardrails-<marketplace> ($cfgcase)" ;; *) bad "terminal run finds plugins/data/guardrails-<marketplace> ($cfgcase)" "out=$out" ;; esac
+	# With nothing installed, the BLOCKED message (and so `run.sh install`) names that dir too.
+	rm -rf "$cfg/plugins/data"
+	out=$(unset CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA && CLAUDE_CONFIG_DIR=$cfg sh "$p/scripts/run.sh" pre-tool-use </dev/null 2>&1)
+	case $out in *"/plugins/data/guardrails-broodhall/bin/$ver/claude-tools"*) ok "no binary: terminal run targets guardrails-<marketplace> ($cfgcase)" ;; *) bad "no binary: terminal run targets guardrails-<marketplace> ($cfgcase)" "out=$out" ;; esac
 done
+
+# A checkout (outside the plugin cache) uses the guardrails-* data dir under CLAUDE_CONFIG_DIR
+# that holds this version's binary.
+newcase terminal-checkout
+cfg=$c/cfg
+mkdir -p "$c/checkout/plugins/guardrails" "$cfg/plugins/data/guardrails-inline/bin/$ver" "$cfg/plugins/data/guardrails"
+cp -R "$root/scripts" "$root/.claude-plugin" "$c/checkout/plugins/guardrails/"
+mkstub "$cfg/plugins/data/guardrails-inline/bin/$ver/claude-tools"
+out=$(unset CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA && CLAUDE_CONFIG_DIR=$cfg sh "$c/checkout/plugins/guardrails/scripts/run.sh" version </dev/null 2>&1)
+case $out in *"args=version"*) ok "terminal run from a checkout finds the guardrails-* dir with a binary" ;; *) bad "terminal run from a checkout finds the guardrails-* dir with a binary" "out=$out" ;; esac
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]
