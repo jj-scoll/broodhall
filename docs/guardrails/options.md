@@ -95,8 +95,13 @@ Outside the plugin, set `CLAUDE_TOOLS_OBSERVE=1`; `true` and `yes` also turn it 
 plugin option wins over it. Turn the option off to enforce again.
 
 `claude-tools guard-report` prints one row per rule with how many times it fired, split by
-kind. It cannot say how many asks you approved or denied: the ledger records that an ask
-happened, not your answer.
+kind. For asks it also shows `ran-after-ask` (the tool ran after the ask, so you approved)
+and `not-run` (no follow-up by the session's Stop, or none within 10 minutes for older asks).
+A denial and an abandoned prompt look the same, so the report cannot say "denied". A rule
+with at least 10 answered asks, 90% or more of them approved, gets a "consider relaxing" hint.
+Would-asks from observe mode are never counted as approved.
+The report settles old pending asks as it runs, so an approval that comes more than 10 minutes
+after its ask is not counted.
 
 ## `fail_open`
 
