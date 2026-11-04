@@ -45,3 +45,16 @@ are controlled by it.
 The core blocks have no switch: Bash core, the git force-push block, Download and run,
 Settings files and Secret files stay on whatever `disabled_guards` says. Nudges, Read limits and Retry loops
 have no family name in it either. See [Options](options.md).
+
+## Run it from a terminal
+
+The plugin does not put `guardrails` on your `PATH`. The binary lives in the plugin data
+directory, under `bin/<version>/`. To run commands such as `guardrails setup` or
+`guardrails team-init` by hand, first point an alias at the newest installed version:
+
+```sh
+alias guardrails="$(ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/data/guardrails-broodhall/bin/*/guardrails | sort -V | tail -1)"
+guardrails version
+```
+
+The alias lasts for that shell. Set it again after a plugin update to pick up the new version.

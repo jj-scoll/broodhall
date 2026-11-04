@@ -15,6 +15,9 @@ dependency, so `claude plugin install context-guard@broodhall` installs guardrai
 Or inside a session, use the `/plugin` command and add the same marketplace and plugins.
 Start a new session afterwards.
 
+The install of guardrails and context-guard says that some `userConfig` options are not set
+yet. That is expected: the defaults apply until you change them.
+
 ## Requirements
 
 ### guardrails

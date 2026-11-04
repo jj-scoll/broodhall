@@ -89,7 +89,9 @@ raise protection and pass silently.
 
 ## From a terminal
 
-The skill runs the `setup` subcommand through the plugin launcher. You can run it by hand:
+The skill runs the `setup` subcommand through the plugin launcher. You can run it by hand.
+`guardrails` is not on your `PATH`, so set the alias from
+[Run it from a terminal](index.md#run-it-from-a-terminal) first:
 
 ```sh
 guardrails setup -profile standard -domains acme.com          # show the change

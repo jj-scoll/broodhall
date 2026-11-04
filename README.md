@@ -44,6 +44,9 @@ claude plugin install rtk@broodhall
 
 Install only the ones you want. Start a new session afterwards.
 
+The install of guardrails and context-guard says that some `userConfig` options are not set
+yet. That is expected: the defaults apply until you change them.
+
 If a broken binary blocks every tool call, run `claude plugin disable guardrails@broodhall`
 in a terminal and start a new session.
 

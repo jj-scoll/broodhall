@@ -5,7 +5,9 @@ commands. There are two routes. Use a project file for one repository, and manag
 for the whole organisation.
 
 `guardrails team-init` prints the block for you. It prints only JSON on stdout, so you can
-redirect it. It says where to paste on stderr.
+redirect it. It says where to paste on stderr. Install guardrails and start one session
+first, so the binary is downloaded. It is not on your `PATH`; see
+[Run it from a terminal](../guardrails/index.md#run-it-from-a-terminal).
 
 ## One repository
 
