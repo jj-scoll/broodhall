@@ -57,7 +57,7 @@ func remoteControlActive(path string) bool {
 	if err != nil || !st.Mode().IsRegular() {
 		return false
 	}
-	end, after, marker := st.Size(), 0, false
+	end, after, marker, active := st.Size(), 0, false, false
 	floor := max(0, end-rcScanCap)
 	var carry []byte // the first, possibly partial, line of the chunk read last
 	for chunk := int64(64 << 10); end > floor; chunk = min(chunk*2, rcChunkMax) {
@@ -82,9 +82,15 @@ func remoteControlActive(path string) bool {
 			switch {
 			case bytes.HasPrefix(ln, []byte(rcMarker)):
 				marker = marker || after <= rcMaxLinesAfter
-			case len(ln) > rcNoticeMaxLen:
+				if marker && active {
+					return true
+				}
+			case len(ln) > rcNoticeMaxLen || active: // once the newest notice is "active", older ones do not matter
 			case bytes.Contains(ln, []byte(rcStatusActive)):
-				return marker // the newest notice says connected
+				if marker {
+					return true // the newest notice says connected
+				}
+				active = true // Claude Code writes the marker just before this notice
 			case bytes.Contains(ln, []byte(rcSubInfo)) &&
 				(bytes.Contains(ln, []byte(rcNoticeDown)) || bytes.Contains(ln, []byte(rcNoticeNot))):
 				return false

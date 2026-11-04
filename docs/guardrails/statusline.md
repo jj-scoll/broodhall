@@ -149,7 +149,7 @@ reads the session transcript. Claude Code writes a `bridge-session` line into it
 disconnects. So the segment shows `⇄ rc` only when both hold:
 
 - a `bridge-session` line is among the last 100 lines, and
-- the newest connection notice in the last 1 MiB is not "Remote Control disconnected" or
+- the newest connection notice in the last 1 MiB or so is not "Remote Control disconnected" or
   "Remote Control not started here". An "is active" notice, or no notice at all, passes.
 
 It reads at most the last 4 MiB of the file. A missing or unreadable transcript shows
@@ -161,7 +161,10 @@ It can be wrong in these ways:
   case is unverified.
 - A resumed or forked session inherits the `bridge-session` line. It shows `⇄ rc` until a
   notice says otherwise, even if this terminal never connected.
-- A disconnect notice more than 1 MiB back is not seen.
+- A disconnect notice more than about 1 MiB back is not seen. In a sample of real sessions
+  about one disconnected period in five ran that long.
+- Some "account changed" disconnects may reconnect without a notice. The segment then stays
+  dark until the next "is active" notice. This is inferred, not confirmed.
 
 ## Examples
 
