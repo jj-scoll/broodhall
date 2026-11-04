@@ -38,8 +38,18 @@ var wrapperValueOpts = map[string]map[string]bool{
 		"--jobs": true, "--max-args": true, "--sshlogin": true, "--arg-file": true},
 }
 
+// isAssignment reports NAME=value, where NAME is a shell identifier (the value may hold a /).
 func isAssignment(w string) bool {
-	return strings.Contains(w, "=") && !strings.HasPrefix(w, "-") && !strings.Contains(w, "/")
+	name, _, ok := strings.Cut(w, "=")
+	if !ok || name == "" {
+		return false
+	}
+	for i, c := range name {
+		if !(c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || i > 0 && c >= '0' && c <= '9') {
+			return false
+		}
+	}
+	return true
 }
 
 // peelWrappers drops leading assignments and wrappers (sudo -u x, env A=b, timeout 5, nice -n 5,

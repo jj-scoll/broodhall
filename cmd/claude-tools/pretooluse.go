@@ -70,9 +70,9 @@ func decide(env *guardEnv, cmd string) decision {
 	if !env.Off["git"] {
 		var bRule, bWhat string
 		if cmds, ok := parseShell(cmd); ok {
-			bRule, bWhat = gitHookBypass(cmds)
+			bRule, bWhat = gitHookBypass(cmds, env.Cwd)
 		} else {
-			bRule, bWhat = gitHookBypassText(cmd)
+			bRule, bWhat = gitHookBypassText(cmd, env.Cwd)
 		}
 		if bRule != "" {
 			return decision{Ask: true, Rule: bRule,

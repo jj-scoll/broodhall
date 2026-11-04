@@ -94,15 +94,17 @@ func hasDownload(n syntax.Node) bool {
 }
 
 // substWithDownload reports whether the word holds a <(...) (procSub) or $(...) (cmdSub)
-// that runs a download.
-func substWithDownload(w *syntax.Word, procSub, cmdSub bool) bool {
+// that runs a download, or (with cmdSub) a $var that was assigned from one (vars).
+func substWithDownload(w *syntax.Word, procSub, cmdSub bool, vars map[string]bool) bool {
 	found := false
 	syntax.Walk(w, func(x syntax.Node) bool {
-		switch x.(type) {
+		switch y := x.(type) {
 		case *syntax.ProcSubst:
 			found = found || procSub && hasDownload(x)
 		case *syntax.CmdSubst:
 			found = found || cmdSub && hasDownload(x)
+		case *syntax.ParamExp:
+			found = found || cmdSub && y.Param != nil && vars[y.Param.Value]
 		}
 		return !found
 	})
@@ -140,7 +142,7 @@ func readsStdinAsScript(words []string) bool {
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
-		case a == "-" || a == "-s" && shellNames[name]:
+		case a == "-" || a == "-s" && shellNames[name] || isStdinPath(a):
 			return true
 		case a == "--":
 			return i+1 >= len(args) // a file after -- is the script
@@ -154,6 +156,26 @@ func readsStdinAsScript(words []string) bool {
 		}
 	}
 	return true
+}
+
+func isStdinPath(a string) bool {
+	return a == "/dev/stdin" || a == "/dev/fd/0" || a == "/proc/self/fd/0"
+}
+
+// stageRunsStdin names the shell or interpreter in a pipeline stage that runs its stdin,
+// looking inside ( ) and { } too; "" if there is none.
+func stageRunsStdin(st *syntax.Stmt) string {
+	name := ""
+	syntax.Walk(st, func(n syntax.Node) bool {
+		if s, ok := n.(*syntax.Stmt); ok && name == "" {
+			if w, _ := cmdWords(s); readsStdinAsScript(w) {
+				name = path.Base(w[0])
+			}
+		}
+		_, sub := n.(*syntax.CmdSubst)
+		return name == "" && !sub
+	})
+	return name
 }
 
 // firstOperand is the file a runner executes: the first argument that is not an option.
@@ -179,7 +201,7 @@ func firstOperand(words []string) (file string, idx int, ok bool) {
 			i++
 		case a == "-" || a == "-s":
 			return "", 0, false
-		case strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && (strings.ContainsAny(a, "cem") && !shellNames[name] || strings.Contains(a, "c") && shellNames[name]):
+		case strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && (strings.ContainsAny(a, "cem") && !shellNames[name] || strings.ContainsAny(a, "cn") && shellNames[name]):
 			return "", 0, false
 		case strings.HasPrefix(a, "-"):
 		default:
@@ -302,6 +324,7 @@ func downloadExecIn(cmd string, depth int) string {
 	}
 	what := ""
 	downloaded := map[string]bool{}
+	dlVars := map[string]bool{} // variables assigned from a download: x=$(curl ...)
 	syntax.Walk(f, func(n syntax.Node) bool {
 		if what != "" {
 			return false
@@ -317,19 +340,31 @@ func downloadExecIn(cmd string, depth int) string {
 					continue
 				}
 				for _, later := range stages[i+1:] {
-					if w, _ := cmdWords(later); readsStdinAsScript(w) {
-						what = "this pipes a download into " + path.Base(w[0])
+					if name := stageRunsStdin(later); name != "" {
+						what = "this pipes a download into " + name
 						return false
 					}
 				}
 			}
 		case *syntax.Stmt:
+			var assigns []*syntax.Assign
+			switch c := n.Cmd.(type) {
+			case *syntax.CallExpr:
+				assigns = c.Assigns
+			case *syntax.DeclClause:
+				assigns = c.Args
+			}
+			for _, as := range assigns {
+				if as.Name != nil && as.Value != nil && substWithDownload(as.Value, false, true, dlVars) {
+					dlVars[as.Name.Value] = true
+				}
+			}
 			words, nodes := cmdWords(n)
 			if len(words) == 0 {
 				return true
 			}
 			name := runnerName(words[0])
-			if w := runsDownloadedWord(n, name, words, nodes); w != "" {
+			if w := runsDownloadedWord(n, name, words, nodes, dlVars); w != "" {
 				what = w
 				return false
 			}
@@ -386,26 +421,26 @@ func executedFile(words []string) string {
 
 // runsDownloadedWord finds a download handed to a shell or eval: <(curl ...) as the script
 // file, $(curl ...) as the -c string or eval's text, or curl's output as the shell's stdin.
-func runsDownloadedWord(st *syntax.Stmt, name string, words []string, nodes []*syntax.Word) string {
+func runsDownloadedWord(st *syntax.Stmt, name string, words []string, nodes []*syntax.Word, vars map[string]bool) string {
 	if !scriptRunners[name] && name != "eval" {
 		return ""
 	}
 	if name == "eval" {
 		for _, n := range nodes {
-			if substWithDownload(n, false, true) {
+			if substWithDownload(n, false, true, vars) {
 				return "this evals the output of a download"
 			}
 		}
 	}
 	// Script operand and -c string, by position among the nodes.
 	if nodes != nil && name != "eval" {
-		if _, idx, ok := firstOperand(words); ok && idx < len(nodes) && substWithDownload(nodes[idx], true, false) {
+		if _, idx, ok := firstOperand(words); ok && idx < len(nodes) && substWithDownload(nodes[idx], true, false, nil) {
 			return "this runs a download through process substitution"
 		}
 		if shellNames[name] {
 			if script := dashC(words[1:]); script != "" {
 				for i, w := range words[1:] {
-					if w == script && substWithDownload(nodes[i+1], false, true) {
+					if w == script && substWithDownload(nodes[i+1], false, true, vars) {
 						return "this runs the output of a download with " + name + " -c"
 					}
 				}
@@ -420,11 +455,11 @@ func runsDownloadedWord(st *syntax.Stmt, name string, words []string, nodes []*s
 			}
 			switch r.Op {
 			case syntax.RdrIn:
-				if substWithDownload(r.Word, true, false) {
+				if substWithDownload(r.Word, true, false, nil) {
 					return "this feeds a download to " + name + " on stdin"
 				}
 			case syntax.WordHdoc:
-				if substWithDownload(r.Word, false, true) {
+				if substWithDownload(r.Word, false, true, vars) {
 					return "this feeds a download to " + name + " on stdin"
 				}
 			}

@@ -12,6 +12,7 @@ package main
 // --dry-run, for merge, rebase and pull --no-stat, for revert and cherry-pick --no-commit.
 
 import (
+	"path"
 	"strings"
 )
 
@@ -37,7 +38,7 @@ var envSkips = map[string]string{"HUSKY": "0", "HUSKY_SKIP_HOOKS": "1", "LEFTHOO
 const shortValued, shortAttached = "mFCctpd", "Su"
 
 // gitHookBypass names the first hook- or signing-skipping git invocation in cmds.
-func gitHookBypass(cmds []simpleCmd) (rule, what string) {
+func gitHookBypass(cmds []simpleCmd, cwd string) (rule, what string) {
 	var exported []string // export NAME=value anywhere: assumed to reach every git command
 	for _, c := range cmds {
 		if len(c.Words) > 0 && c.Words[0] == "export" {
@@ -48,7 +49,7 @@ func gitHookBypass(cmds []simpleCmd) (rule, what string) {
 		if len(c.Words) == 0 {
 			continue
 		}
-		if w := gitHookBypassWords(c.Words, append(append([]string{}, c.Env...), exported...)); w != "" {
+		if w := gitHookBypassWords(c.Words, append(append([]string{}, c.Env...), exported...), cwd); w != "" {
 			return "git-hook-bypass", w
 		}
 	}
@@ -56,7 +57,7 @@ func gitHookBypass(cmds []simpleCmd) (rule, what string) {
 }
 
 // gitHookBypassText is the fallback for text the parser rejects.
-func gitHookBypassText(cmd string) (rule, what string) {
+func gitHookBypassText(cmd, cwd string) (rule, what string) {
 	cmd = strings.NewReplacer(`"`, " ", `'`, " ").Replace(cmd)
 	for _, seg := range segSplit.Split(cmd, -1) {
 		w, env := peelWrappersEnv(strings.Fields(seg))
@@ -64,7 +65,7 @@ func gitHookBypassText(cmd string) (rule, what string) {
 			if word != "git" {
 				continue
 			}
-			if what := gitHookBypassWords(w[i:], env); what != "" {
+			if what := gitHookBypassWords(w[i:], env, cwd); what != "" {
 				return "git-hook-bypass", what
 			}
 		}
@@ -72,20 +73,21 @@ func gitHookBypassText(cmd string) (rule, what string) {
 	return "", ""
 }
 
-func gitHookBypassWords(w, env []string) string {
+func gitHookBypassWords(w, env []string, cwd string) string {
 	sub, args := gitSub(w)
 	if sub == "" {
 		return ""
 	}
-	for _, kv := range gitGlobalConfigs(w) {
-		if what := configBypass(kv); what != "" {
+	signs := noSignFlag[sub] != ""
+	for _, kv := range append(gitGlobalConfigs(w), envGitConfigs(env)...) {
+		if what := configBypass(kv, cwd, signs); what != "" {
 			return "git -c " + kv + " " + what
 		}
 	}
 	switch sub {
 	case "config":
 		if key, val, set := gitConfigSet(args); set {
-			if what := configBypass(key + "=" + val); what != "" {
+			if what := configBypass(key+"="+val, cwd, true); what != "" {
 				return "git config " + key + " " + val + " " + what
 			}
 		}
@@ -170,11 +172,13 @@ func gitGlobalConfigs(w []string) []string {
 		case a == "-c" && len(args) > 0:
 			out = append(out, args[0])
 			args = args[1:]
+		case strings.HasPrefix(a, "-c") && !strings.HasPrefix(a, "--"):
+			out = append(out, a[2:]) // -ccore.hooksPath=x
 		case a == "--config-env" && len(args) > 0:
-			out = append(out, args[0])
+			out = append(out, configEnvKV(args[0]))
 			args = args[1:]
 		case strings.HasPrefix(a, "--config-env="):
-			out = append(out, strings.TrimPrefix(a, "--config-env="))
+			out = append(out, configEnvKV(strings.TrimPrefix(a, "--config-env=")))
 		case gitArgOpts[a] && len(args) > 0:
 			args = args[1:]
 		}
@@ -182,17 +186,71 @@ func gitGlobalConfigs(w []string) []string {
 	return out
 }
 
+// configEnvKV turns --config-env key=ENVVAR into key=$ENVVAR: the value is unknown.
+func configEnvKV(kv string) string {
+	key, name, ok := strings.Cut(kv, "=")
+	if !ok {
+		return kv
+	}
+	return key + "=$" + name
+}
+
+// envGitConfigs lists the settings git reads from the environment: GIT_CONFIG_PARAMETERS
+// ('key=value' entries) and GIT_CONFIG_COUNT with GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n.
+func envGitConfigs(env []string) []string {
+	var out []string
+	keys, vals := map[string]string{}, map[string]string{}
+	for _, kv := range env {
+		name, val, _ := strings.Cut(kv, "=")
+		switch {
+		case name == "GIT_CONFIG_PARAMETERS":
+			for _, e := range strings.Split(val, "'") {
+				if strings.Contains(e, "=") {
+					out = append(out, strings.TrimSpace(e))
+				}
+			}
+		case strings.HasPrefix(name, "GIT_CONFIG_KEY_"):
+			keys[strings.TrimPrefix(name, "GIT_CONFIG_KEY_")] = val
+		case strings.HasPrefix(name, "GIT_CONFIG_VALUE_"):
+			vals[strings.TrimPrefix(name, "GIT_CONFIG_VALUE_")] = val
+		}
+	}
+	for n, k := range keys {
+		out = append(out, k+"="+vals[n])
+	}
+	return out
+}
+
+// hooksPathLeavesRepo reports whether a core.hooksPath value switches the repository's
+// hooks off or moves them out of reach: empty, anything under /dev, an unknown value (from
+// the environment or a variable), ~, an absolute path outside the working directory, or a
+// relative path that climbs out of it. A directory inside the repo (.githooks, .husky) is the
+// usual husky and githooks setup and passes.
+func hooksPathLeavesRepo(val, cwd string) bool {
+	switch {
+	case val == "" || strings.HasPrefix(val, "/dev/") || val == "/dev" || strings.HasPrefix(val, "$") || strings.HasPrefix(val, "~"):
+		return true
+	case strings.HasPrefix(val, "/"):
+		return cwd == "" || !(path.Clean(val) == path.Clean(cwd) || strings.HasPrefix(path.Clean(val), path.Clean(cwd)+"/"))
+	}
+	c := path.Clean(val)
+	return c == ".." || strings.HasPrefix(c, "../")
+}
+
 // configBypass says why a key=value git setting skips hooks or signing; "" if it does not.
+// signs says the command makes a commit or tag, which is where a signing setting matters.
 // A setting with no value (-c commit.gpgsign) means true.
-func configBypass(kv string) string {
+func configBypass(kv, cwd string, signs bool) string {
 	key, val, hasVal := strings.Cut(kv, "=")
 	switch strings.ToLower(key) {
 	case "core.hookspath":
-		return "points git at another hooks directory"
+		if hooksPathLeavesRepo(val, cwd) {
+			return "disables the repository's hooks or points git at hooks outside the repository"
+		}
 	case "commit.gpgsign", "tag.gpgsign", "push.gpgsign":
 		switch strings.ToLower(val) {
 		case "false", "no", "off", "0", "":
-			if hasVal {
+			if hasVal && signs {
 				return "turns signing off"
 			}
 		}

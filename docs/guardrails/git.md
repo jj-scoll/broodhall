@@ -58,13 +58,20 @@ fix the cause, not step around it. These ask, and you decide.
 | --- | --- |
 | `git commit --no-verify` or `-n`, `git am --no-verify` or `-n` | skips the pre-commit, commit-msg and applypatch hooks |
 | `git push --no-verify`, `git merge --no-verify`, `git rebase --no-verify`, `git pull --no-verify` | skips the pre-push, pre-merge-commit and pre-rebase hooks |
-| `git -c core.hooksPath=...`, `git config core.hooksPath ...` | points git at another hooks directory, such as `/dev/null` |
+| `git -c core.hooksPath=...`, `git config core.hooksPath ...`, `GIT_CONFIG_PARAMETERS` or `GIT_CONFIG_COUNT` with `GIT_CONFIG_KEY_n=core.hooksPath` | turns hooks off or points git at hooks outside the repository (see below) |
 | `HUSKY=0`, `HUSKY_SKIP_HOOKS=1`, `LEFTHOOK=0`, `SKIP=...` before a `git commit`, `push`, `merge`, `rebase`, `am`, `cherry-pick`, `revert` or `pull` (also set with `env` or `export`) | switches Husky, Lefthook or pre-commit off |
-| `--no-gpg-sign`, `git tag --no-sign`, `git -c commit.gpgsign=false`, `git config commit.gpgsign false` | turns signing off (also `tag.gpgsign` and `push.gpgsign`) |
+| `--no-gpg-sign`, `git tag --no-sign`, `git -c commit.gpgsign=false`, `git config commit.gpgsign false` | turns signing off (also `tag.gpgsign` and `push.gpgsign`). `-c` counts only on commands that make a commit or tag: `commit`, `merge`, `rebase`, `cherry-pick`, `revert`, `am`, `pull`, `tag`. |
 
 ```text
 ASK: git commit --no-verify skips the repository's hooks. A failing hook or a signing error is the repository's own check; fix the cause, or confirm with the user before skipping it.
 ```
+
+A `core.hooksPath` asks when it turns hooks off or moves them out of the repository: an empty
+value, anything under `/dev` (such as `/dev/null`), `~` or `$VAR`, an absolute path outside
+the working directory, or a relative path that climbs out with `..`. A directory inside the
+repository passes, because it is the normal husky and githooks setup: `git config
+core.hooksPath .husky`, `.githooks`. `git config --unset core.hooksPath` passes too, since it
+puts the default hooks back.
 
 The short `-n` counts only where git means `--no-verify` by it: `git commit` and `git am`. For
 `git push` it is `--dry-run`, for `git merge`, `rebase` and `pull` it is `--no-stat`, and for
@@ -92,8 +99,15 @@ If a command cannot be parsed, the destructive-verb and skipped-hook checks read
 words instead and still ask, so a broken quote does not slip a `git reset --hard` or a
 `git commit --no-verify` through.
 
-Not covered: a git alias that holds `commit -n`, `--no-verify` spelled as a shortened option
-(`--no-ver`), and edits to `.git/hooks` files or `.git/config` made with other tools.
+Not covered:
+
+- A git alias that holds `commit -n`, or a shell alias or variable that stands in for `git`.
+- A shortened long option: git accepts any unique prefix, so `--no-v` and `--no-verif` pass.
+- Edits to `.git/hooks` files or `.git/config` made with other tools.
+- A hooks path whose value comes from a variable inside a script, or a setting passed some
+  other way than `-c`, `git config` and the environment variables above.
+- `PRE_COMMIT_ALLOW_NO_CONFIG` and other switches of single hook tools beyond Husky,
+  Lefthook and pre-commit.
 
 ## Turning it off
 

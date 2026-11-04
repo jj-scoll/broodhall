@@ -34,7 +34,8 @@ They also see through the commands that only run another command: `doas`, `env` 
 or `flock`, the command line of `watch`, a `trap` handler and the commands of `find -exec`,
 `-execdir` and `-ok` are read the same way. So `timeout 5 rm -fr /` and
 `find . -exec rm -fr / {} \;` block like the bare command. A target that arrives later is not known: `echo / | xargs rm -rf`
-and `find / -delete` pass, as do commands inside `python -c` or `perl -e`.
+passes. `find / -delete` is not read as an `rm` (it asks only because the Secret files guard
+asks about `find`). Commands inside `python -c` or `perl -e` pass too.
 
 ```text
 BLOCKED: 'rm -rf ~' is a high-risk destructive operation. Confirm with the user before attempting this.
