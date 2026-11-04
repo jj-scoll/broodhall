@@ -45,6 +45,7 @@ nav:
       - Overview: guardrails/index.md
       - Bash core: guardrails/bash-core.md
       - Git: guardrails/git.md
+      - Shared checkout: guardrails/shared-tree.md
       - Download and run: guardrails/download-exec.md
       - Settings files: guardrails/settings-files.md
       - Config gate: guardrails/config-gate.md

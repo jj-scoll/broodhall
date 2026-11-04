@@ -67,7 +67,7 @@ credentials file.
 
 ## Turning it off
 
-You cannot. Read limits have no family name in `disabled_guards`, and none of the five
-families (`pii`, `raw-client-data`, `session-url`, `egress`, `git`) controls them. The note
+You cannot. Read limits have no family name in `disabled_guards`, and none of the six
+families (`pii`, `raw-client-data`, `session-url`, `egress`, `git`, `sweep`) controls them. The note
 never blocks; the block has a way around it, which is the one it names: read the range you
 need with `offset` and `limit`. You can disable the plugin. See [Options](options.md).

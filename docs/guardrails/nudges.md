@@ -51,7 +51,7 @@ The record of plans and builds is kept per session, in the plugin's state direct
 
 ## Turning it off
 
-You cannot. Nudges have no family name in `disabled_guards`, and none of the five families
-(`pii`, `raw-client-data`, `session-url`, `egress`, `git`) controls them. They never block, so
+You cannot. Nudges have no family name in `disabled_guards`, and none of the six families
+(`pii`, `raw-client-data`, `session-url`, `egress`, `git`, `sweep`) controls them. They never block, so
 the cost of leaving them on is one short note. You can disable the plugin. See
 [Options](options.md).

@@ -20,7 +20,7 @@ CLAUDE_PLUGIN_ROOT=<plugin dir> /path/to/claude-tools doctor
 | hooks reachable | `FAIL` | Every command in the plugin's `hooks/hooks.json` can start: the launcher script exists, and the subcommand it names is one this binary has. |
 | version | `FAIL` | The binary carries a version stamp, and it equals the `version` in `plugin.json`. |
 | binary | `FAIL` | The binary's sha256 equals the one the launcher recorded in `claude-tools.sha256` beside it after it checked the release archive. A binary with no record passes. |
-| duplicate guard | `WARN` | No hook in your settings runs a subcommand the plugin already runs: `pre-tool-use`, `read-dedup`, `large-read-guard`, `retry-breaker`, `config-gate`, `session-env`, `receipt`, `gate` or `compact-guard`. A settings entry plus the plugin runs that hook twice. |
+| duplicate guard | `WARN` | No hook in your settings runs a subcommand the plugin already runs: `pre-tool-use`, `read-dedup`, `large-read-guard`, `retry-breaker`, `ask-outcome`, `config-gate`, `session-env`, `receipt`, `gate` or `compact-guard`. A settings entry plus the plugin runs that hook twice. |
 | rtk | `WARN` | If a settings hook runs `rtk`, it is on `PATH` and answers `rtk gain`. Another tool is also called `rtk`, and it does not. |
 
 Without `CLAUDE_PLUGIN_ROOT` (the binary run by hand or as a status line) the plugin checks

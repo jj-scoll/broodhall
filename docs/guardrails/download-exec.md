@@ -73,5 +73,5 @@ This is a speed bump, not a wall. These get past it:
 ## Turning it off
 
 You cannot. This guard has no family name in `disabled_guards`: with `pii`,
-`raw-client-data`, `session-url`, `egress` and `git` all off, `curl ... | sh` still asks. You
+`raw-client-data`, `session-url`, `egress`, `git` and `sweep` all off, `curl ... | sh` still asks. You
 can approve each ask when it appears. See [Options](options.md).

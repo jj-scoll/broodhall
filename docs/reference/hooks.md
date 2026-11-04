@@ -17,7 +17,9 @@ the third column. A dash means the field is absent from the entry.
 | `PreToolUse` | `Read` | `read-dedup` | `block` |
 | `PreToolUse` | `Read` | `large-read-guard` | `block` |
 | `PostToolUse` | `Bash` | `retry-breaker` | — |
+| `PostToolUse` | <code>Bash&#124;Edit&#124;Write&#124;MultiEdit&#124;NotebookEdit&#124;mcp__.*</code> | `ask-outcome` | — |
 | `PostToolUseFailure` | `Bash` | `retry-breaker` | — |
+| `PostToolUseFailure` | <code>Bash&#124;Edit&#124;Write&#124;MultiEdit&#124;NotebookEdit&#124;mcp__.*</code> | `ask-outcome` | — |
 | `PreCompact` | — | `compact-guard` | — |
 
 The entries with `onFailure: block` fail closed when the binary crashes or hangs. Those same

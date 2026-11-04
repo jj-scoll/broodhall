@@ -49,6 +49,10 @@ ASK: git reset --hard discards uncommitted changes and moves the branch. Confirm
 The other asks differ only in the first sentence, for example
 `ASK: git clean -f deletes untracked files for good. Confirm with the user before running it; ...`.
 
+When another live session has uncommitted changes in the same checkout, `stash`, `reset --hard`,
+`checkout .`, `restore .` and `clean -f` ask with a more specific reason. See
+[Shared checkout](shared-tree.md).
+
 ### Skipped hooks and signing: ASK
 
 A hook that fails or a signing error is a check the repository's owner set up. Claude should

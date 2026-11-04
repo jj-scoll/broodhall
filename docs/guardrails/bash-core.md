@@ -84,7 +84,7 @@ runs.
 
 ## Turning it off
 
-You cannot. `disabled_guards` accepts `pii`, `raw-client-data`, `session-url`, `egress` and
-`git`, and none of them touches these rules. A test confirms that `rm -rf ~` still blocks
-with all five off. To get past a block, run the command yourself in a terminal, or disable
+You cannot. `disabled_guards` accepts `pii`, `raw-client-data`, `session-url`, `egress`, `git` and
+`sweep`, and none of them touches these rules. A test confirms that `rm -rf ~` still blocks
+with all six off. To get past a block, run the command yourself in a terminal, or disable
 the plugin. See [Options](options.md).

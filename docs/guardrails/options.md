@@ -11,9 +11,9 @@ Set the plugin options with `/plugin configure guardrails@broodhall`, or from `/
 | --- | --- |
 | Title | Disabled guard families |
 | Default | empty (every guard on) |
-| Description | Comma-separated families to turn off: pii, raw-client-data, session-url, egress, git. Every guard is on when this is empty. The core blocks (rm -rf of home or root, git push --force, dd, fork bombs) cannot be turned off. |
+| Description | Comma-separated families to turn off: pii, raw-client-data, session-url, egress, git, sweep. Every guard is on when this is empty. The core blocks (rm -rf of home or root, git push --force, dd, fork bombs) cannot be turned off. |
 
-The five family names, and what each one controls:
+The six family names, and what each one controls:
 
 | Family | Controls |
 | --- | --- |
@@ -22,6 +22,7 @@ The five family names, and what each one controls:
 | `pii` | The SQL-output mask, the block on duckdb dot-commands and the block on edits to the PII rules file. See [PII](pii.md). |
 | `raw-client-data` | The ask before Python reads a local parquet file or a configured client-data S3 bucket. See [PII](pii.md#raw-client-data-ask). |
 | `session-url` | The block on a commit, push or PR that carries a session link. See [Session URLs](session-urls.md). |
+| `sweep` | The ask before a sweeping git command (`git add -A`, `commit -a`, `stash`, `checkout .`, `restore .`, `reset --hard`, `clean -f`) takes in a change another live session made. See [Shared checkout](shared-tree.md). |
 
 Core blocks have no switch. [Bash core](bash-core.md), the `git push --force` block,
 [Download and run](download-exec.md), [Settings files](settings-files.md) and
@@ -30,7 +31,7 @@ this option says. [Nudges](nudges.md), [Read limits](read-limits.md) and
 [Retry loops](retry-loops.md) have no family name either.
 
 Names are separated by commas, and spaces around a name are ignored. A name that is not one of
-the five has no effect. An empty value turns every family on. The launcher falls back to the
+the six has no effect. An empty value turns every family on. The launcher falls back to the
 `CLAUDE_TOOLS_OFF` environment variable, then to empty: every family on. The binary run on
 its own treats an unset `CLAUDE_TOOLS_OFF` as every family on too.
 
@@ -55,13 +56,13 @@ Outside the plugin the same list is read from `CLAUDE_TOOLS_PII_ALLOW`.
 | --- | --- |
 | Title | Observe mode (log only) |
 | Default | off |
-| Description | Off by default. When on, the optional guards (git, egress, pii, raw-client-data) allow the call and record what they would have asked or blocked, instead of stopping it. These stay enforced: the core blocks, the settings-file and secret-file guards, config-gate, compact-guard, the large-read block, the session-URL block and egress asks about a secret. Run claude-tools guard-report to see the counts. |
+| Description | Off by default. When on, the optional guards (git, egress, pii, raw-client-data, sweep) allow the call and record what they would have asked or blocked, instead of stopping it. These stay enforced: the core blocks, the settings-file and secret-file guards, config-gate, compact-guard, the large-read block, the session-URL block and egress asks about a secret. Run claude-tools guard-report to see the counts. |
 
 Use it to see what the guards would do before you let them stop anything. It is one switch
 for all guards, not one per guard.
 
 What it covers is the families that `disabled_guards` can name, except where a mistake
-cannot be taken back: `git`, `pii`, `raw-client-data` and the `egress` asks. An ask from one of
+cannot be taken back: `git`, `pii`, `raw-client-data`, `sweep` and the `egress` asks. An ask from one of
 them does not ask, and a block from one of them does not block. The call runs.
 
 What it does not cover stays enforced:
@@ -94,8 +95,13 @@ Outside the plugin, set `CLAUDE_TOOLS_OBSERVE=1`; `true` and `yes` also turn it 
 plugin option wins over it. Turn the option off to enforce again.
 
 `claude-tools guard-report` prints one row per rule with how many times it fired, split by
-kind. It cannot say how many asks you approved or denied: the ledger records that an ask
-happened, not your answer.
+kind. For asks it also shows `ran-after-ask` (the tool ran after the ask, so you approved)
+and `not-run` (no follow-up by the session's Stop, or none within 10 minutes for older asks).
+A denial and an abandoned prompt look the same, so the report cannot say "denied". A rule
+with at least 10 answered asks, 90% or more of them approved, gets a "consider relaxing" hint.
+Would-asks from observe mode are never counted as approved.
+The report settles old pending asks as it runs, so an approval that comes more than 10 minutes
+after its ask is not counted.
 
 ## `fail_open`
 

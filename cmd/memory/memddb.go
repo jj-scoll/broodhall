@@ -258,6 +258,12 @@ func memdMigrate(db *sql.DB) error {
 	if _, err := db.Exec(memdSchema); err != nil {
 		return fmt.Errorf("memory schema: %w", err)
 	}
+	// Additive columns for stale-note detection; NULL on rows written before they existed.
+	for _, c := range []string{"fingerprint", "fp_path"} {
+		if _, err := db.Exec(`ALTER TABLE observation_files ADD COLUMN IF NOT EXISTS ` + c + ` VARCHAR`); err != nil {
+			return fmt.Errorf("memory schema: add observation_files.%s: %w", c, err)
+		}
+	}
 	if _, err := db.Exec(memdSearchSchema); err != nil {
 		return fmt.Errorf("memory search schema: %w", err)
 	}

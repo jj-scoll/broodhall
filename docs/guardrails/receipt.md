@@ -17,5 +17,7 @@ guards · masked 2 (secret-mask) · asked 1 (egress) · nudged 4 (read-dedup 3, 
   three up, and fewer wait for the next receipt.
 - The ledger holds only the time, kind and rule id of each event, never command text, paths or
   values.
+- At Stop it also marks asks that nothing followed up as not run, for `guard-report`. The
+  receipt line does not show outcomes.
 - The hook fails open: it always exits 0 and makes no Stop decision, so a missing or unreadable
   ledger never blocks Stop.

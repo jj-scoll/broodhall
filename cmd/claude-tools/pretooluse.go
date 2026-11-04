@@ -56,6 +56,14 @@ func decide(env *guardEnv, cmd string) decision {
 	if d := settingsGuard(env, cmd); d.Ask {
 		return d
 	}
+	// A sweeping git command that would take in another live session's uncommitted change.
+	if !env.Off["sweep"] {
+		if cmds, ok := parseShell(cmd); ok {
+			if d := sweepGuard(env, cmds); d.Ask && !env.observed(d) {
+				return d
+			}
+		}
+	}
 	// Destructive git verbs: the user confirms each one.
 	var rule, what string
 	if cmds, ok := parseShell(cmd); ok {
@@ -153,6 +161,7 @@ func preToolUse(args []string) int {
 func preToolUseRun(data []byte, self string, rtk func([]byte) ([]byte, []byte, int), stdout, stderr io.Writer) int {
 	var in struct {
 		SessionID string `json:"session_id"`
+		ToolUseID string `json:"tool_use_id"`
 		Cwd       string `json:"cwd"`
 		ToolName  string `json:"tool_name"`
 		AgentID   string `json:"agent_id"`
@@ -184,13 +193,13 @@ func preToolUseRun(data []byte, self string, rtk func([]byte) ([]byte, []byte, i
 			return d.Exit
 		}
 		if d, ok := settingsFileToolDecision(in.ToolName, raw.ToolInput, in.Cwd, home); ok {
-			logGuardEvent(in.SessionID, "ask", d.Rule)
+			recordAsk(in.SessionID, in.ToolUseID, d.Rule)
 			emitAsk(stdout, "PreToolUse", d.Msg)
 			return 0
 		}
 		if d, ok := secretFileToolDecision(in.ToolName, raw.ToolInput, in.Cwd, home, xdg); ok {
 			if d.Ask {
-				logGuardEvent(in.SessionID, "ask", d.Rule)
+				recordAsk(in.SessionID, in.ToolUseID, d.Rule)
 				emitAsk(stdout, "PreToolUse", d.Msg)
 			} else {
 				logGuardEvent(in.SessionID, "block", d.Rule)
@@ -204,7 +213,7 @@ func preToolUseRun(data []byte, self string, rtk func([]byte) ([]byte, []byte, i
 				emitContext(stdout, "PreToolUse", observeNote([]decision{d}))
 				return 0
 			}
-			logGuardEvent(in.SessionID, "ask", d.Rule)
+			recordAsk(in.SessionID, in.ToolUseID, d.Rule)
 			emitAsk(stdout, "PreToolUse", d.Msg)
 			return 0
 		}
@@ -214,11 +223,12 @@ func preToolUseRun(data []byte, self string, rtk func([]byte) ([]byte, []byte, i
 		}
 		return 0
 	}
-	env := &guardEnv{Now: time.Now(), Session: in.SessionID, Cwd: in.Cwd, Home: home, XDGConfig: xdg, State: newFileState(in.SessionID), GitUnpushed: gitUnpushed, Off: off, Observe: observe}
+	env := &guardEnv{Now: time.Now(), Session: in.SessionID, Cwd: in.Cwd, Home: home, XDGConfig: xdg, State: newFileState(in.SessionID), GitUnpushed: gitUnpushed, Off: off, Observe: observe,
+		OtherEdits: func(self string, now time.Time) []otherSession { return liveOtherSessions(self, now, sweepWindow) }, GitStatus: gitStatusOf}
 	d := decide(env, in.ToolInput.Command)
 	switch {
 	case d.Ask:
-		logGuardEvent(in.SessionID, "ask", d.Rule)
+		recordAsk(in.SessionID, in.ToolUseID, d.Rule)
 		emitAsk(stdout, "PreToolUse", d.Msg)
 		return d.Exit
 	case d.Exit != 0:

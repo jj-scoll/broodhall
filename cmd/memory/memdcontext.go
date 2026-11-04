@@ -118,6 +118,11 @@ func buildContextWith(db *sql.DB, project string, now time.Time, h *handoffEntry
 		fmt.Fprintf(os.Stderr, "memory context: observations: %v\n", err)
 		obs = nil
 	}
+	if err := loadFiles(db, obs); err != nil {
+		fmt.Fprintf(os.Stderr, "memory context: files: %v\n", err)
+	} else {
+		newStaleChecker().markStale(obs)
+	}
 	sums, err := loadCtxSummaries(db, project)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "memory context: summaries: %v\n", err)
@@ -269,7 +274,7 @@ func ctxBody(project string, now time.Time, es []ctxEntry, last *ctxSummary) str
 		if title == "" {
 			title = "Untitled"
 		}
-		lines = append(lines, fmt.Sprintf("%d %s %s %s", e.obs.id, shown, memdTypeIcon(e.obs.typ), title))
+		lines = append(lines, fmt.Sprintf("%d %s %s %s", e.obs.id, shown, memdTypeIcon(e.obs.typ), withStale(title, e.obs)))
 	}
 	if last != nil {
 		for _, f := range [][2]string{{"Investigated", last.investigated}, {"Learned", last.learned},

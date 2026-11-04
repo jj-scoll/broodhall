@@ -1,7 +1,7 @@
 {
   "name": "guardrails",
   "displayName": "Guardrails",
-  "version": "1.1.0",
+  "version": "1.4.0",
   "description": "Guards for Claude Code tool calls: blocks destructive shell commands, asks before destructive git and settings edits, masks Bash reads of secret files, blocks the Read tool on them and asks before writes to them, blocks oversized whole-file Reads, and notes re-reads and retry loops.",
   "author": {
     "name": "Jeff Scollick",
@@ -14,7 +14,7 @@
     "disabled_guards": {
       "type": "string",
       "title": "Disabled guard families",
-      "description": "Comma-separated families to turn off: pii, raw-client-data, session-url, egress, git. Every guard is on when this is empty. The core blocks (rm -rf of home or root, git push --force, dd, fork bombs) cannot be turned off.",
+      "description": "Comma-separated families to turn off: pii, raw-client-data, session-url, egress, git, sweep. Every guard is on when this is empty. The core blocks (rm -rf of home or root, git push --force, dd, fork bombs) cannot be turned off.",
       "default": ""
     },
     "allowed_email_domains": {
