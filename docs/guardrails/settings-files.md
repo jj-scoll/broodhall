@@ -19,8 +19,13 @@ The target is `settings.json` or `settings.local.json` in one of these:
 
 The last two are the Claude config directories, the same ones whose credentials the
 [Secret files](secret-files.md) guard protects. A command may name the session's as
-`$CLAUDE_CONFIG_DIR`, and a `cd` or `pushd` earlier in the command is followed. A config
-directory with another name that this session does not use is not covered.
+`$CLAUDE_CONFIG_DIR`. A config directory with another name that this session does not use
+is not covered.
+
+A relative path counts from where a `cd`, `pushd` or `popd` earlier in the command went. A
+bare `cd` goes home. When the target can't be known (`cd -`, `popd`, a variable), a relative
+`.claude*` path is also read as one in your home. A write inside a `( ... )` subshell or
+`bash -c '...'` is not seen.
 
 - **Edit, Write, MultiEdit and NotebookEdit** on one of those files. Symlinks are resolved,
   so a link that points at one counts.

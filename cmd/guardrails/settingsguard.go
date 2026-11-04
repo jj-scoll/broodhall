@@ -263,6 +263,39 @@ func setupWriteCall(cmd string) bool {
 	return false
 }
 
+// redirOnlyRE is a redirect operator with its target in the next word (`> /dev/null`).
+var redirOnlyRE = regexp.MustCompile(`^(?:\d*|&)(?:>>?|<<?|<>|>&|<&)$`)
+
+// cdTarget reads one segment: ok when it is a cd, pushd or popd, and dir where it goes. The
+// target is the first word that is not an option or a redirect, and a bare cd goes to ~.
+// dir is "" when the target can't be known: cd -, popd, a bare pushd.
+func cdTarget(seg string) (dir string, ok bool) {
+	f := strings.Fields(strings.TrimLeft(seg, " \t({"))
+	if len(f) == 0 || f[0] != "cd" && f[0] != "pushd" && f[0] != "popd" {
+		return "", false
+	}
+	if f[0] == "popd" {
+		return "", true
+	}
+	for i := 1; i < len(f); i++ {
+		switch w := f[i]; {
+		case strings.ContainsAny(w, "<>"):
+			if redirOnlyRE.MatchString(w) {
+				i++
+			}
+		case w == "-":
+			return "", true
+		case strings.HasPrefix(w, "-"): // -L, -P, -e, -@, --
+		default:
+			return strings.Trim(w, `"')}`), true
+		}
+	}
+	if f[0] == "cd" {
+		return "~", true
+	}
+	return "", true
+}
+
 // settingsGuard is the Bash half of the guard.
 func settingsGuard(env *guardEnv, cmd string) decision {
 	if setupWriteCall(cmd) {
@@ -275,7 +308,7 @@ func settingsGuard(env *guardEnv, cmd string) decision {
 	if !slices.ContainsFunc(quick, func(q string) bool { return strings.Contains(cmd, q) }) {
 		return decision{}
 	}
-	cwd := env.Cwd
+	cwd, lost := env.Cwd, false
 	expand := func(tok string) string {
 		tok = expandHome(expandPathVars(tok, env.Home), env.Home)
 		if !filepath.IsAbs(tok) {
@@ -283,34 +316,50 @@ func settingsGuard(env *guardEnv, cmd string) decision {
 		}
 		return filepath.Clean(tok)
 	}
-	// Each segment runs where the cd or pushd before it moved, as secretGuard.scan follows
-	// them (a subshell's cd is kept after it ends: that can only ask more). dirRef: the
-	// command names a config dir or runs in one, so a bare settings.json is in one.
+	// is tests the path tok names. While a cd went somewhere unknown (lost), a relative
+	// .claude* path is also tested as ~/.claude*, so the check fails closed.
+	is := func(tok string, test func(p, home string) bool) bool {
+		if tok == "" {
+			return false
+		}
+		if test(expand(tok), env.Home) {
+			return true
+		}
+		rel := filepath.Clean(tok)
+		return lost && env.Home != "" && strings.HasPrefix(rel, ".claude") && test(filepath.Join(env.Home, rel), env.Home)
+	}
+	// Each segment runs where the cd, pushd or popd before it moved, as secretGuard.scan
+	// follows them (a subshell's cd is kept after it ends: that can only ask more). dirRef:
+	// the command names a config dir or runs in one, so a bare settings.json is in one.
 	// tokSplitRE splits at braces, so ${HOME} becomes $HOME first.
 	cmd = strings.NewReplacer(">|", ">", "${HOME}", "$HOME", "${CLAUDE_CONFIG_DIR}", "$CLAUDE_CONFIG_DIR").Replace(cmd)
 	segs := segSplitRE.Split(cmd, -1)
-	cwds := make([]string, len(segs))
+	cwds, losts := make([]string, len(segs)), make([]bool, len(segs))
 	dirRef := false
 	for i, seg := range segs {
-		cwds[i] = cwd
+		cwds[i], losts[i] = cwd, lost
 		dirRef = dirRef || isClaudeDir(cwd, env.Home)
 		for _, t := range tokSplitRE.Split(seg, -1) {
-			dirRef = dirRef || t != "" && isClaudeDir(expand(t), env.Home)
+			dirRef = dirRef || is(t, isClaudeDir)
 		}
-		if f := strings.Fields(strings.TrimLeft(seg, " \t({")); len(f) > 1 && (f[0] == "cd" || f[0] == "pushd") {
-			cwd = expand(strings.Trim(f[len(f)-1], `"')}`))
+		if dir, ok := cdTarget(seg); ok {
+			if t := expandHome(expandPathVars(dir, env.Home), env.Home); dir == "" || strings.ContainsAny(t, "$`") {
+				lost = true
+			} else {
+				cwd, lost = expand(dir), lost && !filepath.IsAbs(t)
+			}
 		}
 	}
 	dirRef = dirRef || isClaudeDir(cwd, env.Home)
 	isFile := func(tok string) bool {
-		return tok != "" && (isSettingsPath(expand(tok), env.Home) || dirRef && settingsNameRE.MatchString(tok))
+		return is(tok, isSettingsPath) || tok != "" && dirRef && settingsNameRE.MatchString(tok)
 	}
-	isDir := func(tok string) bool { return tok != "" && isClaudeDir(expand(tok), env.Home) }
+	isDir := func(tok string) bool { return is(tok, isClaudeDir) }
 	// Per segment, so a pass below can't hide a write later in the command. rmdir removes
 	// only empty directories, and find writes only with -delete or a writing -exec
 	// (guard-replay: `rmdir .claude/worktrees .claude`, `find ~/.claude -exec ls -l {} \;`).
 	for i, seg := range segs {
-		cwd = cwds[i]
+		cwd, lost = cwds[i], losts[i]
 		switch op := fileWriteOp(seg, isFile, isDir); {
 		case op == "", op == "rmdir", op == "find" && !findWrites(seg):
 		default:

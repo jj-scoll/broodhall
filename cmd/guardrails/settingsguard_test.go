@@ -87,6 +87,17 @@ func TestSettingsGuardFollowsConfigDirs(t *testing.T) {
 		"cd ~ && sed -i s/a/b/ .claude-personal/settings.json",
 		"pushd ~ && cd .claude-personal && sed -i s/a/b/ settings.json",
 		"(cd ~ && rm -rf .claude-work)",
+		// The target is the first word that is not an option or a redirect; bare cd is ~.
+		"pushd ~ >/dev/null && echo '{}' > .claude-work/settings.json",
+		"pushd ~ > /dev/null; echo '{}' > .claude-work/settings.json",
+		"cd ~ 2>/dev/null && echo '{}' > .claude-work/settings.json",
+		"cd -P ~ &>/dev/null && sed -i s/a/b/ .claude-personal/settings.json",
+		"cd && echo '{}' > .claude-work/settings.json",
+		// Where cd went is unknown: a relative .claude* path is also read as ~/.claude*.
+		"cd - && echo '{}' > .claude-work/settings.json",
+		`cd "$PROJ" && echo '{}' > .claude-personal/settings.json`,
+		"cd $(git rev-parse --show-toplevel) && echo '{}' > .claude-work/settings.json",
+		"popd && echo '{}' > .claude-work/settings.json",
 		// The variable as written: the hook has the same CLAUDE_CONFIG_DIR as the shell.
 		"echo '{}' > $CLAUDE_CONFIG_DIR/settings.json",
 		"sed -i s/a/b/ ${CLAUDE_CONFIG_DIR}/settings.local.json",
@@ -100,6 +111,9 @@ func TestSettingsGuardFollowsConfigDirs(t *testing.T) {
 	for _, cmd := range []string{
 		"echo '{}' > ~/claude-notes/settings.json",
 		"cd ~/src && echo '{}' > .claude-work/settings.json",
+		"cd ~/src 2>/dev/null && echo '{}' > .claude-work/settings.json",
+		"pushd ~/src >/dev/null && echo '{}' > .claude-work/settings.json",
+		"cd - && echo '{}' > notes/settings.json",
 		"echo '{}' > $CLAUDE_CONFIG_DIR_OLD/settings.json",
 	} {
 		if d := settingsGuard(env, cmd); d.Ask {
