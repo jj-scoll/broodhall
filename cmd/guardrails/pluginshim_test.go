@@ -49,7 +49,8 @@ func runShim(t *testing.T, env map[string]string, stdin string, args ...string) 
 	t.Helper()
 	root, _ := filepath.Abs(pluginDir)
 	c := exec.Command("sh", append([]string{filepath.Join(root, "scripts/run.sh")}, args...)...)
-	c.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "CLAUDE_PLUGIN_ROOT=" + root}
+	// A guard with no binary starts an install; point it at a release that does not exist.
+	c.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "CLAUDE_PLUGIN_ROOT=" + root, "CLAUDE_TOOLS_RELEASE_URL=file://" + t.TempDir() + "/none"}
 	for k, v := range env {
 		c.Env = append(c.Env, k+"="+v)
 	}

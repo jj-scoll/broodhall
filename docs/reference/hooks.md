@@ -26,7 +26,9 @@ The entries with `onFailure: block` fail closed when the binary crashes or hangs
 subcommands (`pre-tool-use`, `read-dedup`, `large-read-guard`, `config-gate`) also fail closed
 when the binary is not installed: `run.sh` exits 2 with a message on stderr, unless the
 [`fail_open`](../guardrails/options.md#fail_open) option is on. Every other entry exits 0
-silently then, so a missing binary never blocks a stop or a compaction. The `install` entry
+silently then, so a missing binary never blocks a stop or a compaction. When only this
+version's binary is missing (after an update), the four guards (not the other hooks, which still exit 0 silently) run the newest installed older binary
+instead and start the install; see [Updating](../guide/updating.md#between-the-update-and-the-download). The `install` entry
 sets a timeout of 120 seconds and never blocks. After `install` puts the binary in place (or
 finds it there) the launcher runs `guardrails doctor -hook`, which prints only problems and
 always exits 0. See [Doctor](../guardrails/doctor.md). `config-gate` at `SessionStart` only
@@ -68,7 +70,9 @@ the third column.
 `session-start` starts the daemon (`memory serve`) and prints the context block with
 `memory context`. If the binary is not installed yet, it starts a background install and
 prints nothing. `lookup` runs `memory lookup`. The MCP server `memory` runs
-`run.sh mcp`, which hands over to `memory mcp`.
+`run.sh mcp`, which hands over to `memory mcp`. With no binary for this version, `run.sh mcp`
+starts the install and serves from the newest older binary, or waits up to 25 seconds for it,
+so Claude Code does not cache a failed connection.
 
 Neither hook has `onFailure: block`. The launcher always exits 0, prints nothing on any
 failure, and kills the program after `MEMORY_HOOK_TIMEOUT` seconds (3 by default), so every
