@@ -380,6 +380,7 @@ settle t11
 newcase t12
 mkcurl "$tmp/t12/path"
 mkdir -p "$tmp/t12/data/bin/.install-lock"
+echo 1 >"$tmp/t12/data/bin/.install-lock/claim"
 old_path=$PATH
 PATH=$tmp/t12/path:$PATH hook t12 session-start
 sleep 1
@@ -558,6 +559,36 @@ export MEMORY_BIN=$c/not-there
 hook t15-membin mcp
 unset MEMORY_BIN
 if [ "$rc" -eq 0 ] && [ ! -s "$c/mark" ]; then ok "mcp with a missing MEMORY_BIN does not fall back"; else bad "mcp with a missing MEMORY_BIN does not fall back" "mark=$(cat "$c/mark")"; fi
+
+# --- 16. uutils mkdir (Ubuntu 25.10 and later) does not reliably fail when another process
+# creates the same directory at the same moment, so mkdir cannot be what makes the install lock
+# exclusive. This stub never fails on an existing directory, which makes that race happen every
+# time: two concurrent first session-starts must still download the release once.
+mkloosemkdir() { # <dir>
+	realmkdir=$(command -v mkdir)
+	cat >"$1/mkdir" <<EOF
+#!/bin/sh
+for a; do last=\$a; done
+$realmkdir "\$@" 2>/dev/null || [ -d "\$last" ]
+EOF
+	chmod +x "$1/mkdir"
+}
+
+newcase t16
+mkrelease "$c/rel"
+mkslowcurl "$c/path" 1
+mkloosemkdir "$c/path"
+export MEMORY_RELEASE_URL=file://$c/rel
+printf '{}' | PATH=$c/path:$PATH sh "$run_sh" session-start >"$c/o1" 2>&1 &
+p1=$!
+printf '{}' | PATH=$c/path:$PATH sh "$run_sh" session-start >"$c/o2" 2>&1 &
+p2=$!
+wait "$p1" "$p2"
+settle t16
+n=$(grep -c "$asset" "$c/path/curl.log" 2>/dev/null)
+if [ "${n:-0}" = 1 ]; then ok "non-exclusive mkdir: two concurrent session-starts download once"; else bad "non-exclusive mkdir: two concurrent session-starts download once" "downloads: ${n:-0} [curl.log: $(cat "$c/path/curl.log" 2>/dev/null)]"; fi
+if [ ! -s "$c/o1" ] && [ ! -s "$c/o2" ] && [ -x "$c/data/bin/$ver/memory" ]; then ok "non-exclusive mkdir: the install lands and both session-starts stay silent"; else bad "non-exclusive mkdir: the install lands and both session-starts stay silent" "o1=$(cat "$c/o1") o2=$(cat "$c/o2") log=$(cat "$c/data/memory.log" 2>/dev/null)"; fi
+sleep 2 # let a second installer, if one ran, finish before the sandbox is removed
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
