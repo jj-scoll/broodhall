@@ -54,6 +54,7 @@ nav:
       - Read limits: guardrails/read-limits.md
       - Retry loops: guardrails/retry-loops.md
       - Handoff gate: guardrails/handoff-gate.md
+      - Write handoff: guardrails/write-handoff.md
       - Options: guardrails/options.md
   - Memory:
       - Overview: memory/index.md
