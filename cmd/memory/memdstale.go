@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 const (
@@ -47,7 +48,12 @@ type obsFile struct {
 
 // blobHash returns "blob:<sha1>" for a regular file of at most staleMaxBytes, else "".
 func blobHash(p string) string {
-	f, err := os.Open(p)
+	// Stat before open: opening a FIFO with no writer blocks forever. O_NONBLOCK covers a
+	// path swapped for a FIFO between the Stat and the open (it does nothing to regular files).
+	if pi, err := os.Stat(p); err != nil || !pi.Mode().IsRegular() {
+		return ""
+	}
+	f, err := os.OpenFile(p, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return ""
 	}

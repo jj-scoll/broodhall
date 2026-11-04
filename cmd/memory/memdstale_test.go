@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -321,5 +322,100 @@ func TestStaleCheckIsBoundedAtScale(t *testing.T) {
 	}
 	if el > 2*time.Second {
 		t.Fatalf("session-start context took %v", el)
+	}
+}
+
+// within runs f and fails the test if it does not return in time (a FIFO read blocks forever).
+func within[T any](t *testing.T, what string, f func() T) T {
+	t.Helper()
+	done := make(chan T, 1)
+	go func() { done <- f() }()
+	select {
+	case v := <-done:
+		return v
+	case <-time.After(3 * time.Second):
+		t.Fatalf("%s blocked for more than 3s", what)
+		panic("unreachable")
+	}
+}
+
+func TestFifoNeverBlocks(t *testing.T) {
+	dir := t.TempDir()
+	ff := filepath.Join(dir, "pipe")
+	if err := syscall.Mkfifo(ff, 0o644); err != nil {
+		t.Skip("no mkfifo")
+	}
+	if fp := within(t, "fileFingerprint", func() string { return fileFingerprint(ff, nil) }); fp != "" {
+		t.Errorf("fifo fingerprinted: %q", fp)
+	}
+	if m := within(t, "recordFingerprints", func() map[string][2]string { return recordFingerprints(dir, []string{"pipe"}) }); len(m) != 0 {
+		t.Errorf("fifo recorded: %v", m)
+	}
+	if st := within(t, "state", func() staleState { return newStaleChecker().state(ff, "blob:x") }); st != fileUnknown {
+		t.Errorf("fifo state = %v, want unknown", st)
+	}
+}
+
+func TestNonRegularFilesAreUnknown(t *testing.T) {
+	dir := t.TempDir()
+	d := filepath.Join(dir, "was-a-file")
+	writeF(t, d, "x")
+	fp := fileFingerprint(d, nil)
+	os.Remove(d)
+	os.Mkdir(d, 0o755)
+	if st := newStaleChecker().state(d, fp); st != fileUnknown {
+		t.Errorf("file replaced by a directory: state = %v, want unknown", st)
+	}
+	g := writeF(t, filepath.Join(dir, "grow"), "x")
+	gfp := fileFingerprint(g, nil)
+	os.WriteFile(g, make([]byte, staleMaxBytes+5), 0o644)
+	if st := newStaleChecker().state(g, gfp); st != fileUnknown {
+		t.Errorf("file grown past the limit: state = %v, want unknown", st)
+	}
+}
+
+func TestSecretFilesAreNeverReadOrReportedGone(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	sec := writeF(t, filepath.Join(home, ".aws", "credentials"), "k")
+	ln := filepath.Join(t.TempDir(), "innocent.txt")
+	os.Symlink(sec, ln)
+	c := newStaleChecker()
+	if st := c.state(sec, "blob:x"); st != fileUnknown {
+		t.Errorf("secret file: state = %v, want unknown", st)
+	}
+	if c.hashed != 0 {
+		t.Errorf("secret file was hashed")
+	}
+	os.Remove(sec)
+	if st := newStaleChecker().state(sec, "blob:x"); st != fileUnknown {
+		t.Errorf("deleted secret file: state = %v, want unknown", st)
+	}
+}
+
+func TestSearchWithoutQueryIsNotDemoted(t *testing.T) {
+	db, _ := staleSeed(t)
+	out, err := memSearch(db, map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Newest first: Deleted note (stale, 1h old) comes before Fine note (fresh, 2h old).
+	if strings.Index(out, "Deleted note") > strings.Index(out, "Fine note") {
+		t.Errorf("a query-less listing must stay newest first:\n%s", out)
+	}
+}
+
+func TestTimelineMarksStaleNotes(t *testing.T) {
+	db, _ := staleSeed(t)
+	out, err := memTimeline(db, map[string]any{"anchor": 3.0, "depth_before": 2.0, "depth_after": 2.0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Deleted note <- **ANCHOR** (file removed since)") || !strings.Contains(out, "Changed note (file changed since)") {
+		t.Errorf("timeline notes not marked:\n%s", out)
+	}
+	if strings.Contains(out, "Fine note (file") || strings.Contains(out, "Legacy note (file") {
+		t.Errorf("fresh notes marked:\n%s", out)
 	}
 }

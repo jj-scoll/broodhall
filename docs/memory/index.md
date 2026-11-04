@@ -92,7 +92,11 @@ What is left unmarked:
   today's file, not the file the note was about.
 - Paths that do not exist here because the note came from another machine: when the
   file's directory is missing too, memory cannot tell.
-- Files over 1 MiB, and files beyond the first 200 that one run checks.
+- Files over 1 MiB, and files beyond the first 200 that one run checks. A note that lists
+  many files can use up the 200, which leaves the older notes in that run unmarked.
+- A file that was replaced by a directory, grew past 1 MiB or became unreadable since the
+  note was written. Memory cannot compare it, so it shows as unknown and the note stays
+  unmarked.
 
 The check is cheap on purpose. Each run (one context build or one tool call) hashes each
 path at most once and at most 200 files. The SessionStart context looks at 20 notes. The
