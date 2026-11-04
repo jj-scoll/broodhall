@@ -313,6 +313,9 @@ func recordOutcome(db *sql.DB, it *queueItem, key string, obs *observation, drop
 // 0 rows rolls the whole transaction back. ok=false means nothing was written; otherwise the
 // new observation's id is returned for the search-index hook.
 func storeObservationOnce(db *sql.DB, it *queueItem, key string, o *observation, usage observerUsage) (int64, bool, error) {
+	var cwd string
+	_ = db.QueryRow(`SELECT cwd FROM sessions WHERE session_id = ?`, it.SessionID).Scan(&cwd)
+	fps := recordFingerprints(cwd, append(append([]string{}, o.FilesRead...), o.FilesModified...))
 	tx, err := db.Begin()
 	if err != nil {
 		return 0, false, fmt.Errorf("store observation: %w", err)
@@ -336,7 +339,11 @@ func storeObservationOnce(db *sql.DB, it *queueItem, key string, o *observation,
 	}
 	for kind, paths := range map[string][]string{"read": o.FilesRead, "modified": o.FilesModified} {
 		for _, p := range paths {
-			if _, err := tx.Exec(`INSERT INTO observation_files (observation_id, path, kind) VALUES (?, ?, ?)`, oid, p, kind); err != nil {
+			var fp, fpPath any // NULL when the file could not be fingerprinted
+			if v, ok := fps[p]; ok {
+				fp, fpPath = v[0], v[1]
+			}
+			if _, err := tx.Exec(`INSERT INTO observation_files (observation_id, path, kind, fingerprint, fp_path) VALUES (?, ?, ?, ?, ?)`, oid, p, kind, fp, fpPath); err != nil {
 				return 0, false, fmt.Errorf("insert observation file: %w", err)
 			}
 		}

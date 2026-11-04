@@ -68,4 +68,6 @@ It matches patterns. It is not a data-loss filter.
 ## What is stored
 
 The database holds your prompts, tool inputs and outputs (masked), and the notes and
-summaries. It is a file in the state directory. Treat it like your transcripts, which it mirrors.
+summaries. It is a file in the state directory. For each file a note names, it also holds a
+hash of that file's content at the time (see [Stale notes](index.md#stale-notes)); the hash
+is not sent anywhere. Treat it like your transcripts, which it mirrors.

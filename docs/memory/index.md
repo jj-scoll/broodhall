@@ -66,6 +66,42 @@ on [Privacy and redaction](privacy.md).
 The three `smart_` tools run inside the MCP process, stay inside the project directory, and
 refuse credential files.
 
+## Stale notes
+
+A note about a file is wrong once the file changes. When the daemon stores a note, it also
+records a fingerprint of each file the note names: the git blob hash of the file's bytes,
+the value `git hash-object` prints, with the absolute path it was taken from. A relative
+path is resolved against the session's working directory. A file that cannot be read, is
+larger than 1 MiB, is not a regular file or is on the secret-file list gets no fingerprint.
+
+Where notes are shown, memory compares each fingerprint with the file now and marks the
+note:
+
+- `(file changed since)`: the file's content differs.
+- `(file removed since)`: the file is gone from a directory that still exists. A rename
+  counts as removed.
+
+The mark appears in the SessionStart context, in `search` and `timeline` results and in
+`get_observations`, which also lists the files. In `search`, marked notes sort after
+unmarked ones within the page of results. An explicit `orderBy` date order is kept as it is.
+
+What is left unmarked:
+
+- Notes written before this feature, which have no fingerprint. They stay unmarked.
+- Notes imported from an older store. A fingerprint taken at import time would describe
+  today's file, not the file the note was about.
+- Paths that do not exist here because the note came from another machine: when the
+  file's directory is missing too, memory cannot tell.
+- Files over 1 MiB, and files beyond the first 200 that one run checks.
+
+The check is cheap on purpose. Each run (one context build or one tool call) hashes each
+path at most once and at most 200 files. The SessionStart context looks at 20 notes. The
+`smart_search` tool searches source code, not notes, so it has no marks.
+
+Two limits. The fingerprint is taken when the worker stores the note, which can be a little
+after the tool call, so an edit made in between is not seen. And a mark says the file
+changed, not that the note is wrong.
+
 ## The handoff skill
 
 The plugin ships a skill named `handoff`. When you stop or switch sessions, Claude writes a
