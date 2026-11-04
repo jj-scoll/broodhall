@@ -1,6 +1,6 @@
 # Options
 
-Nine plugin options, two files under `~/.config/claude-tools/`, and two environment variables
+Ten plugin options, two files under `~/.config/claude-tools/`, and two environment variables
 that are not plugin options (`HANDOFF_AUTOCLEAR` and `CLAUDE_TOOLS_BIN`).
 
 Set the plugin options with `/plugin configure guardrails@broodhall`, or from `/config`.
@@ -47,6 +47,45 @@ Outside the plugin the same list is read from `CLAUDE_TOOLS_PII_ALLOW`.
   domain and its subdomains. The domain of `git config --global user.email` always matches.
 - In the [PII](pii.md) mask, only full addresses stay readable (and your git address). An
   `@domain` entry has no effect there.
+
+## `observe`
+
+| | |
+| --- | --- |
+| Title | Observe mode (log only) |
+| Default | off |
+| Description | Off by default. When on, the optional guards (git, egress, pii, raw-client-data, session-url) allow the call and record what they would have asked or blocked, instead of stopping it. The core blocks, settings-file guard and secret-file guard stay enforced. Run claude-tools guard-report to see the counts. |
+
+Use it to see what the guards would do before you let them stop anything. It is one switch
+for all guards, not one per guard.
+
+What it covers is exactly the five families that `disabled_guards` can name. An ask from one
+of them does not ask, and a block from one of them does not block. The call runs.
+
+What it does not cover is what has no switch: the [core blocks](bash-core.md), the
+`git push --force` block, [Settings files](settings-files.md) and
+[Secret files](secret-files.md). They stay enforced in observe mode, because letting them
+through would delete files or show a secret to the model on your first day. The Read limits
+and the other nudges work as usual too.
+
+What you and Claude see:
+
+- Claude gets a note next to the tool result: `Guardrails observe mode: this call would have
+  asked you first (git-stash) and ran anyway.`, followed by the guard's usual reason.
+- You see the [receipt](receipt.md) line `would ask 1 (git-stash)` or `would block 1
+  (session-url)`, and the statusline `guards` count shows the same.
+- The guard ledger records `would-ask` or `would-block` with the rule id. Run
+  `claude-tools guard-report` for the counts across sessions.
+
+An observed rule never hides a later one. In `git stash && cat ~/.aws/credentials`, the stash
+is let through and the secret read is still masked.
+
+Outside the plugin, set `CLAUDE_TOOLS_OBSERVE=1`; `true` and `yes` also turn it on. A set
+plugin option wins over it. Turn the option off to enforce again.
+
+`claude-tools guard-report` prints one row per rule with how many times it fired, split by
+kind. It cannot say how many asks you approved or denied: the ledger records that an ask
+happened, not your answer, and no hook sees the answer.
 
 ## `fail_open`
 

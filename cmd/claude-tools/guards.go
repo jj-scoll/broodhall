@@ -55,6 +55,10 @@ type guardEnv struct {
 	// Off holds the rule families CLAUDE_TOOLS_OFF turns off (pii, raw-client-data,
 	// session-url, egress, git). Nil runs every rule.
 	Off map[string]bool
+	// Observe lets optional-family asks and blocks through and collects them in Would
+	// (observe.go).
+	Observe bool
+	Would   []decision
 }
 
 // guardsOff parses CLAUDE_TOOLS_OFF, a comma-separated list of rule families.

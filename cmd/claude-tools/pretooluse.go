@@ -20,7 +20,7 @@ var supersededLegacy = map[string]bool{"rm -rf /": true, "rm -rf ~": true, "rm -
 // decide is the current rule set. guard-replay measures it against decideLegacy.
 func decide(env *guardEnv, cmd string) decision {
 	// The model must not loosen the PII rules (piirulesguard.go).
-	if d := piiRulesGuard(env, cmd); d.Exit != 0 && !env.Off["pii"] {
+	if d := piiRulesGuard(env, cmd); d.Exit != 0 && !env.Off["pii"] && !env.observed(d) {
 		return d
 	}
 	// rm of the filesystem root, home or system dirs: exact-target rule, not a substring.
@@ -38,11 +38,11 @@ func decide(env *guardEnv, cmd string) decision {
 		return d
 	}
 	// Session links must not leave the machine (git push, gh pr create|edit).
-	if d := sessionURLRule(env, cmd); d.Exit != 0 && !env.Off["session-url"] {
+	if d := sessionURLRule(env, cmd); d.Exit != 0 && !env.Off["session-url"] && !env.observed(d) {
 		return d
 	}
 	// duckdb dot-commands that would print around the PII mask.
-	if d := duckdbDotRule(cmd); d.Exit != 0 && !env.Off["pii"] {
+	if d := duckdbDotRule(cmd); d.Exit != 0 && !env.Off["pii"] && !env.observed(d) {
 		return d
 	}
 	// Claude Code settings files: the user confirms each model write (settingsguard.go).
@@ -56,11 +56,11 @@ func decide(env *guardEnv, cmd string) decision {
 	} else {
 		rule, what = gitDestructiveText(cmd)
 	}
-	if rule != "" && !env.Off["git"] {
-		return askDecision(rule, what)
+	if g := askDecision(rule, what); rule != "" && !env.Off["git"] && !env.observed(g) {
+		return g
 	}
 	// Python reading raw client data prints it unmasked: the user confirms.
-	if d := rawClientDataRule(cmd); d.Ask && !env.Off["raw-client-data"] {
+	if d := rawClientDataRule(cmd); d.Ask && !env.Off["raw-client-data"] && !env.observed(d) {
 		return d
 	}
 	// Secret files: masked reads, the user confirms anything else (secretguard.go).
@@ -69,7 +69,7 @@ func decide(env *guardEnv, cmd string) decision {
 		return d
 	}
 	// Data leaving the machine: the user confirms PII, secrets and payloads the guard can't read (egressguard.go).
-	if e := egressRule(env, cmd); e.Ask && !env.Off["egress"] {
+	if e := egressRule(env, cmd); e.Ask && !env.Off["egress"] && !env.observed(e) {
 		return e
 	}
 	// Warnings that Claude can actually read: exit 0 + additionalContext.
@@ -143,12 +143,18 @@ func preToolUseRun(data []byte, self string, rtk func([]byte) ([]byte, []byte, i
 	home, _ := os.UserHomeDir()
 	xdg := os.Getenv("XDG_CONFIG_HOME")
 	off := guardsOff(os.Getenv("CLAUDE_TOOLS_OFF"))
+	observe := observeOn(os.Getenv("CLAUDE_TOOLS_OBSERVE"))
 	if in.ToolName != "Bash" {
 		var raw struct {
 			ToolInput map[string]any `json:"tool_input"`
 		}
 		json.Unmarshal(data, &raw)
 		if d, ok := rulesFileToolDeny(in.ToolName, raw.ToolInput, in.Cwd, home, xdg); ok && !off["pii"] {
+			if observe {
+				logGuardEvent(in.SessionID, wouldKind(d), d.Rule)
+				emitContext(stdout, "PreToolUse", observeNote([]decision{d}))
+				return 0
+			}
 			logGuardEvent(in.SessionID, "block", d.Rule)
 			fmt.Fprintln(stderr, d.Msg)
 			return d.Exit
@@ -169,6 +175,11 @@ func preToolUseRun(data []byte, self string, rtk func([]byte) ([]byte, []byte, i
 			return d.Exit
 		}
 		if d, ok := egressToolDecision(in.ToolName, raw.ToolInput, in.Cwd); ok && d.Ask && !off["egress"] {
+			if observe {
+				logGuardEvent(in.SessionID, wouldKind(d), d.Rule)
+				emitContext(stdout, "PreToolUse", observeNote([]decision{d}))
+				return 0
+			}
 			logGuardEvent(in.SessionID, "ask", d.Rule)
 			emitAsk(stdout, "PreToolUse", d.Msg)
 			return 0
@@ -179,8 +190,11 @@ func preToolUseRun(data []byte, self string, rtk func([]byte) ([]byte, []byte, i
 		}
 		return 0
 	}
-	env := &guardEnv{Now: time.Now(), Session: in.SessionID, Cwd: in.Cwd, Home: home, XDGConfig: xdg, State: newFileState(in.SessionID), GitUnpushed: gitUnpushed, Off: off}
+	env := &guardEnv{Now: time.Now(), Session: in.SessionID, Cwd: in.Cwd, Home: home, XDGConfig: xdg, State: newFileState(in.SessionID), GitUnpushed: gitUnpushed, Off: off, Observe: observe}
 	d := decide(env, in.ToolInput.Command)
+	for _, w := range env.Would {
+		logGuardEvent(in.SessionID, wouldKind(w), w.Rule)
+	}
 	switch {
 	case d.Ask:
 		logGuardEvent(in.SessionID, "ask", d.Rule)
@@ -196,6 +210,13 @@ func preToolUseRun(data []byte, self string, rtk func([]byte) ([]byte, []byte, i
 		logGuardEvent(in.SessionID, "nudge", d.Rule)
 	}
 	ctxOut := d.Context
+	if note := observeNote(env.Would); note != "" {
+		if ctxOut != "" {
+			ctxOut = note + "\n\n" + ctxOut
+		} else {
+			ctxOut = note
+		}
+	}
 	if memdShellLookup() {
 		var raw struct {
 			ToolInput map[string]any `json:"tool_input"`

@@ -23,6 +23,12 @@
       "description": "Comma-separated addresses or @domains the egress guard treats as yours, such as @example.com. The domain of your global git user.email always counts.",
       "default": ""
     },
+    "observe": {
+      "type": "boolean",
+      "title": "Observe mode (log only)",
+      "description": "Off by default. When on, the optional guards (git, egress, pii, raw-client-data, session-url) allow the call and record what they would have asked or blocked, instead of stopping it. The core blocks, settings-file guard and secret-file guard stay enforced. Run claude-tools guard-report to see the counts.",
+      "default": false
+    },
     "fail_open": {
       "type": "boolean",
       "title": "Allow tool calls when the guard binary is missing",

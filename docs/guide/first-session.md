@@ -14,6 +14,17 @@ top-level directories such as `/home`, `git push --force`, `dd if=`, fork bombs)
 and `disabled_guards` turns the optional families off. See
 [Options](../guardrails/options.md).
 
+## Try it in observe mode first
+
+If you do not want a guard to stop you yet, turn on the
+[`observe`](../guardrails/options.md#observe) option with `/plugin configure guardrails@broodhall`.
+The git, egress, PII, raw-client-data and session-URL guards then let the call run and record
+what they would have done. You see a `would ask` or `would block` count in the receipt line.
+
+After a few days, run `claude-tools guard-report` to see which rules fired and how often. Then
+turn `observe` off. The core blocks, settings files and secret files are enforced in observe
+mode too.
+
 ## See it work
 
 In a throwaway repository, ask Claude to run `git reset --hard`. Claude Code stops and shows
