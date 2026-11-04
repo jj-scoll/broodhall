@@ -21,6 +21,9 @@ export CLAUDE_TOOLS_PII_ALLOW="${CLAUDE_PLUGIN_OPTION_ALLOWED_EMAIL_DOMAINS-${CL
 # Client-data rules come from the user; with none set they do nothing (see docs/guardrails/pii.md).
 export CLAUDE_TOOLS_CLIENT_BUCKETS="${CLAUDE_PLUGIN_OPTION_CLIENT_DATA_BUCKETS-${CLAUDE_TOOLS_CLIENT_BUCKETS-}}"
 export CLAUDE_TOOLS_MASKED_DIRS="${CLAUDE_PLUGIN_OPTION_MASKED_COPY_DIRS-${CLAUDE_TOOLS_MASKED_DIRS-}}"
+# The opt-in rtk rewrite is off unless the rtk option (or CLAUDE_TOOLS_RTK) says on.
+export CLAUDE_TOOLS_RTK="${CLAUDE_PLUGIN_OPTION_RTK-${CLAUDE_TOOLS_RTK-}}"
+export CLAUDE_TOOLS_RTK_CMD="${CLAUDE_PLUGIN_OPTION_RTK_COMMAND-${CLAUDE_TOOLS_RTK_CMD-}}"
 # Per-session guard state stays with this user's plugin data, not in a shared /tmp dir.
 export HANDOFF_STATE_DIR="${HANDOFF_STATE_DIR-$data}"
 
