@@ -14,6 +14,8 @@ Start a new session afterwards.
 
 The marketplace also has [memory](memory/index.md), which gives Claude a searchable memory of
 your past sessions: `claude plugin install memory@broodhall`.
+[RTK](rtk/index.md) tells Claude how rtk-condensed command output reads:
+`claude plugin install rtk@broodhall`.
 
 - [Why it exists](guide/why.md): the problem, the four ways it answers, and what it is not.
 - [Install](guide/install.md): platforms, what gets downloaded, and how to test a local build.

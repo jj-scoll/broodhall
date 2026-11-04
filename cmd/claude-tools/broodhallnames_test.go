@@ -108,3 +108,41 @@ func TestBroodhallNames(t *testing.T) {
 		}
 	}
 }
+
+// The rtk plugin lives in the jj-scoll/rtk fork, not in this repo: a git-subdir source
+// checks out only its claude-plugin/ directory, from the fork's develop branch.
+func TestMarketplaceRTKEntry(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(pluginDir, "../..", ".claude-plugin/marketplace.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mkt struct {
+		Plugins []struct {
+			Name   string          `json:"name"`
+			Source json.RawMessage `json:"source"`
+		} `json:"plugins"`
+	}
+	if err := json.Unmarshal(b, &mkt); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"source": "git-subdir", "url": "jj-scoll/rtk", "path": "claude-plugin", "ref": "develop"}
+	for _, p := range mkt.Plugins {
+		if p.Name != "rtk" {
+			continue
+		}
+		var got map[string]string
+		if err := json.Unmarshal(p.Source, &got); err != nil {
+			t.Fatalf("rtk source is not an object of strings: %s", p.Source)
+		}
+		if len(got) != len(want) {
+			t.Errorf("rtk source = %v, want %v", got, want)
+		}
+		for k, v := range want {
+			if got[k] != v {
+				t.Errorf("rtk source %s = %q, want %q", k, got[k], v)
+			}
+		}
+		return
+	}
+	t.Error("marketplace.json has no rtk plugin entry")
+}
