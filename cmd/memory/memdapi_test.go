@@ -50,7 +50,7 @@ func seedAPI(t *testing.T, db *sql.DB) {
 		apiExec(t, db, `INSERT INTO observations (project, session_id, type, raw_type, title, subtitle, narrative, source)
 			VALUES (?, 's1', ?, ?, ?, 'sub', 'narr', 'live')`, "proj-a", ty, ty, "title "+ty+string(rune('A'+i)))
 	}
-	apiExec(t, db, `INSERT INTO observation_files VALUES (1, 'a.go', 'read'), (1, 'b.go', 'modified')`)
+	apiExec(t, db, `INSERT INTO observation_files (observation_id, path, kind) VALUES (1, 'a.go', 'read'), (1, 'b.go', 'modified')`)
 	apiExec(t, db, `INSERT INTO prompts (session_id, prompt_number, text) VALUES ('s1', 1, 'do the thing')`)
 	apiExec(t, db, `INSERT INTO summaries (project, session_id, request, source) VALUES ('proj-a','s1','req text','live')`)
 	// Raw tool use with a canary in input and output.
