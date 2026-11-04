@@ -1,5 +1,5 @@
 {
-  "notes": "Match against full normalized column name (lowercase, camelCase->snake_case). tier1=direct PII (mask by default), tier2=linkable/quasi-identifier (opt-in or default-on at user discretion), tier3=free text/json whose contents are unknown (mask or content-regex). Add your own schema's columns in ~/.config/claude-tools/pii-columns.json.",
+  "notes": "Match against full normalized column name (lowercase, camelCase->snake_case). tier1=direct PII (mask by default), tier2=linkable/quasi-identifier (opt-in or default-on at user discretion), tier3=free text/json whose contents are unknown (mask or content-regex). Add your own schema's columns in ~/.config/guardrails/pii-columns.json.",
   "rules": [
     {
       "name": "email",
@@ -207,16 +207,5 @@
   ],
   "explicit_columns": [
     "driver_id"
-  ],
-  "free_text_columns": [
-    "errors",
-    "error",
-    "error_stmt",
-    "error_detail",
-    "error_message",
-    "error_desc",
-    "notes",
-    "description",
-    "transaction"
   ]
 }

@@ -10,9 +10,11 @@ A Claude Code marketplace with four plugins.
 | rtk | Tells Claude how [rtk](https://github.com/jj-scoll/rtk)-condensed command output reads. | rtk from the jj-scoll fork on `PATH`. | The session-start note is on. The command rewrite is off until you turn on the guardrails `rtk` option. |
 
 The guardrails hooks are one static Go binary, also named `guardrails` (in older releases,
-`claude-tools`). Its config and state directories (`~/.config/claude-tools`,
-`~/.local/state/claude-tools`) and its `CLAUDE_TOOLS_*` environment variables keep the old
-name. memory has no `/plugin configure` options; it reads environment variables and an optional
+`claude-tools`). Its config and state directories are `~/.config/guardrails` and
+`~/.local/state/guardrails`, and its environment variables are `GUARDRAILS_*`. Files you
+already have under `~/.config/claude-tools` or `~/.local/state/claude-tools` keep being used,
+and a `CLAUDE_TOOLS_*` variable still works while its `GUARDRAILS_*` name is unset (see
+[Options](docs/guardrails/options.md#older-names)). memory has no `/plugin configure` options; it reads environment variables and an optional
 settings file instead.
 
 ## Quick start

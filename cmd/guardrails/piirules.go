@@ -2,8 +2,9 @@ package main
 
 // PII column rules: where they come from at run time, and the `pii-rules` subcommand.
 //
-// Load order: (1) $XDG_CONFIG_HOME/claude-tools/pii-columns.json, or
-// ~/.config/claude-tools/pii-columns.json; (2) the copy embedded in the binary. The user owns the
+// Load order: (1) $XDG_CONFIG_HOME/guardrails/pii-columns.json, or
+// ~/.config/guardrails/pii-columns.json (the claude-tools dir instead when only that one has
+// the file, see userdirs.go); (2) the copy embedded in the binary. The user owns the
 // file; the model must not be able to loosen masking, so:
 //   - the path has no guardrails specific environment override (the model could set one in
 //     its own Bash command). XDG_CONFIG_HOME and HOME are the only inputs, and the
@@ -39,13 +40,22 @@ func defaultPIIRulesPath() string {
 	return piiRulesPathFor(os.Getenv("XDG_CONFIG_HOME"), home)
 }
 
-// piiRulesPathFor follows the XDG rule: a relative XDG_CONFIG_HOME is ignored.
-func piiRulesPathFor(xdg, home string) string {
+// configBase follows the XDG rule: a relative XDG_CONFIG_HOME is ignored. "" when neither
+// names a directory.
+func configBase(xdg, home string) string {
 	switch {
 	case filepath.IsAbs(xdg):
-		return filepath.Join(xdg, "claude-tools", piiRulesFile)
+		return xdg
 	case home != "":
-		return filepath.Join(home, ".config", "claude-tools", piiRulesFile)
+		return filepath.Join(home, ".config")
+	}
+	return ""
+}
+
+// piiRulesPathFor is the rules file under the config base (see userPath for the name).
+func piiRulesPathFor(xdg, home string) string {
+	if base := configBase(xdg, home); base != "" {
+		return userPath(base, piiRulesFile)
 	}
 	return ""
 }

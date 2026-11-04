@@ -2,7 +2,9 @@ package main
 
 // PreToolUse guard for the PII rules file (see piirules.go). Masking protects the model from
 // client data, so the model must not be able to loosen the rules that do the masking: the user
-// owns ~/.config/claude-tools/pii-columns.json.
+// owns ~/.config/guardrails/pii-columns.json, and the claude-tools one from before the rename.
+// Both are guarded whichever one the loader uses, so the model cannot add a file under the
+// new name that would take over from the user's old one.
 //
 //   - Edit/Write/MultiEdit/NotebookEdit: the target path is resolved (~, relative, .., and
 //     symlinks of the deepest existing ancestor) and compared with the rules file.
@@ -21,10 +23,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
-const rulesDenyMsg = "PII rules (~/.config/claude-tools/pii-columns.json) are the user's to edit, not the model's."
+const rulesDenyMsg = "PII rules (pii-columns.json) are the user's to edit, not the model's."
 
 func rulesDeny(rule, extra string) decision {
 	m := rulesDenyMsg
@@ -34,16 +37,17 @@ func rulesDeny(rule, extra string) decision {
 	return decision{Exit: 2, Rule: rule, Msg: "BLOCKED: " + m}
 }
 
-// rulesFiles is every path the loader may read: the HOME one and the XDG one.
+// rulesFiles is every path the loader may read: under the HOME and the XDG config base, each
+// with the new and the old dir name.
 func rulesFiles(home, xdg string) []string {
 	files := []string{}
 	for _, x := range []string{"", xdg} {
-		if p := piiRulesPathFor(x, home); p != "" {
-			dup := false
-			for _, q := range files {
-				dup = dup || q == p
-			}
-			if !dup {
+		base := configBase(x, home)
+		if base == "" {
+			continue
+		}
+		for _, p := range userPaths(base, piiRulesFile) {
+			if !slices.Contains(files, p) {
 				files = append(files, p)
 			}
 		}
@@ -151,7 +155,7 @@ func piiRulesGuard(env *guardEnv, cmd string) decision {
 		return rulesDeny("pii-rules:env", "Setting XDG_CONFIG_HOME or HOME would point guardrails at a different rules file.")
 	}
 	files := rulesFiles(env.Home, env.XDGConfig)
-	if len(files) == 0 || !strings.Contains(cmd, "pii-columns") && !strings.Contains(cmd, "claude-tools") {
+	if len(files) == 0 || !strings.Contains(cmd, "pii-columns") && !strings.Contains(cmd, "claude-tools") && !strings.Contains(cmd, "guardrails") {
 		return decision{}
 	}
 	var dirs []string

@@ -27,7 +27,7 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// egressOwn returns the allowed addresses (piiAllow: git user.email plus CLAUDE_TOOLS_PII_ALLOW,
+// egressOwn returns the allowed addresses (piiAllow: git user.email plus GUARDRAILS_PII_ALLOW,
 // where an "@domain" entry allows that whole domain) and the git user.email domain. Tests
 // replace it.
 var egressOwn = func() ([]string, string) {

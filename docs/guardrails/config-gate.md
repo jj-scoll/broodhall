@@ -17,7 +17,7 @@ which keeps the session on its current settings, when the change does any of thi
 - Sets `enabledPlugins` for `guardrails@<marketplace>` to `false`, or removes the entry.
 - Adds a family to the plugin's `disabled_guards` option in `pluginConfigs`. An unset option
   counts as the default families, so unsetting an option that was empty also counts.
-- Adds, changes or removes a `CLAUDE_TOOLS_*` variable under `env`, `CLAUDE_TOOLS_OFF`
+- Adds, changes or removes a `GUARDRAILS_*` or `CLAUDE_TOOLS_*` variable under `env`, `GUARDRAILS_OFF`
   included.
 - Adds a `PreToolUse` or `PermissionRequest` hook. Such a hook can allow or rewrite a call
   the guards ask about, and a settings file cannot say which kind it is.
@@ -40,7 +40,7 @@ create, update or similar.
 ## How it decides
 
 At session start the hook saves a snapshot of the user and project settings files, in
-`$XDG_STATE_HOME/claude-tools/config-gate/` (`~/.local/state/...` when unset). Later changes
+`$XDG_STATE_HOME/guardrails/config-gate/` (`~/.local/state/...` when unset). Later changes
 are compared with the snapshot. A change that applies becomes the new snapshot; a blocked one
 does not. Claude Code stages some edits as `<file>.proposed-<id>` for review; those are
 compared with their target and never written when blocked. A direct edit is already on disk

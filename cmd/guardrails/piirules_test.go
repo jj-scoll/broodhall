@@ -41,9 +41,9 @@ func TestPIIRulesPathFor(t *testing.T) {
 	tests := []struct {
 		name, xdg, home, want string
 	}{
-		{"home default", "", "/home/u", "/home/u/.config/claude-tools/pii-columns.json"},
-		{"xdg wins", "/x/cfg", "/home/u", "/x/cfg/claude-tools/pii-columns.json"},
-		{"relative xdg ignored", "cfg", "/home/u", "/home/u/.config/claude-tools/pii-columns.json"},
+		{"home default", "", "/nohome/u", "/nohome/u/.config/guardrails/pii-columns.json"},
+		{"xdg wins", "/nohome/cfg", "/nohome/u", "/nohome/cfg/guardrails/pii-columns.json"},
+		{"relative xdg ignored", "cfg", "/nohome/u", "/nohome/u/.config/guardrails/pii-columns.json"},
 		{"nothing known", "", "", ""},
 	}
 	for _, tt := range tests {
@@ -53,6 +53,35 @@ func TestPIIRulesPathFor(t *testing.T) {
 			}
 		})
 	}
+	t.Run("an existing claude-tools file is still used", func(t *testing.T) {
+		home := t.TempDir()
+		old := filepath.Join(home, ".config", "claude-tools", "pii-columns.json")
+		os.MkdirAll(filepath.Dir(old), 0o755)
+		os.WriteFile(old, []byte(onlySSN), 0o644)
+		if got := piiRulesPathFor("", home); got != old {
+			t.Errorf("got %q, want the existing %q", got, old)
+		}
+	})
+}
+
+// With only the old file present, init must not write a second file under the new name:
+// that one would silently take over from the rules the user edited.
+func TestPIIRulesInitKeepsOldFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	piiRulesPath = defaultPIIRulesPath
+	t.Cleanup(func() { piiRulesPath = func() string { return "" } })
+	old := filepath.Join(home, ".config", "claude-tools", "pii-columns.json")
+	os.MkdirAll(filepath.Dir(old), 0o755)
+	os.WriteFile(old, []byte(onlySSN), 0o644)
+	var out, errb bytes.Buffer
+	if code := piiRulesRun(&out, &errb, []string{"init"}); code == 0 || !strings.Contains(errb.String(), old) {
+		t.Errorf("init exit %d err %q, want a refusal naming %s", code, errb.String(), old)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".config", "guardrails", "pii-columns.json")); err == nil {
+		t.Errorf("init wrote a new-name file next to the old one")
+	}
 }
 
 func TestPIIRulesNoEnvOverride(t *testing.T) {
@@ -61,10 +90,11 @@ func TestPIIRulesNoEnvOverride(t *testing.T) {
 	t.Setenv("CLAUDE_TOOLS_PII_COLUMNS", "/tmp/loose.json")
 	t.Setenv("PII_COLUMNS", "/tmp/loose.json")
 	t.Setenv("XDG_CONFIG_HOME", "")
-	t.Setenv("HOME", "/home/u")
+	t.Setenv("GUARDRAILS_PII_COLUMNS", "/tmp/loose.json")
+	t.Setenv("HOME", "/nohome/u")
 	piiRulesPath = defaultPIIRulesPath
 	t.Cleanup(func() { piiRulesPath = func() string { return "" } })
-	if got := piiRulesPath(); got != "/home/u/.config/claude-tools/pii-columns.json" {
+	if got := piiRulesPath(); got != "/nohome/u/.config/guardrails/pii-columns.json" {
 		t.Errorf("path = %q", got)
 	}
 }
@@ -261,6 +291,12 @@ func TestGuardDeniesRulesFileWrites(t *testing.T) {
 		"XDG_CONFIG_HOME=/tmp/loose guardrails redact --pii",
 		"HOME=/x ~/.claude/plugins/data/guardrails-broodhall/bin/1.6.0/guardrails redact",
 		`bash -c 'HOME=/x guardrails redact'`,
+		// The new name's file is guarded too, whichever one the loader uses today.
+		"echo '{}' > ~/.config/guardrails/pii-columns.json",
+		"sed -i 's/a/b/' /nohome/user/.config/guardrails/pii-columns.json",
+		"cp /tmp/loose.json $HOME/.config/guardrails/pii-columns.json",
+		"rm -rf ~/.config/guardrails",
+		"cd ~/.config/guardrails && echo '{}' > pii-columns.json",
 	}
 	for _, cmd := range denied {
 		t.Run(cmd, func(t *testing.T) {
@@ -271,7 +307,7 @@ func TestGuardDeniesRulesFileWrites(t *testing.T) {
 		})
 	}
 	t.Run("exact message", func(t *testing.T) {
-		if d := guardCmd("rm " + f); !strings.Contains(d.Msg, "PII rules (~/.config/claude-tools/pii-columns.json) are the user's to edit, not the model's.") {
+		if d := guardCmd("rm " + f); !strings.Contains(d.Msg, "PII rules (pii-columns.json) are the user's to edit, not the model's.") {
 			t.Errorf("msg = %q", d.Msg)
 		}
 	})
@@ -327,7 +363,8 @@ func TestGuardDeniesRulesFileEditTools(t *testing.T) {
 	os.Symlink(file, link)
 
 	for _, tool := range []string{"Edit", "Write", "MultiEdit"} {
-		for name, p := range map[string]string{"direct": file, "tilde": "~/.config/claude-tools/pii-columns.json", "dotdot": cfg + "/../claude-tools/pii-columns.json", "symlink": link} {
+		for name, p := range map[string]string{"direct": file, "tilde": "~/.config/claude-tools/pii-columns.json", "dotdot": cfg + "/../claude-tools/pii-columns.json", "symlink": link,
+			"new name, not yet created": "~/.config/guardrails/pii-columns.json"} {
 			t.Run(tool+"/"+name, func(t *testing.T) {
 				code, msg := runToolHook(t, home, tool, map[string]any{"file_path": p, "content": "{}"})
 				if code != 2 || !strings.Contains(msg, "the user's to edit") {
