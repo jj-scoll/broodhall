@@ -28,7 +28,7 @@
       "name": "rtk",
       "source": {
         "source": "git-subdir",
-        "url": "jj-scoll/rtk",
+        "url": "https://github.com/jj-scoll/rtk.git",
         "path": "claude-plugin",
         "ref": "develop"
       },
