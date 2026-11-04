@@ -1,7 +1,7 @@
 site_name: broodhall
 site_url: https://jj-scoll.github.io/broodhall/
 repo_url: https://github.com/jj-scoll/broodhall
-site_author: Jeff Scollick
+site_author: jj-scoll
 
 theme:
   name: material
