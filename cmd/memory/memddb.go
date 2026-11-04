@@ -264,6 +264,10 @@ func memdMigrate(db *sql.DB) error {
 			return fmt.Errorf("memory schema: add observation_files.%s: %w", c, err)
 		}
 	}
+	// A /clear or compaction marker seen but not yet taken by a response, kept across restarts.
+	if _, err := db.Exec(`ALTER TABLE transcript_offsets ADD COLUMN IF NOT EXISTS reset_kind VARCHAR DEFAULT ''`); err != nil {
+		return fmt.Errorf("memory schema: add transcript_offsets.reset_kind: %w", err)
+	}
 	if _, err := db.Exec(memdSearchSchema); err != nil {
 		return fmt.Errorf("memory search schema: %w", err)
 	}

@@ -93,7 +93,7 @@ func (t *memdTailer) Scan() (newEvents int, err error) {
 // loadOffsets reads every stored offset in one query, so the first pass over thousands of
 // transcripts does not look each one up.
 func (t *memdTailer) loadOffsets() error {
-	rows, err := t.db.Query(`SELECT path, byte_offset, inode, size, observer, sub FROM transcript_offsets`)
+	rows, err := t.db.Query(`SELECT path, byte_offset, inode, size, observer, sub, coalesce(reset_kind, '') FROM transcript_offsets`)
 	if err != nil {
 		return fmt.Errorf("load offsets: %w", err)
 	}
@@ -101,7 +101,7 @@ func (t *memdTailer) loadOffsets() error {
 	for rows.Next() {
 		var path string
 		f := &memdTailFile{known: true, resumed: true}
-		if err := rows.Scan(&path, &f.offset, &f.inode, &f.size, &f.st.Observer, &f.st.Sub); err != nil {
+		if err := rows.Scan(&path, &f.offset, &f.inode, &f.size, &f.st.Observer, &f.st.Sub, &f.st.Reset); err != nil {
 			return fmt.Errorf("load offsets: %w", err)
 		}
 		t.files[path] = f
@@ -257,12 +257,12 @@ func (t *memdTailer) commit(path string, f *memdTailFile, events []memdEvent, in
 		name := filepath.Base(path)
 		sessionID = strings.TrimSuffix(name, filepath.Ext(name))
 	}
-	_, err = tx.Exec(`INSERT INTO transcript_offsets (path, session_id, byte_offset, inode, size, observer, sub, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, current_timestamp)
+	_, err = tx.Exec(`INSERT INTO transcript_offsets (path, session_id, byte_offset, inode, size, observer, sub, reset_kind, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)
 ON CONFLICT (path) DO UPDATE SET session_id = excluded.session_id, byte_offset = excluded.byte_offset,
-  inode = excluded.inode, size = excluded.size, observer = excluded.observer, sub = excluded.sub,
+  inode = excluded.inode, size = excluded.size, observer = excluded.observer, sub = excluded.sub, reset_kind = excluded.reset_kind,
   updated_at = excluded.updated_at`,
-		path, sessionID, newOffset, inode, size, f.st.Observer, f.st.Sub)
+		path, sessionID, newOffset, inode, size, f.st.Observer, f.st.Sub, f.st.Reset)
 	if err != nil {
 		return 0, fmt.Errorf("save offset: %w", err)
 	}

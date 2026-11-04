@@ -306,3 +306,49 @@ func TestUsageMigratesDBWithoutTable(t *testing.T) {
 		t.Fatalf("existing data lost: %d %v", wm, err)
 	}
 }
+
+func TestUsageResetSurvivesRestart(t *testing.T) {
+	e := newTailEnv(t, "")
+	u := func(id, s int) string {
+		return usageLine{sess: "s1", mid: fmt.Sprintf("m%d", id), rid: "r", model: "m", ts: tailTS(1, 0, s), out: 1}.String()
+	}
+	clear := `{"type":"user","sessionId":"s1","timestamp":"` + tailTS(1, 0, 1) + `","message":{"role":"user","content":"<command-name>/clear</command-name>"}}` + "\n"
+	p := writeTranscript(t, e.dir, "s1.jsonl", u(0, 0)+clear)
+	if _, err := e.tailer().Scan(); err != nil {
+		t.Fatal(err)
+	}
+	// The daemon restarts between the marker and the next response.
+	f, err := os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString(u(1, 2))
+	f.Close()
+	if _, err := e.tailer().Scan(); err != nil {
+		t.Fatal(err)
+	}
+	var k string
+	if err := e.db.QueryRow(`SELECT reset_kind FROM api_usage WHERE message_id = 'm1'`).Scan(&k); err != nil || k != "clear" {
+		t.Fatalf("reset_kind after restart = %q (%v), want clear", k, err)
+	}
+}
+
+func TestUsageMigratesTranscriptOffsetsWithoutResetColumn(t *testing.T) {
+	db, _ := openTestMemd(t)
+	if _, err := db.Exec(`INSERT INTO transcript_offsets (path, byte_offset) VALUES ('/p.jsonl', 10)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`ALTER TABLE transcript_offsets DROP COLUMN reset_kind`); err != nil { // the shape origin/main made
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := memdMigrate(db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var off int64
+	var k string
+	if err := db.QueryRow(`SELECT byte_offset, coalesce(reset_kind, '') FROM transcript_offsets`).Scan(&off, &k); err != nil || off != 10 || k != "" {
+		t.Fatalf("row = %d %q (%v)", off, k, err)
+	}
+}
