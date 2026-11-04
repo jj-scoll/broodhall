@@ -54,7 +54,7 @@ func TestGateBlocksOnceAtThreshold(t *testing.T) {
 	if reply.Decision != "block" {
 		t.Errorf("decision %q, want block", reply.Decision)
 	}
-	for _, want := range []string{"250000 tokens", "threshold 240000", "memory:handoff"} {
+	for _, want := range []string{"250000 tokens", "threshold 240000", "/work/.handoff-next-sess-1.md", "file: ", "## Next Steps", "## Open Questions"} {
 		if !strings.Contains(reply.Reason, want) {
 			t.Errorf("reason lacks %q: %s", want, reply.Reason)
 		}
@@ -151,9 +151,39 @@ func TestGateMessageNamesOnlyPublicTools(t *testing.T) {
 	gateEnv(t)
 	tr := writeTranscript(t, usageLine(250_000))
 	_, out, _ := runHook(t, gate, stopPayload("s", tr, false))
-	for _, bad := range []string{"handoff_writer", ".handoff-next", "write-handoff"} {
+	for _, bad := range []string{"handoff_writer", "write-handoff", "claude-mem", "memory:handoff", "python"} {
 		if strings.Contains(out, bad) {
 			t.Errorf("gate message mentions %q", bad)
+		}
+	}
+}
+
+// The session writes only the Next Steps; it is told not to write the handoff itself.
+func TestGateAsksForNextStepsOnly(t *testing.T) {
+	gateEnv(t)
+	tr := writeTranscript(t, usageLine(250_000))
+	_, out, _ := runHook(t, gate, stopPayload("s", tr, false))
+	if !strings.Contains(out, "Do not write the handoff yourself") {
+		t.Errorf("gate message does not forbid writing the handoff itself: %s", out)
+	}
+	if !strings.Contains(out, "clears itself") {
+		t.Errorf("autoclear on: message does not say the session clears itself: %s", out)
+	}
+}
+
+// With HANDOFF_AUTOCLEAR=0 the handoff is still written but nothing clears the session, so
+// the message must not promise a clear and must tell the user to run /clear.
+func TestGateWithAutoclearOffPromisesNoClear(t *testing.T) {
+	gateEnv(t)
+	t.Setenv("HANDOFF_AUTOCLEAR", "0")
+	tr := writeTranscript(t, usageLine(250_000))
+	_, out, _ := runHook(t, gate, stopPayload("s", tr, false))
+	if strings.Contains(out, "clears itself") {
+		t.Errorf("autoclear off: message promises a clear: %s", out)
+	}
+	for _, want := range []string{".handoff-next-s.md", "/clear", "Do not write the handoff yourself"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("autoclear off: message lacks %q: %s", want, out)
 		}
 	}
 }
