@@ -187,9 +187,10 @@ func TestShimInstall(t *testing.T) {
 	if code, out := runShim(t, env, "X", "pre-tool-use"); code != 3 || !strings.Contains(out, "stdin=X") {
 		t.Fatalf("installed binary: exit %d, stdout %q", code, out)
 	}
-	// Installed: a later SessionStart neither downloads nor speaks.
+	// Installed: a later SessionStart does not download; it runs the doctor, whose output
+	// (the stub's echo here) passes through.
 	env["CLAUDE_TOOLS_RELEASE_URL"] = "file:///nonexistent"
-	if code, out := runShim(t, env, "{}", "install"); code != 0 || out != "" {
+	if code, out := runShim(t, env, "{}", "install"); code != 0 || !strings.HasPrefix(out, "args=doctor -hook\n") {
 		t.Fatalf("second install: exit %d, stdout %q", code, out)
 	}
 }

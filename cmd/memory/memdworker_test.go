@@ -195,6 +195,8 @@ func TestMemdWorkerStoresLiveObservation(t *testing.T) {
 	})
 	startWorkers(t, db, 2)
 	waitFor(t, "done", func() bool { st, _, _, _ := qState(t, db, id); return st == "done" })
+	// The loss receipt is written after the settle, outside its transaction: wait for it too.
+	waitFor(t, "anchor_drop receipt", func() bool { return countQ(t, db, `SELECT count(*) FROM loss_receipts WHERE kind = 'anchor_drop'`) > 0 })
 
 	var source, pv, model, key, project, sess, facts string
 	if err := db.QueryRow(`SELECT source, prompt_version, generated_by_model, dedupe_key, project, session_id, facts FROM observations`).
@@ -252,6 +254,7 @@ func TestMemdWorkerRejected(t *testing.T) {
 	sc := newScripted(t, func(int, string) fakeReply { return result(t, bad, "") })
 	startWorkers(t, db, 2)
 	waitFor(t, "rejected", func() bool { st, _, _, _ := qState(t, db, id); return st == "rejected" })
+	waitFor(t, "rejected receipt", func() bool { return countQ(t, db, `SELECT count(*) FROM loss_receipts WHERE kind = 'rejected'`) > 0 })
 	_, reason, _, leased := qState(t, db, id)
 	if reason != "empty_title" || leased {
 		t.Errorf("reason=%q leased=%v", reason, leased)
@@ -363,6 +366,9 @@ func TestMemdWorkerCapMissingStructuredOutput(t *testing.T) {
 	})
 	startWorkers(t, db, 2)
 	waitFor(t, "rejected", func() bool { st, _, _, _ := qState(t, db, id); return st == "rejected" })
+	waitFor(t, "attempts_exhausted receipt", func() bool {
+		return countQ(t, db, `SELECT count(*) FROM loss_receipts WHERE kind = 'attempts_exhausted'`) > 0
+	})
 	_, reason, att, _ := qState(t, db, id)
 	if reason != "attempts_exhausted" || att != observerMaxAttempts {
 		t.Errorf("reason=%q attempts=%d", reason, att)

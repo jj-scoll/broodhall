@@ -24,8 +24,10 @@ subcommands (`pre-tool-use`, `read-dedup`, `large-read-guard`, `config-gate`) al
 when the binary is not installed: `run.sh` exits 2 with a message on stderr, unless the
 [`fail_open`](../guardrails/options.md#fail_open) option is on. Every other entry exits 0
 silently then, so a missing binary never blocks a stop or a compaction. The `install` entry
-sets a timeout of 120 seconds and never blocks. `config-gate` at `SessionStart` only takes a
-snapshot; `session-env` does nothing unless the
+sets a timeout of 120 seconds and never blocks. After `install` puts the binary in place (or
+finds it there) the launcher runs `claude-tools doctor -hook`, which prints only problems and
+always exits 0. See [Doctor](../guardrails/doctor.md). `config-gate` at `SessionStart` only
+takes a snapshot; `session-env` does nothing unless the
 [`aws_session_tag`](../guardrails/options.md#aws_session_tag) option is on.
 
 ## memory
