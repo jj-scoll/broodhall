@@ -71,8 +71,8 @@ install_bin() (
 	trap 'rm -rf "$tmp"' EXIT
 	# The install runs in the background (see bg_install), so a slow link only needs to finish
 	# within 10 minutes.
-	if ! { curl -fsSL --connect-timeout 5 --max-time 600 -o "$tmp/$asset" "$base/memory-v$ver/$asset" &&
-		curl -fsSL --connect-timeout 5 --max-time 30 -o "$tmp/checksums.txt" "$base/memory-v$ver/checksums.txt"; }; then
+	if ! { curl -fsSL --connect-timeout 5 --max-time 600 -o "$tmp/$asset" "$base/v$ver/$asset" &&
+		curl -fsSL --connect-timeout 5 --max-time 30 -o "$tmp/checksums.txt" "$base/v$ver/checksums.txt"; }; then
 		fail "download of $asset failed"
 	fi
 	if command -v sha256sum >/dev/null 2>&1; then sum=sha256sum; else sum='shasum -a 256'; fi
