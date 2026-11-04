@@ -14,7 +14,7 @@
 # Each stops unless the tag equals v<version> and all plugin.json versions are equal.
 #
 # Build jobs upload a plain .tar (it keeps the exec bit through the artifact); publish packs
-# each memory tar with xz -9e on Linux, so the macOS runners need no xz.
+# the memory tars with .github/scripts/pack-memory.sh on Linux, so the macOS runners need no xz.
 # Each memory tarball holds the binary and ext/, the signed DuckDB extensions it loads (fts,
 # httpfs, quack), so nothing is downloaded at runtime. DUCKDB_VERSION must match the DuckDB that
 # duckdb-go in go.mod links; the tests LOAD the extensions, so a mismatch fails the build.
@@ -140,6 +140,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
+          sparse-checkout: .github/scripts
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -149,7 +153,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DRAFT: ${{ inputs.draft }}
         run: |
-          xz -9e -T0 dist/*.tar
+          .github/scripts/pack-memory.sh dist
           cd dist && sha256sum -- *.tar.gz *.tar.xz > checksums.txt && cd ..
           [ "$(wc -l < dist/checksums.txt)" -eq 8 ] || { echo "expected 8 assets"; cat dist/checksums.txt; exit 1; }
           if [ "${DRAFT-}" = true ]; then
