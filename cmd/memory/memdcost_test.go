@@ -232,7 +232,7 @@ func TestCostEndpointAndCommand(t *testing.T) {
 }
 
 func TestPriceOldOpus(t *testing.T) {
-	for _, m := range []string{"claude-opus-4-1-20250805", "claude-opus-4-20250514", "claude-opus-4-1"} {
+	for _, m := range []string{"claude-opus-4-1-20250805", "claude-opus-4-20250514", "claude-opus-4-1", "claude-opus-4-0"} {
 		got, ok := priceFor(m, 1)
 		if !ok || got != (modelPrice{15, 75, 18.75, 30, 1.50}) {
 			t.Errorf("%s = %+v ok=%v, want the $15/$75 row", m, got, ok)
@@ -241,6 +241,25 @@ func TestPriceOldOpus(t *testing.T) {
 	for _, m := range []string{"claude-opus-4-5", "claude-opus-4-5-20251101", "claude-opus-4-8", "claude-opus-4-6"} {
 		if got, _ := priceFor(m, 1); got != (modelPrice{5, 25, 6.25, 10, 0.50}) {
 			t.Errorf("%s = %+v, want the $5/$25 row", m, got)
+		}
+	}
+}
+
+// A row matches only where the id ends or carries on with a non-digit, so a longer version
+// number never borrows a shorter one's price.
+func TestPriceMatchStopsAtDigits(t *testing.T) {
+	for _, m := range []string{"claude-opus-4-10", "claude-opus-4-50", "claude-opus-50"} {
+		if got, ok := priceFor(m, 1); ok {
+			t.Errorf("%s priced as %+v, want unpriced", m, got)
+		}
+	}
+	for m, want := range map[string]modelPrice{
+		"claude-opus-5-5[1m]":        {4, 20, 5, 8, 0.20},
+		"claude-sonnet-4-5-20250929": {3, 15, 3.75, 6, 0.30},
+		"claude-haiku-4-5-20251001":  {1, 5, 1.25, 2, 0.10},
+	} {
+		if got, ok := priceFor(m, 1); !ok || got != want {
+			t.Errorf("%s = %+v ok=%v, want %+v", m, got, ok, want)
 		}
 	}
 }
