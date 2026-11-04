@@ -109,6 +109,21 @@ else
 	bad "a checksum mismatch installs nothing, runs nothing and says so" "rc=$rc out=$out mark=$(cat "$tmp/t4/mark")"
 fi
 
+# --- 4b. a checksums.txt with no line for the asset installs nothing and names the asset
+# (not "checksum mismatch": nothing was compared).
+for variant in other empty; do
+	newcase t4$variant
+	mkrelease "$tmp/t4$variant/rel"
+	if [ $variant = empty ]; then : >"$tmp/t4$variant/rel/v$ver/checksums.txt"; else echo "0000000000000000000000000000000000000000000000000000000000000000  some-other-asset.tar.gz" >"$tmp/t4$variant/rel/v$ver/checksums.txt"; fi
+	export CLAUDE_TOOLS_RELEASE_URL=file://$tmp/t4$variant/rel
+	install t4$variant
+	if [ "$rc" -eq 0 ] && [ ! -e "$(bin t4$variant)" ] && [ ! -s "$tmp/t4$variant/mark" ] && printf %s "$out" | grep -q "no checksum for $asset"; then
+		ok "checksums.txt ($variant) without the asset installs nothing and names $asset"
+	else
+		bad "checksums.txt ($variant) without the asset installs nothing and names $asset" "rc=$rc out=$out mark=$(cat "$tmp/t4$variant/mark")"
+	fi
+done
+
 # --- 5. download unavailable: message, exit 0, nothing run
 newcase t5
 install t5
