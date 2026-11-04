@@ -13,8 +13,26 @@
 # shellcheck disable=SC2015 # `a && b || fail`: fail when any step fails, which is intended
 set -u
 root=${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
-data=${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/guardrails}
 ver=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json")
+# Claude Code sets CLAUDE_PLUGIN_DATA for hooks. Run from a terminal, the launcher finds that dir
+# itself: Claude Code caches the plugin at <config>/plugins/cache/<marketplace>/guardrails/
+# <version> and keeps its data in <config>/plugins/data/guardrails-<marketplace>. Outside that
+# cache (a checkout) it takes the guardrails-* data dir that holds this version's binary, else
+# guardrails.
+data=${CLAUDE_PLUGIN_DATA-}
+if [ -z "$data" ]; then
+	mkt=${root%/*/*}
+	case ${mkt%/*} in
+	*/plugins/cache) data=${mkt%/cache/*}/data/guardrails-${mkt##*/} ;;
+	*)
+		cfg=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
+		data=$cfg/plugins/data/guardrails
+		for d in "$cfg"/plugins/data/guardrails-*; do
+			[ -x "$d/bin/$ver/claude-tools" ] && data=$d
+		done
+		;;
+	esac
+fi
 dest=$data/bin/$ver/claude-tools
 bin=${CLAUDE_TOOLS_BIN:-$dest}
 export CLAUDE_PLUGIN_ROOT="$root"

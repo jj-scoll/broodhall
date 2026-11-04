@@ -157,5 +157,23 @@ if [ "$rc" = 3 ] && case $out in *"args=pre-tool-use"*"stdin={\"tool_name\":\"Ba
 CLAUDE_TOOLS_RELEASE_URL=file:///nonexistent hook install
 expect_silent_allow "install: already installed is silent"
 
+# --- run from a terminal (no CLAUDE_PLUGIN_ROOT or CLAUDE_PLUGIN_DATA) -----------------------
+# The launcher finds the data dir Claude Code uses, <config>/plugins/data/guardrails-<marketplace>,
+# from its own place in <config>/plugins/cache/<marketplace>/guardrails/<version>.
+for cfgcase in home config-dir; do
+	newcase "terminal-$cfgcase"
+	if [ "$cfgcase" = home ]; then cfg=$HOME/.claude; else cfg=$c/cfg; fi
+	p=$cfg/plugins/cache/broodhall/guardrails/$ver
+	mkdir -p "$p" "$cfg/plugins/data/guardrails-broodhall/bin/$ver" "$cfg/plugins/data/guardrails"
+	cp -R "$root/scripts" "$root/.claude-plugin" "$p/"
+	mkstub "$cfg/plugins/data/guardrails-broodhall/bin/$ver/claude-tools"
+	if [ "$cfgcase" = home ]; then
+		out=$(unset CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA CLAUDE_CONFIG_DIR && sh "$p/scripts/run.sh" version </dev/null 2>&1)
+	else
+		out=$(unset CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA && CLAUDE_CONFIG_DIR=$cfg sh "$p/scripts/run.sh" version </dev/null 2>&1)
+	fi
+	case $out in *"args=version"*) ok "terminal run finds plugins/data/guardrails-<marketplace> ($cfgcase)" ;; *) bad "terminal run finds plugins/data/guardrails-<marketplace> ($cfgcase)" "out=$out" ;; esac
+done
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

@@ -369,5 +369,70 @@ else
 	bad "cost ignores an open stdin, keeps its flags and outlives the 2 s hook limit" "rc=$rc out=$out"
 fi
 
+# --- 14. `cost` from a terminal (no CLAUDE_PLUGIN_ROOT or CLAUDE_PLUGIN_DATA) finds the data
+# dir Claude Code uses: <config>/plugins/data/memory-<marketplace>, where the plugin is cached
+# at <config>/plugins/cache/<marketplace>/memory/<version>.
+# plugin_copy <dir>: the plugin's launcher and manifest, installed at <dir>.
+plugin_copy() {
+	mkdir -p "$1"
+	cp -R "$root/scripts" "$root/.claude-plugin" "$1/"
+}
+# terminal_cost <case> <run.sh>: run `cost --days 7` as a person does; sets rc and out.
+terminal_cost() {
+	(unset CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA && sh "$2" cost --days 7 </dev/null >"$tmp/$1/out" 2>"$tmp/$1/stderr")
+	rc=$?
+	out=$(cat "$tmp/$1/out")
+}
+want_cost="stub cost cost --days 7"
+for cfgcase in home config-dir; do
+	newcase "t14-$cfgcase"
+	c=$tmp/t14-$cfgcase
+	if [ "$cfgcase" = home ]; then
+		unset CLAUDE_CONFIG_DIR
+		cfg=$HOME/.claude
+	else
+		export CLAUDE_CONFIG_DIR=$c/cfg
+		cfg=$CLAUDE_CONFIG_DIR
+	fi
+	plugin_copy "$cfg/plugins/cache/broodhall/memory/$ver"
+	mkdir -p "$cfg/plugins/data/memory-broodhall/bin/$ver" "$cfg/plugins/data/memory"
+	mkstub "$cfg/plugins/data/memory-broodhall/bin/$ver/memory"
+	terminal_cost "t14-$cfgcase" "$cfg/plugins/cache/broodhall/memory/$ver/scripts/run.sh"
+	if [ "$rc" -eq 0 ] && [ "$out" = "$want_cost" ]; then
+		ok "terminal cost finds plugins/data/memory-<marketplace> ($cfgcase)"
+	else
+		bad "terminal cost finds plugins/data/memory-<marketplace> ($cfgcase)" "rc=$rc out=$out stderr=$(cat "$c/stderr")"
+	fi
+	unset CLAUDE_CONFIG_DIR
+done
+
+# A launcher outside the plugin cache (a checkout) uses the memory-* data dir that holds this
+# version's binary, else the plain memory dir.
+newcase t14-checkout
+c=$tmp/t14-checkout
+cfg=$HOME/.claude
+plugin_copy "$c/checkout/plugins/memory"
+mkdir -p "$cfg/plugins/data/memory-other" "$cfg/plugins/data/memory-inline/bin/$ver"
+mkstub "$cfg/plugins/data/memory-inline/bin/$ver/memory"
+terminal_cost t14-checkout "$c/checkout/plugins/memory/scripts/run.sh"
+if [ "$rc" -eq 0 ] && [ "$out" = "$want_cost" ]; then ok "terminal cost from a checkout finds the memory-* dir with a binary"; else bad "terminal cost from a checkout finds the memory-* dir with a binary" "rc=$rc out=$out"; fi
+rm -rf "$cfg/plugins/data/memory-inline"
+mkdir -p "$cfg/plugins/data/memory/bin/$ver"
+mkstub "$cfg/plugins/data/memory/bin/$ver/memory"
+terminal_cost t14-checkout "$c/checkout/plugins/memory/scripts/run.sh"
+if [ "$rc" -eq 0 ] && [ "$out" = "$want_cost" ]; then ok "terminal cost from a checkout falls back to plugins/data/memory"; else bad "terminal cost from a checkout falls back to plugins/data/memory" "rc=$rc out=$out"; fi
+
+# Inside Claude Code CLAUDE_PLUGIN_DATA still wins over the derived dir.
+newcase t14-hook
+c=$tmp/t14-hook
+cfg=$HOME/.claude
+plugin_copy "$cfg/plugins/cache/broodhall/memory/$ver"
+mkdir -p "$cfg/plugins/data/memory-broodhall/bin/$ver" "$c/data/bin/$ver"
+mkstub "$cfg/plugins/data/memory-broodhall/bin/$ver/memory"
+printf '#!/bin/sh\necho from-plugin-data\n' >"$c/data/bin/$ver/memory"
+chmod +x "$c/data/bin/$ver/memory"
+out=$(CLAUDE_PLUGIN_ROOT=$cfg/plugins/cache/broodhall/memory/$ver sh "$cfg/plugins/cache/broodhall/memory/$ver/scripts/run.sh" cost </dev/null 2>/dev/null)
+if [ "$out" = from-plugin-data ]; then ok "CLAUDE_PLUGIN_DATA wins over the derived data dir"; else bad "CLAUDE_PLUGIN_DATA wins over the derived data dir" "out=$out"; fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
