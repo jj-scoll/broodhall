@@ -37,6 +37,9 @@ jobs:
         run: |
           grep -E '^ *--- (PASS|FAIL|SKIP)' "$RUNNER_TEMP/go-test.log" |
             sed -E 's/^ *--- [A-Z]+: (.*) \(([0-9.]+)s\)$/\2 \1/' | sort -rn | head -15 || true
+      # All plugins share one version; a PR that bumps one alone fails here.
+      - run: .github/scripts/check-versions.sh
+      - run: bash .github/scripts/test/next-version_test.sh
       - run: bash plugins/memory/test/run_test.sh
       - run: bash plugins/guardrails/test/run_test.sh
       - run: bash plugins/guardrails/test/install_test.sh
@@ -69,7 +72,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CGO_ENABLED: "1"
-      # Keep in step with release-memory.yml.
+      # Keep in step with release.yml.
       DUCKDB_VERSION: v2.0.0
     steps:
       - uses: actions/checkout@v7

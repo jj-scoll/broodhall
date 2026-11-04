@@ -45,21 +45,21 @@ EOF
 	chmod +x "$1"
 }
 
-# A fake release dir for tag memory-v$ver with a good tarball (the binary plus the DuckDB
+# A fake release dir for tag v$ver with a good tarball (the binary plus the DuckDB
 # extensions it loads, in ext/) and matching checksums. NO_EXT=1 leaves ext/ out.
 exts="fts httpfs quack"
 mkrelease() {
 	rel=$1
-	mkdir -p "$rel/memory-v$ver" "$rel/work"
+	mkdir -p "$rel/v$ver" "$rel/work"
 	mkstub "$rel/work/memory"
 	if [ -n "${NO_EXT-}" ]; then
-		tar -cJf "$rel/memory-v$ver/$asset" -C "$rel/work" memory
+		tar -cJf "$rel/v$ver/$asset" -C "$rel/work" memory
 	else
 		mkdir -p "$rel/work/ext"
 		for e in $exts; do echo "$e" >"$rel/work/ext/$e.duckdb_extension"; done
-		tar -cJf "$rel/memory-v$ver/$asset" -C "$rel/work" memory ext
+		tar -cJf "$rel/v$ver/$asset" -C "$rel/work" memory ext
 	fi
-	(cd "$rel/memory-v$ver" && $sum "$asset" >checksums.txt)
+	(cd "$rel/v$ver" && $sum "$asset" >checksums.txt)
 }
 
 # case <name>: fresh sandbox dirs and a clean environment.
@@ -167,7 +167,7 @@ fi
 # --- 3. checksum mismatch: never execute, never install
 newcase t3
 mkrelease "$tmp/t3/rel"
-echo "0000000000000000000000000000000000000000000000000000000000000000  $asset" >"$tmp/t3/rel/memory-v$ver/checksums.txt"
+echo "0000000000000000000000000000000000000000000000000000000000000000  $asset" >"$tmp/t3/rel/v$ver/checksums.txt"
 export MEMORY_RELEASE_URL=file://$tmp/t3/rel
 hook t3 session-start
 expect_open "checksum mismatch (session-start)"
@@ -180,7 +180,7 @@ expect_open "checksum mismatch (context after failed install)"
 # --- 3b. checksums.txt has no line for this asset
 newcase t3b
 mkrelease "$tmp/t3b/rel"
-echo "deadbeef  some_other_asset.tar.gz" >"$tmp/t3b/rel/memory-v$ver/checksums.txt"
+echo "deadbeef  some_other_asset.tar.gz" >"$tmp/t3b/rel/v$ver/checksums.txt"
 export MEMORY_RELEASE_URL=file://$tmp/t3b/rel
 hook t3b session-start
 expect_open "checksums.txt lacks the asset"

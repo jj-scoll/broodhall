@@ -1,0 +1,161 @@
+# Every push to main that changes shipped files cuts a release with no human step, and nothing
+# is advertised before its assets exist (guardrails' hooks fail closed when the binary for the
+# plugin.json version cannot be downloaded):
+#   prepare   computes the next shared version (.github/scripts/next-version.sh), rewrites every
+#             plugin.json, makes the commit "release vX.Y.Z [skip ci]" locally and pushes it only
+#             to a scratch branch, so the build jobs can fetch it. Main and the tags are untouched.
+#   release   calls release.yml on that commit: tests, builds all 8 assets, checksums.txt, and a
+#             DRAFT release (drafts are invisible to the launchers' download URLs).
+#   finalize  pushes the commit and the tag to main in one atomic push (if main moved, it
+#             rebases; if shipped files changed meanwhile it stops, because the run queued for
+#             that merge releases them), then publishes the draft. The gap between the push and
+#             the publish is seconds.
+#   cleanup   always deletes the scratch branch, and the draft if it was never published.
+# Commits and tags pushed with GITHUB_TOKEN trigger no workflow, hence the direct call.
+#
+# Loop safety, in layers: the token push triggers nothing; the commit says [skip ci]; the job is
+# skipped when the head commit is a release commit; and the diff guard below ignores plugin.json,
+# so a release commit alone never counts as a shipped change.
+name: autorelease
+
+on:
+  push:
+    branches: [main]
+    # Shipped files only. Docs, .github and tests do not cut a release. Keep in step with the
+    # pathspec in the "Cut" step.
+    paths:
+      - "plugins/**"
+      - "!plugins/*/test/**"
+      - "!plugins/*/tests/**"
+      - "cmd/**"
+      - "go.mod"
+      - "go.sum"
+      - ".claude-plugin/**"
+
+# One release at a time. A queued run waits (never cancelled mid-release) and builds from the
+# branch tip at the time it starts, so it picks up everything merged while it waited.
+concurrency:
+  group: autorelease
+  cancel-in-progress: false
+
+# The repo default is read; every job that writes declares contents: write itself.
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    if: ${{ !startsWith(github.event.head_commit.message, 'release v') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.cut.outputs.tag }}
+      sha: ${{ steps.cut.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Test the version scripts
+        run: bash .github/scripts/test/next-version_test.sh
+      - name: Cut the release commit
+        id: cut
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main --tags --force
+          git reset --hard origin/main
+          last=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)
+          shipped=(plugins .claude-plugin cmd go.mod go.sum
+            ':(exclude)plugins/*/.claude-plugin/plugin.json'
+            ':(exclude,glob)plugins/*/test/**' ':(exclude,glob)plugins/*/tests/**')
+          if git diff --quiet "$last" HEAD -- "${shipped[@]}"; then
+            echo "No shipped change since $last; nothing to release."
+            exit 0
+          fi
+          mapfile -t versions < <(jq -r .version plugins/*/.claude-plugin/plugin.json)
+          next=$(git log --format=%B "$last..HEAD" | .github/scripts/next-version.sh "${versions[@]}")
+          for f in plugins/*/.claude-plugin/plugin.json; do
+            sed -i -E "0,/\"version\": *\"[^\"]*\"/s//\"version\": \"$next\"/" "$f"
+          done
+          .github/scripts/check-versions.sh
+          git commit -a -m "release v$next [skip ci]"
+          # A scratch branch, not main: nothing is advertised until the assets exist.
+          git push --force origin "HEAD:refs/heads/autorelease-candidate"
+          echo "tag=v$next" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.tag != '' }}
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+      ref: ${{ needs.prepare.outputs.sha }}
+      draft: true
+    permissions:
+      contents: write
+
+  finalize:
+    needs: [prepare, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
+      - name: Push the commit and tag, then publish the draft
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          shipped=(plugins .claude-plugin cmd go.mod go.sum
+            ':(exclude)plugins/*/.claude-plugin/plugin.json'
+            ':(exclude,glob)plugins/*/test/**' ':(exclude,glob)plugins/*/tests/**')
+          built_base=$(git rev-parse HEAD~1)
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if [ "$(git rev-parse origin/main)" != "$built_base" ]; then
+              if ! git diff --quiet "$built_base" origin/main -- "${shipped[@]}"; then
+                echo "::warning::Shipped files changed on main while $TAG was built; not releasing it. The run queued for that merge releases them."
+                exit 0
+              fi
+              # Only docs, tests or .github moved: the built tree is still what ships. Rebase.
+              git rebase origin/main
+              built_base=$(git rev-parse HEAD~1)
+            fi
+            git tag -f "$TAG" HEAD
+            # Atomic: either the commit and the tag both land or neither does.
+            if git push --atomic origin HEAD:refs/heads/main "refs/tags/$TAG"; then
+              # By id: gh may not find a draft by tag.
+              id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | select(.draft and .tag_name == env.TAG) | .id' | head -n 1)
+              [ -n "$id" ] || { echo "no draft release for $TAG" >&2; exit 1; }
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -F draft=false
+              exit 0
+            fi
+            echo "push rejected (attempt $attempt); main moved, retrying"
+            sleep $((attempt * 3))
+          done
+          echo "could not push the release after 5 attempts" >&2
+          exit 1
+
+  cleanup:
+    needs: [prepare, release, finalize]
+    if: ${{ always() && needs.prepare.outputs.tag != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Delete the scratch branch and any unpublished draft
+        run: |
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/autorelease-candidate" || true
+          for id in $(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | select(.draft and .tag_name == env.TAG) | .id'); do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+          done
