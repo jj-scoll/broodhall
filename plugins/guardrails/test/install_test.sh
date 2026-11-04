@@ -131,5 +131,20 @@ newcase t5
 install t5
 if [ "$rc" -eq 0 ] && [ ! -s "$tmp/t5/mark" ] && printf %s "$out" | grep -q 'could not install'; then ok "a failed download is reported and exits 0"; else bad "a failed download is reported and exits 0" "rc=$rc out=$out"; fi
 
+# --- 6. no curl on PATH: the notice names curl, not a failed download
+newcase t6
+mkrelease "$tmp/t6/rel"
+export CLAUDE_TOOLS_RELEASE_URL=file://$tmp/t6/rel
+mkdir -p "$tmp/t6/path"
+for d in $(printf %s "$PATH" | tr : ' '); do
+	for f in "$d"/*; do
+		n=${f##*/}
+		[ "$n" = curl ] || [ -e "$tmp/t6/path/$n" ] || ln -s "$f" "$tmp/t6/path/$n" 2>/dev/null
+	done
+done
+out=$(printf '{"source":"startup"}' | PATH=$tmp/t6/path sh "$run_sh" install 2>"$tmp/t6/stderr")
+rc=$?
+if [ "$rc" -eq 0 ] && [ ! -e "$(bin t6)" ] && printf %s "$out" | grep -q 'curl not found'; then ok "with no curl the notice says curl not found"; else bad "with no curl the notice says curl not found" "rc=$rc out=$out"; fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

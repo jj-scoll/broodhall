@@ -45,3 +45,20 @@ are controlled by it.
 The core blocks have no switch: Bash core, the git force-push block, Download and run,
 Settings files and Secret files stay on whatever `disabled_guards` says. Nudges, Read limits and Retry loops
 have no family name in it either. See [Options](options.md).
+
+## Run it from a terminal
+
+The plugin does not put `guardrails` on your `PATH`. The binary lives in the plugin data
+directory, under `bin/<version>/`. To run commands such as `guardrails setup` or
+`guardrails team-init` by hand, start one Claude Code session first so the binary is
+downloaded. Then define this shell function. It runs the newest installed version:
+
+```sh
+guardrails() {
+	"$(printf '%s\n' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/data/guardrails-broodhall/bin/[0-9]*/guardrails | sort -V | tail -n 1)" "$@"
+}
+guardrails version
+```
+
+The function lasts for that shell. Add it to your shell's rc file to keep it. It finds the
+newest version each time it runs, so a plugin update needs no change.

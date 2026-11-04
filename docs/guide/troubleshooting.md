@@ -24,10 +24,13 @@ and opt out; with `fail_open` set they run unguarded instead. The next session s
 | Reason | Meaning |
 | --- | --- |
 | `unsupported CPU <name>` | The CPU is neither amd64 nor arm64. |
+| `curl not found` | Install `curl`. |
 | `cannot write <dir>` | The plugin data directory is not writable. |
 | `download of <file> failed` | `curl` could not fetch the tarball or `checksums.txt` within its 60 and 30 second limits, or the platform has no release asset. |
-| `checksum mismatch` | The tarball's sha256 did not match `checksums.txt`, or `checksums.txt` has no line for the tarball. It was not installed. |
+| `no checksum for <file> in checksums.txt` | `checksums.txt` has no line for the tarball. It was not installed. |
+| `checksum mismatch` | The tarball's sha256 did not match `checksums.txt`. It was not installed. |
 | `unpack failed` | `tar` could not extract the binary, or it could not be moved into place. |
+| `another install is running` | Another session was installing and did not finish within 90 seconds. Start a new session once it is done. If the notice appears at once, the plugin data directory may not be writable. Check its permissions. |
 
 ## A doctor message at session start
 
@@ -60,7 +63,8 @@ first at `memory.log` in the plugin data directory, where the launcher writes it
 | `curl not found` | Install `curl`. |
 | `xz not found (install xz-utils)` | On Linux the archive is `.tar.xz` and needs the `xz` program. |
 | `download of <file> failed` | `curl` could not fetch the archive (10 minute limit) or `checksums.txt` (30 seconds). |
-| `checksum mismatch or missing` | The archive did not match `checksums.txt`. It was not installed and is never run. |
+| `checksums.txt has no entry for <file>` | `checksums.txt` has no line for the archive. It was not installed. |
+| `checksum mismatch for <file>` | The archive did not match `checksums.txt`. It was not installed and is never run. |
 | `unpack of <file> failed` | `tar` could not unpack it, or it lacked the program or an extension. |
 | `install of <version> failed within the last hour; not retrying` | A failed install leaves a stamp, so an offline machine does not wait on the network at every start. Delete `bin/.fail-<version>` in the plugin data directory to retry now. |
 
