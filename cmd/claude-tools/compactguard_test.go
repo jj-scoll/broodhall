@@ -92,3 +92,39 @@ func TestCompactGuardCountFileTolerance(t *testing.T) {
 		t.Errorf("counter = %q, want 1", b)
 	}
 }
+
+func TestCompactGuardForgetsReadDedupLedger(t *testing.T) {
+	gateEnv(t)
+	session := "compact-readdedup-test"
+	ledger := "/tmp/claude-readcache-" + session
+	t.Cleanup(func() { os.Remove(ledger) })
+	file := filepath.Join(t.TempDir(), "f.txt")
+	os.WriteFile(file, []byte("hello\n"), 0o644)
+	read := fmt.Sprintf(`{"session_id":%q,"tool_name":"Read","cwd":%q,"tool_input":{"file_path":%q}}`, session, filepath.Dir(file), file)
+
+	runHook(t, readDedup, read)
+	if _, out, _ := runHook(t, readDedup, read); !strings.Contains(out, "already read") {
+		t.Fatalf("setup: second read gave no nudge: %q", out)
+	}
+
+	// A blocked manual compact does not compact, so the ledger stays.
+	runHook(t, compactGuard, compactPayload(session, "auto"))
+	runHook(t, readDedup, read)
+	if code, _, _ := runHook(t, compactGuard, compactPayload(session, "manual")); code != 2 {
+		t.Fatalf("manual compact: exit %d, want 2", code)
+	}
+	if _, err := os.Stat(ledger); err != nil {
+		t.Error("blocked compact removed the read ledger")
+	}
+
+	// A compaction that goes through leaves the conversation without the earlier read.
+	runHook(t, compactGuard, compactPayload(session, "auto"))
+	runHook(t, readDedup, read)
+	if _, out, _ := runHook(t, readDedup, read); !strings.Contains(out, "already read") {
+		t.Fatalf("read after compaction should record again, then nudge: %q", out)
+	}
+	runHook(t, compactGuard, compactPayload(session, "auto"))
+	if _, out, _ := runHook(t, readDedup, read); strings.Contains(out, "already read") {
+		t.Errorf("nudge after compaction: %q", out)
+	}
+}

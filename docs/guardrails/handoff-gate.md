@@ -58,7 +58,7 @@ points at it.
 | --- | --- | --- |
 | `Stop` | `gate` | When the context passes the threshold, blocks the stop once and asks Claude for the next-steps file. |
 | `Stop` | `autoclear` | After the gate's block, starts the handoff writer in the background and arms the clear. Also serves `--claim` and `--done` to context-guard. |
-| `PreCompact` | `compact-guard` | Blocks the first manual `/compact` in a session that has already compacted. Re-arms `gate`. |
+| `PreCompact` | `compact-guard` | Blocks the first manual `/compact` in a session that has already compacted. Re-arms `gate` and clears the `read-dedup` ledger. |
 
 ### gate
 
@@ -107,7 +107,8 @@ more is blocked once, with a message that points at `/memory:handoff` and `/clea
 blocking one that recovers from a context-limit error makes the request fail.
 
 Every compaction that is allowed adds one to the count and removes the gate's mark, so the
-gate fires again when the context next passes the threshold.
+gate fires again when the context next passes the threshold. It also deletes the session's
+`read-dedup` ledger, so a file read before the compaction gets no "already read" note after it.
 
 ## State
 

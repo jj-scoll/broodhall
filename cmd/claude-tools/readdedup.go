@@ -2,8 +2,8 @@ package main
 
 // read-dedup (PreToolUse(Read) hook): soft-nudge on redundant re-reads of unchanged files.
 // Emits hookSpecificOutput.additionalContext (model-visible, shown next to the tool
-// result) and lets the Read proceed. Never blocks. Per-session state in /tmp; entries
-// expire after 30 minutes.
+// result) and lets the Read proceed. Never blocks. Per-session state in /tmp (compact-guard
+// clears it on compaction); entries expire after 30 minutes.
 // Port of ~/.claude/hooks/read-dedup.sh; test-read-dedup.sh is its suite.
 
 import (
@@ -32,6 +32,10 @@ func jqRaw(v json.RawMessage, def string) string {
 	return s
 }
 
+// readCachePath is the per-session ledger of reads. compact-guard removes it when the
+// session compacts, because Claude no longer holds those reads.
+func readCachePath(session string) string { return "/tmp/claude-readcache-" + session }
+
 func readDedup(args []string) int {
 	var in struct {
 		SessionID json.RawMessage `json:"session_id"`
@@ -59,7 +63,7 @@ func readDedup(args []string) int {
 	}
 	key := fmt.Sprintf("%s|%d|%s|%s", file, st.ModTime().Unix(),
 		jqRaw(in.ToolInput.Offset, "-"), jqRaw(in.ToolInput.Limit, "-"))
-	state := "/tmp/claude-readcache-" + session
+	state := readCachePath(session)
 	now := time.Now().Unix()
 	cutoff := now - 1800 // 30 minutes
 

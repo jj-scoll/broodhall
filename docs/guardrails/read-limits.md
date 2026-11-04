@@ -26,8 +26,8 @@ You already read /home/you/proj/server.py at 13:39 this session and it is unchan
 
 The time is when the file was last read, in your local time. The token figure is the file's
 size divided by four. A read with a different offset or limit is a different read, and so is
-a read after the file changed. The guard records only the reads that pass through it; it cannot
-see that the conversation has been compacted since, so the note can be wrong after a compaction.
+a read after the file changed. After a compaction the guard forgets the session's reads (the
+compact-guard hook clears them), so the first read of a file after a compaction gets no note.
 
 ### A large read: NOTE, then BLOCK
 
