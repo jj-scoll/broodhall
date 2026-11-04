@@ -104,7 +104,7 @@ for sub in pre-tool-use read-dedup large-read-guard config-gate; do
 done
 # Not guards: exit 2 at Stop would keep Claude from ending its turn, at PreCompact would block
 # compaction.
-for sub in retry-breaker gate receipt compact-guard session-env; do
+for sub in retry-breaker ask-outcome gate receipt compact-guard session-env; do
 	newcase "missing-$sub"
 	hook "$sub"
 	expect_silent_allow "no binary: $sub exits 0 silently"

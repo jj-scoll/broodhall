@@ -17,6 +17,7 @@ var commands = map[string]func(args []string) int{
 	"redact":           redactCmd,
 	"pii-rules":        piiRulesCmd,
 	"retry-breaker":    retryBreaker,
+	"ask-outcome":      askOutcome,
 	"statusline":       statusline,
 	"config-gate":      configGate,
 	"session-env":      sessionEnv,
@@ -27,7 +28,7 @@ var commands = map[string]func(args []string) int{
 
 func main() {
 	if len(os.Args) < 2 || commands[os.Args[1]] == nil {
-		fmt.Fprintln(os.Stderr, "usage: claude-tools <pre-tool-use|gate|autoclear|compact-guard|read-dedup|large-read-guard|retry-breaker|config-gate|session-env|receipt|guard-report|redact|pii-rules|statusline|doctor|write-handoff|version> [args]")
+		fmt.Fprintln(os.Stderr, "usage: claude-tools <pre-tool-use|gate|autoclear|compact-guard|read-dedup|large-read-guard|retry-breaker|ask-outcome|config-gate|session-env|receipt|guard-report|redact|pii-rules|statusline|doctor|write-handoff|version> [args]")
 		os.Exit(2)
 	}
 	os.Exit(commands[os.Args[1]](os.Args[2:]))
