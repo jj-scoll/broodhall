@@ -64,7 +64,11 @@ if [ "${1-}" = install ]; then
 		curl -fsSL --max-time 30 -o "$tmp/checksums.txt" "$base/v$ver/checksums.txt" ||
 		fail "download of $asset failed"
 	if command -v sha256sum >/dev/null; then sum=sha256sum; else sum='shasum -a 256'; fi
-	(cd "$tmp" && grep "  $asset\$" checksums.txt | $sum -c - >/dev/null 2>&1) || fail "checksum mismatch"
+	# Pick the asset's line first: `$sum -c` on empty input exits 0 or errors depending on the
+	# shasum build, so an asset missing from checksums.txt is refused here, by name.
+	line=$(grep "  $asset\$" "$tmp/checksums.txt")
+	[ -n "$line" ] || fail "no checksum for $asset in checksums.txt"
+	(cd "$tmp" && printf '%s\n' "$line" | $sum -c - >/dev/null 2>&1) || fail "checksum mismatch"
 	tar -xzf "$tmp/$asset" -C "$tmp" claude-tools && mkdir -p "${dest%/*}" &&
 		mv -f "$tmp/claude-tools" "$dest" || fail "unpack failed"
 	# What doctor compares the binary with later: the unpacked file's hash, taken after the
