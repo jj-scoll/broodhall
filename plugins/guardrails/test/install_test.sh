@@ -48,7 +48,9 @@ mkrelease() {
 	mkstub "$rel/work/claude-tools"
 	tar -czf "$rel/v$ver/$asset" -C "$rel/work" claude-tools
 	(cd "$rel/v$ver" && $sum "$asset" >checksums.txt)
-	[ -n "${BAD_SUM-}" ] && sed -i.bak 's/^./0/' "$rel/v$ver/checksums.txt"
+	# A wrong sum for certain. Swapping the real sum's first digit for 0 left it unchanged one run
+	# in sixteen (the archive embeds its mtime, so the sum varies), which made this case flaky.
+	[ -n "${BAD_SUM-}" ] && printf '%064d  %s\n' 0 "$asset" >"$rel/v$ver/checksums.txt"
 	return 0
 }
 
