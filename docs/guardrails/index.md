@@ -24,7 +24,7 @@ real reply for each.
 | [Nudges](nudges.md) | <span class="badge badge-note">NOTE</span> | Reminds Claude to plan before `terraform` or `terragrunt` `apply` and `destroy`, and to justify a `docker build`. |
 | [Read limits](read-limits.md) | <span class="badge badge-note">NOTE</span> <span class="badge badge-block">BLOCK</span> | Notes a re-read of an unchanged file and a large file read; blocks a full read of a very large code file. |
 | [Retry loops](retry-loops.md) | <span class="badge badge-note">NOTE</span> | Notes on the third failure of the same Bash command. |
-| [Options](options.md) | | The settings that turn families off and tell the guards which addresses are yours. |
+| [Options](options.md) | | The settings that turn families off, tell the guards which addresses are yours, and opt in to the RTK rewrite. |
 
 ## What can be turned off
 

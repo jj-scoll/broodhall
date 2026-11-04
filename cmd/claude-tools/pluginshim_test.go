@@ -224,3 +224,31 @@ func TestPluginGuardHooksFailClosed(t *testing.T) {
 		}
 	}
 }
+
+// The rtk options reach the binary as CLAUDE_TOOLS_RTK and CLAUDE_TOOLS_RTK_CMD, and are off
+// by default.
+func TestShimPassesRTKOptions(t *testing.T) {
+	m := readManifest(t)
+	if d, ok := m.UserConfig["rtk"]; !ok || d.Default != "" && d.Default != "false" {
+		t.Fatalf("plugin.json needs an rtk option that defaults to off, got %+v", d)
+	}
+	if _, ok := m.UserConfig["rtk_command"]; !ok {
+		t.Fatal("plugin.json needs an rtk_command option")
+	}
+	data := t.TempDir()
+	writeExe(t, filepath.Join(data, "bin", m.Version, "claude-tools"), "#!/bin/sh\necho \"rtk=$CLAUDE_TOOLS_RTK cmd=$CLAUDE_TOOLS_RTK_CMD\"\n")
+	env := map[string]string{"CLAUDE_PLUGIN_DATA": data}
+	if _, out := runShim(t, env, "", "pre-tool-use"); out != "rtk= cmd=\n" {
+		t.Errorf("defaults: %q", out)
+	}
+	env["CLAUDE_PLUGIN_OPTION_RTK"] = "true"
+	env["CLAUDE_PLUGIN_OPTION_RTK_COMMAND"] = "/opt/bin/rtk"
+	if _, out := runShim(t, env, "", "pre-tool-use"); out != "rtk=true cmd=/opt/bin/rtk\n" {
+		t.Errorf("options: %q", out)
+	}
+	// Outside the plugin the same env vars pass through.
+	env = map[string]string{"CLAUDE_PLUGIN_DATA": data, "CLAUDE_TOOLS_RTK": "1"}
+	if _, out := runShim(t, env, "", "pre-tool-use"); out != "rtk=1 cmd=\n" {
+		t.Errorf("env fallback: %q", out)
+	}
+}
