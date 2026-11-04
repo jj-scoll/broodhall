@@ -47,9 +47,11 @@ jobs:
         run: shellcheck -s sh plugins/guardrails/scripts/run.sh plugins/memory/scripts/run.sh plugins/context-guard/scripts/run.sh
       - if: runner.os == 'Linux'
         run: bash plugins/context-guard/test/run_test.sh
-      # pack-memory.sh runs only in release.yml's ubuntu publish job.
+      # pack-memory.sh and draft-release.sh run only in ubuntu release jobs.
       - if: runner.os == 'Linux'
         run: bash .github/scripts/test/pack-memory_test.sh
+      - if: runner.os == 'Linux'
+        run: bash .github/scripts/test/draft-release_test.sh
 
   # context-guard is a hooks module (hooks/context-guard.mjs); `claude plugin test` runs its
   # tests/*.test.ts in Claude Code's own test host, offline and without a login. Keep the

@@ -8,9 +8,12 @@
 #             DRAFT release (drafts are invisible to the launchers' download URLs).
 #   finalize  pushes the commit and the tag to main in one atomic push (if main moved, it
 #             rebases; if shipped files changed meanwhile it stops, because the run queued for
-#             that merge releases them), then publishes the draft. The gap between the push and
-#             the publish is seconds.
-#   cleanup   always deletes the scratch branch, and the draft if it was never published.
+#             that merge releases them), then publishes the draft (.github/scripts/draft-release.sh,
+#             which retries transient API errors). The gap between the push and the publish is
+#             seconds.
+#   cleanup   always deletes the scratch branch. A draft left unpublished is deleted only if its
+#             tag is not on the remote; once the push landed, main advertises the version, so
+#             cleanup publishes the draft instead, and fails the run if it cannot.
 # Commits and tags pushed with GITHUB_TOKEN trigger no workflow, hence the direct call.
 #
 # Loop safety, in layers: the token push triggers nothing; the commit says [skip ci]; the job is
@@ -131,11 +134,8 @@ jobs:
             git tag -f "$TAG" HEAD
             # Atomic: either the commit and the tag both land or neither does.
             if git push --atomic origin HEAD:refs/heads/main "refs/tags/$TAG"; then
-              # By id: gh may not find a draft by tag.
-              id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | select(.draft and .tag_name == env.TAG) | .id' | head -n 1)
-              [ -n "$id" ] || { echo "no draft release for $TAG" >&2; exit 1; }
-              gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -F draft=false
-              exit 0
+              # Retries transient API errors; if it still fails, cleanup sees the tag and retries.
+              exec .github/scripts/draft-release.sh publish "$TAG"
             fi
             echo "push rejected (attempt $attempt); main moved, retrying"
             sleep $((attempt * 3))
@@ -153,9 +153,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.prepare.outputs.tag }}
     steps:
-      - name: Delete the scratch branch and any unpublished draft
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+      - name: Delete the scratch branch; settle the draft
         run: |
           gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/autorelease-candidate" || true
-          for id in $(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | select(.draft and .tag_name == env.TAG) | .id'); do
-            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
-          done
+          # Tag on the remote: publish the draft (main advertises it). Tag absent: delete it.
+          .github/scripts/draft-release.sh cleanup "$TAG"
