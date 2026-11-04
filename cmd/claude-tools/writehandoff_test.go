@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"io"
 	"net"
@@ -115,7 +116,8 @@ func (e *hwEnv) respondStructured(badPath string) {
 	if badPath != "" {
 		out["locations"] = "- " + badPath
 	}
-	e.respond(0, map[string]any{"result": "", "structured_output": out, "total_cost_usd": 0.02})
+	e.respond(0, map[string]any{"result": "", "structured_output": out, "total_cost_usd": 0.02,
+		"usage": map[string]any{"input_tokens": 1000, "cache_read_input_tokens": 500, "output_tokens": 400}})
 }
 
 func (e *hwEnv) run() (path string, err error) {
@@ -513,5 +515,190 @@ func TestEmbeddedSkillMatchesTheMemoryPluginSkill(t *testing.T) {
 	}
 	if got, err := skillText(); err != nil || got != strings.TrimLeft(body, "\n") {
 		t.Errorf("embedded skill differs from SKILL.md (err %v)\n got %d bytes, want %d", err, len(got), len(body))
+	}
+}
+
+// capLines builds n digest lines: a user prompt, then a tool call and a tool result, repeated.
+func capLines(n int) []string {
+	var out []string
+	for i := 0; len(out) < n; i++ {
+		out = append(out, "[t] USER: prompt "+strconv.Itoa(i), "[t] TOOL Bash: command=x"+strconv.Itoa(i),
+			"    -> result "+strconv.Itoa(i)+strings.Repeat("r", 80))
+	}
+	return out[:n]
+}
+
+func TestCapDigestUnderTheLimitIsUnchanged(t *testing.T) {
+	lines := capLines(30)
+	if got, want := capDigest(lines, 1<<20), strings.Join(lines, "\n"); got != want {
+		t.Errorf("digest changed under the limit: %d bytes, want %d", len(got), len(want))
+	}
+}
+
+func TestCapDigestDropsOldToolResultsBeforeAnythingElse(t *testing.T) {
+	lines := capLines(300)
+	full := len(strings.Join(lines, "\n"))
+	got := capDigest(lines, full*3/4)
+	if len(got) > full*3/4 {
+		t.Fatalf("digest is %d bytes, limit %d", len(got), full*3/4)
+	}
+	if !strings.Contains(got, "omitted") {
+		t.Error("no marker saying what was omitted")
+	}
+	for i := 0; i < 100; i++ { // every prompt and tool call survives while results are enough to drop
+		for _, w := range []string{"USER: prompt " + strconv.Itoa(i) + "\n", "command=x" + strconv.Itoa(i) + "\n"} {
+			if !strings.Contains(got, w) {
+				t.Fatalf("non-result line %q was dropped before the results ran out", w)
+			}
+		}
+	}
+	if strings.Contains(got, "-> result 0r") {
+		t.Error("oldest tool result was kept")
+	}
+	if !strings.HasSuffix(got, lines[len(lines)-1]) {
+		t.Error("the most recent line is missing")
+	}
+}
+
+func TestCapDigestThenDropsTheOldestItemsAndKeepsTheRecentEnd(t *testing.T) {
+	lines := capLines(3000)
+	got := capDigest(lines, 5000)
+	if len(got) > 5000 {
+		t.Fatalf("digest is %d bytes, limit 5000", len(got))
+	}
+	if !strings.HasSuffix(got, lines[len(lines)-1]) {
+		t.Error("the most recent line is missing")
+	}
+	if strings.Contains(got, "USER: prompt 0\n") {
+		t.Error("the oldest prompt was kept")
+	}
+	if !strings.Contains(got, "omitted") {
+		t.Error("no marker saying what was omitted")
+	}
+	if capDigest(nil, 10) != "" {
+		t.Error("empty digest is not empty")
+	}
+}
+
+func TestDigestIsCappedAtDigestCap(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < 400; i++ {
+		j, _ := json.Marshal(map[string]any{"type": "assistant", "timestamp": "2026-10-27T10:00:03Z",
+			"message": map[string]any{"role": "assistant", "content": []any{
+				map[string]any{"type": "text", "text": strings.Repeat("x", 1900) + strconv.Itoa(i)}}}})
+		b.Write(j)
+		b.WriteByte('\n')
+	}
+	p := filepath.Join(t.TempDir(), "big.jsonl")
+	if err := os.WriteFile(p, []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := digest(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) > digestCap {
+		t.Errorf("digest is %d bytes, cap %d", len(got), digestCap)
+	}
+	if !strings.Contains(got, "omitted") || !strings.HasSuffix(got, "399") {
+		t.Error("digest lacks the marker or the latest item")
+	}
+}
+
+func TestWriteHandoffLogsTokensAndCostPerCall(t *testing.T) {
+	e := hwSetup(t)
+	var buf bytes.Buffer
+	logOut = &buf
+	t.Cleanup(func() { logOut = os.Stderr })
+	if _, err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	if want := "writer: in=1500 out=400 $0.0200"; !strings.Contains(buf.String(), want) {
+		t.Errorf("log lacks %q:\n%s", want, buf.String())
+	}
+}
+
+func TestWriteHandoffLogsGapsFixCostAndRemainingGaps(t *testing.T) {
+	e := hwSetup(t)
+	e.respondStructured("/home/nobody/nowhere/x.py")
+	e.respond(1, map[string]any{"result": "# Handoff\n\n## Locations\n\n- /home/nobody/nowhere/x.py\n\nBilling: Login", "total_cost_usd": 0.01,
+		"usage": map[string]any{"input_tokens": 700, "output_tokens": 50}})
+	var buf bytes.Buffer
+	logOut = &buf
+	t.Cleanup(func() { logOut = os.Stderr })
+	if _, err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	log := buf.String()
+	for _, want := range []string{"gaps found (1):", "- path /home/nobody/nowhere/x.py is not in the transcript",
+		"fix: in=700 out=50 $0.0100", "gaps remaining after fix (1):"} {
+		if !strings.Contains(log, want) {
+			t.Errorf("log lacks %q:\n%s", want, log)
+		}
+	}
+}
+
+func TestWriteHandoffLogsARejectedFixReply(t *testing.T) {
+	e := hwSetup(t)
+	e.respondStructured("/home/nobody/nowhere/x.py")
+	e.respond(1, map[string]any{"result": "Sorry, I can't."})
+	var buf bytes.Buffer
+	logOut = &buf
+	t.Cleanup(func() { logOut = os.Stderr })
+	if _, err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	if want := "fix reply rejected"; !strings.Contains(buf.String(), want) || !strings.Contains(buf.String(), "Sorry, I can't.") {
+		t.Errorf("log does not say the fix reply was rejected:\n%s", buf.String())
+	}
+}
+
+func TestWriteHandoffPromptAsksForImpersonalPhrasing(t *testing.T) {
+	e := hwSetup(t)
+	if _, err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	if p := e.calls()[0].stdin; !strings.Contains(p, "third person") || !strings.Contains(p, `never "I"`) {
+		t.Error("prompt does not ask for third-person phrasing without \"I\"")
+	}
+}
+
+func TestFactsCapsAndDedupesBackgroundJobs(t *testing.T) {
+	var b strings.Builder
+	add := func(m map[string]any) {
+		j, _ := json.Marshal(m)
+		b.Write(j)
+		b.WriteByte('\n')
+	}
+	for i := 0; i < 30; i++ {
+		id, desc := "job"+strconv.Itoa(i), "Wait for PR "+strconv.Itoa(100+i)
+		if i >= 20 { // ten distinct jobs at the end
+			desc = "Distinct task " + strings.Repeat("z", i-19)
+		}
+		add(map[string]any{"type": "assistant", "timestamp": "2026-10-27T10:00:00Z", "message": map[string]any{"role": "assistant", "content": []any{
+			map[string]any{"type": "tool_use", "id": "u" + id, "name": "Bash", "input": map[string]any{"command": "sleep 1", "run_in_background": true, "description": desc}}}}})
+		add(map[string]any{"type": "user", "timestamp": "2026-10-27T10:00:01Z", "message": map[string]any{"role": "user", "content": []any{
+			map[string]any{"type": "tool_result", "tool_use_id": "u" + id, "content": "Command running in background with ID: " + id + ". Output is being written to: /tmp/" + id + ".out"}}}})
+	}
+	p := filepath.Join(t.TempDir(), "bg.jsonl")
+	if err := os.WriteFile(p, []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	facts, err := buildFacts(p, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	section := facts[strings.Index(facts, "### Background jobs"):]
+	if n := strings.Count(section, "\n- job"); n > maxBgJobs {
+		t.Errorf("%d job lines, cap %d:\n%s", n, maxBgJobs, section)
+	}
+	if n := strings.Count(section, "Wait for PR"); n > 1 {
+		t.Errorf("%d near-identical Wait for PR lines, want 1 (the latest):\n%s", n, section)
+	}
+	if !strings.Contains(section, "- job29:") || strings.Contains(section, "- job0:") {
+		t.Errorf("did not keep the latest jobs:\n%s", section)
+	}
+	if !strings.Contains(section, "omitted") {
+		t.Errorf("no note on how many jobs were dropped:\n%s", section)
 	}
 }

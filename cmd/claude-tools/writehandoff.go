@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -40,6 +41,74 @@ const (
 	briefingCap = 3000     // the memory daemon caps a handoff entry's fields at 4000 JSON chars
 	at, atEsc   = "@", "＠" // `claude -p` attaches any @/path in its prompt; send fullwidth @ instead
 )
+
+const resultPrefix = "    -> " // starts a tool-result line in the digest
+
+// recentKeep is how many of the newest digest lines keep their tool results while older ones are dropped.
+const recentKeep = 20
+
+// digestCap is the most bytes of digest sent to the writer (about 50k tokens).
+const digestCap = 200_000
+
+// logOut is where the per-call summary and the gap lists go.
+var logOut io.Writer = os.Stderr
+
+// capDigest joins the digest lines to at most limit bytes. When they do not fit it drops the
+// oldest tool-result lines first, then the oldest lines of any kind, and puts a marker saying
+// how much was left out in front. It never fails: the most recent end is what is kept.
+func capDigest(lines []string, limit int) string {
+	size := 0
+	for _, l := range lines {
+		size += len(l) + 1
+	}
+	if size-1 <= limit {
+		return strings.Join(lines, "\n")
+	}
+	budget := limit - 200 // room for the marker
+	drop := make([]bool, len(lines))
+	results, others := 0, 0
+	for i := 0; i < len(lines)-recentKeep && size > budget; i++ { // the newest lines keep their results
+		if strings.HasPrefix(lines[i], resultPrefix) {
+			drop[i], size, results = true, size-len(lines[i])-1, results+1
+		}
+	}
+	for i := 0; i < len(lines) && size > budget; i++ {
+		if !drop[i] {
+			drop[i], size, others = true, size-len(lines[i])-1, others+1
+		}
+	}
+	out := []string{fmt.Sprintf("[... %d older digest lines omitted (%d tool results, %d others) to keep the digest under %d KB ...]",
+		results+others, results, others, limit/1000)}
+	for i, l := range lines {
+		if !drop[i] {
+			out = append(out, l)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// callSummary is one claude call's token counts (input includes cache reads and writes) and cost.
+func callSummary(label string, res *obj) string {
+	var in, out int64
+	if u, ok := res.get("usage").(*obj); ok {
+		n := func(k string) int64 {
+			v, _ := u.get(k).(json.Number)
+			i, _ := v.Int64()
+			return i
+		}
+		in = n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens")
+		out = n("output_tokens")
+	}
+	return fmt.Sprintf("%s: in=%d out=%d $%.4f", label, in, out, costOf(res))
+}
+
+// logGaps prints a heading with the count, then each gap.
+func logGaps(heading string, found []string) {
+	fmt.Fprintf(logOut, "%s (%d):\n", heading, len(found))
+	for _, g := range found {
+		fmt.Fprintln(logOut, "- "+g)
+	}
+}
 
 //go:embed handoffskill.md
 var handoffSkill string
@@ -67,6 +136,9 @@ Follow the skill's required content. Reply with one JSON object that has one key
 (Goal, Where Things Stand, Next Action, Dead Ends, Decisions and Constraints, Locations, Open
 Questions), each holding that section's markdown body without its heading. Where the skill says
 to leave out an empty item, write a short line saying there is nothing to report.
+
+Write the handoff in the third person or impersonally ("the session", "the person", or no
+subject), never "I" or "we": a different session will read it, and "I" would not be that session.
 
 === SKILL START ===
 {skill}
@@ -189,7 +261,7 @@ func digest(path string) (string, error) {
 					if truthy(o.get("is_error")) {
 						e = "ERROR "
 					}
-					out = append(out, "    -> "+e+head)
+					out = append(out, resultPrefix+e+head)
 				}
 			}
 		case "assistant":
@@ -210,7 +282,7 @@ func digest(path string) (string, error) {
 			}
 		}
 	}
-	return strings.Join(out, "\n"), nil
+	return capDigest(out, digestCap), nil
 }
 
 // skillText is the memory plugin's handoff skill up to its save steps, which do not apply to
@@ -339,6 +411,7 @@ func writeHandoffFile(transcript, nextPath, cwd, session string) (string, string
 		return "", "", err
 	}
 	cost := costOf(res)
+	fmt.Fprintln(logOut, callSummary("writer", res))
 	out, _ := res.get("structured_output").(*obj)
 	if !truthy(out) {
 		m := search(jsonObject, getStr(res, "result", ""))
@@ -360,8 +433,11 @@ func writeHandoffFile(transcript, nextPath, cwd, session string) (string, string
 	}
 	text := strings.ReplaceAll(fmt.Sprintf("# Handoff\n\n> Written %s by claude-tools write-handoff (%s) from the transcript %s\n> Project: %s\n\n",
 		time.Now().Format("2006-01-02 15:04 MST"), writerModel, transcript, cwd)+strings.Join(body, "\n\n"), atEsc, at)
-	found := verifyGaps(text, facts, strings.Join([]string{facts, dig, next, transcript, cwd}, "\n")) // header paths are known
+	known := strings.Join([]string{facts, dig, next, transcript, cwd}, "\n") // header paths are known
+	found := verifyGaps(text, facts, known)
+	fixedNote := ""
 	if len(found) > 0 {
+		logGaps("gaps found", found)
 		gaps := make([]string, len(found))
 		for i, g := range found {
 			gaps[i] = "- " + g
@@ -372,9 +448,17 @@ func writeHandoffFile(transcript, nextPath, cwd, session string) (string, string
 			return "", "", err
 		}
 		cost += costOf(res)
-		fixed := sub(mdFence, pyStrip(getStr(res, "result", "")), func(m regexp2.Match) string { return group(&m, 1) })
+		fmt.Fprintln(logOut, callSummary("fix", res))
+		reply := pyStrip(getStr(res, "result", ""))
+		fixed := sub(mdFence, reply, func(m regexp2.Match) string { return group(&m, 1) })
 		if strings.HasPrefix(fixed, "# Handoff") {
 			text = strings.ReplaceAll(fixed, atEsc, at)
+			left := verifyGaps(text, facts, known)
+			logGaps("gaps remaining after fix", left)
+			fixedNote = fmt.Sprintf(" fixed remaining=%d", len(left))
+		} else {
+			fmt.Fprintf(logOut, "fix reply rejected (does not start with \"# Handoff\"), keeping the draft: %q\n", cut(reply, 100))
+			fixedNote = " fix-rejected"
 		}
 	}
 	path := filepath.Join(cwd, name)
@@ -391,10 +475,6 @@ func writeHandoffFile(transcript, nextPath, cwd, session string) (string, string
 	}
 	if err := os.Remove(nextPath); err != nil {
 		return "", "", err
-	}
-	fixedNote := ""
-	if len(found) > 0 {
-		fixedNote = " fixed"
 	}
 	return path, fmt.Sprintf("%s %s %.0fs $%.3f gaps=%d%s %s", session, path, time.Since(start).Seconds(), cost,
 		len(found), fixedNote, stored), nil
