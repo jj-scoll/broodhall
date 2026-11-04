@@ -33,11 +33,13 @@ var commands = map[string]func(args []string) int{
 	"record-edit":      recordEdit,
 	"write-handoff":    writeHandoff,
 	"version":          versionCmd,
+	"team-init":        teamInitCmd,
+	"setup":            setupCmd,
 }
 
 func main() {
 	if len(os.Args) < 2 || commands[os.Args[1]] == nil {
-		fmt.Fprintln(os.Stderr, "usage: guardrails <pre-tool-use|gate|autoclear|compact-guard|read-dedup|large-read-guard|retry-breaker|ask-outcome|record-edit|config-gate|session-env|receipt|guard-report|redact|pii-rules|statusline|doctor|write-handoff|version> [args]")
+		fmt.Fprintln(os.Stderr, "usage: guardrails <pre-tool-use|gate|autoclear|compact-guard|read-dedup|large-read-guard|retry-breaker|ask-outcome|record-edit|config-gate|session-env|receipt|guard-report|redact|pii-rules|statusline|doctor|write-handoff|setup|team-init|version> [args]")
 		os.Exit(2)
 	}
 	os.Exit(commands[os.Args[1]](os.Args[2:]))

@@ -17,6 +17,21 @@ and a `CLAUDE_TOOLS_*` variable still works while its `GUARDRAILS_*` name is uns
 [Options](docs/guardrails/options.md#older-names)). memory has no `/plugin configure` options; it reads environment variables and an optional
 settings file instead.
 
+## Quick start
+
+1. Add the marketplace: `claude plugin marketplace add jj-scoll/broodhall`
+2. Enable the plugins: `claude plugin install guardrails@broodhall`, and any of `memory`,
+   `context-guard` and `rtk` the same way.
+3. Start a new session and run `/guardrails:setup`. It lets you pick a profile and enter your
+   email domains, shows what it will write, runs `guardrails doctor`, and offers a harmless
+   demo of a block. It is safe to run again.
+
+The command is `/guardrails:setup`, not `/broodhall:setup`: a plugin's commands take the
+plugin's name, and broodhall is the marketplace.
+
+To set up a whole team or organisation at once, see
+[Roll out to a team](https://jj-scoll.github.io/broodhall/guide/team/).
+
 ## Install
 
 ```sh

@@ -50,6 +50,12 @@ type doctorEnv struct {
 	Exe        string
 	Settings   []string
 	Hook       bool
+	// ConfigDir is the Claude config directory whose plugins/ records the version checks read.
+	// Empty skips those checks.
+	ConfigDir string
+	// ProjectDir is the current project: project and local scope installs recorded for any
+	// other directory are not loaded in this session, so the version checks skip them.
+	ProjectDir string
 }
 
 func doctorCmd(args []string) int {
@@ -72,6 +78,8 @@ func doctorCmd(args []string) int {
 		return 2
 	}
 	e.Exe, _ = os.Executable()
+	e.ConfigDir = claudeConfigDir()
+	e.ProjectDir = projectDir()
 	if *settings != "" {
 		e.Settings = strings.Split(*settings, ",")
 	} else {
@@ -80,21 +88,32 @@ func doctorCmd(args []string) int {
 	return doctor(os.Stdout, e)
 }
 
-// defaultSettingsFiles lists the user settings (under CLAUDE_CONFIG_DIR when set) and the
-// current project's shared and local settings.
-func defaultSettingsFiles() []string {
-	cfg := os.Getenv("CLAUDE_CONFIG_DIR")
-	if cfg == "" {
-		home, _ := os.UserHomeDir()
-		cfg = filepath.Join(home, ".claude")
+// claudeConfigDir is CLAUDE_CONFIG_DIR, else ~/.claude.
+func claudeConfigDir() string {
+	if cfg := os.Getenv("CLAUDE_CONFIG_DIR"); cfg != "" {
+		return cfg
 	}
-	files := []string{filepath.Join(cfg, "settings.json")}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".claude")
+}
+
+// projectDir is the current project: CLAUDE_PROJECT_DIR, else the working directory.
+func projectDir() string {
 	if proj := os.Getenv("CLAUDE_PROJECT_DIR"); proj != "" {
-		files = append(files, filepath.Join(proj, ".claude", "settings.json"), filepath.Join(proj, ".claude", "settings.local.json"))
-	} else if wd, err := os.Getwd(); err == nil {
-		files = append(files, filepath.Join(wd, ".claude", "settings.json"), filepath.Join(wd, ".claude", "settings.local.json"))
+		return proj
 	}
-	return files
+	wd, _ := os.Getwd()
+	return wd
+}
+
+// defaultSettingsFiles lists the user settings (under CLAUDE_CONFIG_DIR when set), the
+// current project's shared and local settings, and the managed settings files.
+func defaultSettingsFiles() []string {
+	files := []string{filepath.Join(claudeConfigDir(), "settings.json")}
+	if proj := projectDir(); proj != "" {
+		files = append(files, filepath.Join(proj, ".claude", "settings.json"), filepath.Join(proj, ".claude", "settings.local.json"))
+	}
+	return append(files, managedSettingsFilesIn(managedRoot())...)
 }
 
 func doctor(w io.Writer, e doctorEnv) int {
@@ -129,7 +148,7 @@ func doctor(w io.Writer, e doctorEnv) int {
 			report("FAIL", "plugin enabled", "settings disable the guardrails plugin, yet its hooks are running")
 		default:
 			if strings.Contains(filepath.ToSlash(e.PluginRoot), "/plugins/cache/") {
-				report("WARN", "plugin enabled", "no enabledPlugins entry for guardrails in "+strings.Join(e.Settings, ", ")+" (managed settings are not read)")
+				report("WARN", "plugin enabled", "no enabledPlugins entry for guardrails in "+strings.Join(e.Settings, ", ")+" (user, project, local and managed settings were read)")
 			} else {
 				skip("plugin enabled: loaded from a directory, not a marketplace install")
 			}
@@ -154,11 +173,43 @@ func doctor(w io.Writer, e doctorEnv) int {
 	if p := checkRTK(e.Settings); p != "" {
 		report("WARN", "rtk", p)
 	}
+	if p := checkStatusLine(e.Settings); p != "" {
+		report("WARN", "statusLine", p)
+	}
+	if e.ConfigDir != "" {
+		doctorVersions(e.ConfigDir, e.ProjectDir, report, skip)
+	}
 
 	if failed && !e.Hook {
 		return 1
 	}
 	return 0
+}
+
+// doctorVersions runs the cross-plugin version checks over the config directory's plugin records.
+func doctorVersions(configDir, projectDir string, report func(level, subject, problem string), skip func(string)) {
+	if _, err := readInstalledPlugins(configDir); err != nil {
+		report("WARN", "plugin versions", err.Error())
+		return
+	}
+	groups := broodhallInstalls(configDir, projectDir)
+	if len(groups) == 0 {
+		skip("plugin versions: no broodhall plugins in installed_plugins.json")
+		return
+	}
+	problems := append(checkPluginSkew(configDir, projectDir), checkMarketplaceVersions(configDir, projectDir)...)
+	for _, p := range problems {
+		report("WARN", "plugin versions", p)
+	}
+	if len(problems) == 0 {
+		var have []string
+		for _, mkt := range sortedKeys(groups) {
+			for _, p := range groups[mkt] {
+				have = append(have, p.Name+"@"+mkt+" "+p.Version)
+			}
+		}
+		report("WARN", "plugin versions: "+strings.Join(have, ", "), "")
+	}
 }
 
 // doctorHookReply sends -hook problems to both readers: systemMessage shows in the user's
@@ -253,12 +304,24 @@ func readSettings(files []string) []settingsView {
 }
 
 type settingsView struct {
-	EnabledPlugins map[string]any `json:"enabledPlugins"`
+	EnabledPlugins map[string]any  `json:"enabledPlugins"`
+	StatusLine     json.RawMessage `json:"statusLine"`
 	Hooks          map[string][]struct {
 		Hooks []struct {
 			Command string `json:"command"`
 		} `json:"hooks"`
 	} `json:"hooks"`
+}
+
+// statusLineCommand returns the statusLine command, "" when statusLine is absent or not an object.
+func (s settingsView) statusLineCommand() string {
+	var sl struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal(s.StatusLine, &sl) != nil {
+		return ""
+	}
+	return sl.Command
 }
 
 // hookCommands returns every hook command in the settings, in file order.

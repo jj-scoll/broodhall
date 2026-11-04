@@ -7,7 +7,8 @@ package main
 //
 //   - Exit 2 (the session keeps its current settings) when the change weakens a guard: the
 //     guardrails plugin disabled or dropped from enabledPlugins; a family added to the plugin's
-//     disabled_guards option; a GUARDRAILS_* or CLAUDE_TOOLS_* env var (GUARDRAILS_OFF among
+//     disabled_guards option; the observe option turned on; an entry added to the
+//     allowed_email_domains option; a GUARDRAILS_* or CLAUDE_TOOLS_* env var (GUARDRAILS_OFF among
 //     them) changed;
 //     a PreToolUse or PermissionRequest hook added, since it can allow or rewrite a call the
 //     guards ask about; a PreToolUse, PermissionRequest or ConfigChange hook, or any
@@ -210,7 +211,43 @@ const guardsPlugin = "guardrails@"
 
 // defaultDisabledGuards is plugin.json's default for disabled_guards, used when the option
 // is unset.
-const defaultDisabledGuards = "pii,raw-client-data,session-url"
+const defaultDisabledGuards = ""
+
+// observeOption reports whether the observe option is on for id. The option is a boolean, and
+// Claude Code may store it as a string; observeOn takes the same words the guard does.
+func (s settingsDoc) observeOption(id string) bool {
+	switch v := s.PluginConfigs[id].Options["observe"].(type) {
+	case bool:
+		return v
+	case string:
+		return observeOn(v)
+	case float64:
+		return v != 0 // Claude Code may hand the guard "1" for a number
+	}
+	return false
+}
+
+// allowedDomains returns the entries of the allowed_email_domains option for id, lower-cased.
+func (s settingsDoc) allowedDomains(id string) map[string]bool {
+	out := map[string]bool{}
+	var parts []string
+	switch v := s.PluginConfigs[id].Options["allowed_email_domains"].(type) {
+	case string:
+		parts = strings.Split(v, ",")
+	case []any: // an array option: each element may itself hold a comma list
+		for _, e := range v {
+			if str, ok := e.(string); ok {
+				parts = append(parts, strings.Split(str, ",")...)
+			}
+		}
+	}
+	for _, d := range parts {
+		if d = strings.ToLower(strings.TrimSpace(d)); d != "" {
+			out[d] = true
+		}
+	}
+	return out
+}
 
 // pluginEnabled reports whether enabledPlugins lists id and does not say false.
 func (s settingsDoc) pluginEnabled(id string) bool {
@@ -220,8 +257,17 @@ func (s settingsDoc) pluginEnabled(id string) bool {
 
 // disabledGuards returns the families the plugin option turns off for id.
 func (s settingsDoc) disabledGuards(id string) map[string]bool {
-	if v, ok := s.PluginConfigs[id].Options["disabled_guards"].(string); ok {
+	switch v := s.PluginConfigs[id].Options["disabled_guards"].(type) {
+	case string:
 		return guardsOff(v)
+	case []any:
+		parts := make([]string, 0, len(v))
+		for _, e := range v {
+			if str, ok := e.(string); ok {
+				parts = append(parts, str)
+			}
+		}
+		return guardsOff(strings.Join(parts, ","))
 	}
 	return guardsOff(defaultDisabledGuards)
 }
@@ -273,11 +319,23 @@ func settingsDiff(old, next []byte) (weakened, egress []string, err error) {
 			weakened = append(weakened, "hook added: "+k)
 		}
 	}
-	for _, id := range slices.Sorted(maps.Keys(a.EnabledPlugins)) {
-		if !strings.HasPrefix(id, guardsPlugin) || !a.pluginEnabled(id) {
+	// Options are judged for every guardrails id either file mentions, since the plugin may be
+	// enabled in another file (project or managed settings) while this one holds its options.
+	// Disabling the plugin is judged only for a file that had enabled it.
+	ids := map[string]bool{}
+	for _, d := range []settingsDoc{a, b} {
+		for id := range d.EnabledPlugins {
+			ids[id] = true
+		}
+		for id := range d.PluginConfigs {
+			ids[id] = true
+		}
+	}
+	for _, id := range slices.Sorted(maps.Keys(ids)) {
+		if !strings.HasPrefix(id, guardsPlugin) {
 			continue
 		}
-		if !b.pluginEnabled(id) {
+		if a.pluginEnabled(id) && !b.pluginEnabled(id) {
 			weakened = append(weakened, "plugin disabled: "+id)
 			continue
 		}
@@ -285,6 +343,15 @@ func settingsDiff(old, next []byte) (weakened, egress []string, err error) {
 		for _, f := range slices.Sorted(maps.Keys(b.disabledGuards(id))) {
 			if !was[f] {
 				weakened = append(weakened, "guard family turned off: "+f+" ("+id+" disabled_guards)")
+			}
+		}
+		if b.observeOption(id) && !a.observeOption(id) {
+			weakened = append(weakened, "observe mode turned on: the optional guards only log ("+id+" observe)")
+		}
+		wasDomains := a.allowedDomains(id)
+		for _, d := range slices.Sorted(maps.Keys(b.allowedDomains(id))) {
+			if !wasDomains[d] {
+				weakened = append(weakened, "email domain allowed: "+d+" ("+id+" allowed_email_domains)")
 			}
 		}
 	}

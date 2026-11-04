@@ -338,6 +338,12 @@ func TestSettingsDiffPlugin(t *testing.T) {
 		"family added to disabled_guards": {`{"enabledPlugins": {"guardrails@broodhall": true},
 			"pluginConfigs": {"guardrails@broodhall": {"options": {"disabled_guards": "pii,session-url,egress"}}}}`,
 			"guard family turned off: egress"},
+		"email domain added": {`{"enabledPlugins": {"guardrails@broodhall": true},
+			"pluginConfigs": {"guardrails@broodhall": {"options": {"disabled_guards": "pii,session-url", "allowed_email_domains": "@example.com,@example.org"}}}}`,
+			"email domain allowed: @example.org"},
+		"observe turned on": {`{"enabledPlugins": {"guardrails@broodhall": true},
+			"pluginConfigs": {"guardrails@broodhall": {"options": {"disabled_guards": "pii,session-url", "allowed_email_domains": "@example.com", "observe": true}}}}`,
+			"observe mode turned on"},
 		"disabled_guards whitespace and case": {`{"enabledPlugins": {"guardrails@broodhall": true},
 			"pluginConfigs": {"guardrails@broodhall": {"options": {"disabled_guards": " pii , git "}}}}`,
 			"guard family turned off: git"},
@@ -359,13 +365,13 @@ func TestSettingsDiffPlugin(t *testing.T) {
 			}
 		})
 	}
-	t.Run("weakens/option unset falls back to the default families", func(t *testing.T) {
+	t.Run("silent/option unset equals the empty default", func(t *testing.T) {
 		old := `{"enabledPlugins": {"guardrails@broodhall": true},
 			"pluginConfigs": {"guardrails@broodhall": {"options": {"disabled_guards": ""}}}}`
 		next := `{"enabledPlugins": {"guardrails@broodhall": true}}`
 		weak, _, _ := settingsDiff([]byte(old), []byte(next))
-		if !strings.Contains(strings.Join(weak, "\n"), "guard family turned off: pii") {
-			t.Errorf("weakened = %q, want the default families counted as newly off", weak)
+		if len(weak) != 0 {
+			t.Errorf("weakened = %q, want silence", weak)
 		}
 	})
 	okCases := map[string]string{
@@ -373,7 +379,7 @@ func TestSettingsDiffPlugin(t *testing.T) {
 		"other plugin disabled":    `{"enabledPlugins": {"guardrails@broodhall": true, "other@market": false}, "pluginConfigs": {"guardrails@broodhall": {"options": {"disabled_guards": "pii,session-url"}}}}`,
 		"family removed":           `{"enabledPlugins": {"guardrails@broodhall": true}, "pluginConfigs": {"guardrails@broodhall": {"options": {"disabled_guards": "pii"}}}}`,
 		"all families turned on":   `{"enabledPlugins": {"guardrails@broodhall": true}, "pluginConfigs": {"guardrails@broodhall": {"options": {"disabled_guards": ""}}}}`,
-		"email option edited":      `{"enabledPlugins": {"guardrails@broodhall": true}, "pluginConfigs": {"guardrails@broodhall": {"options": {"disabled_guards": "pii,session-url", "allowed_email_domains": "@example.org"}}}}`,
+		"email domain removed":     `{"enabledPlugins": {"guardrails@broodhall": true}, "pluginConfigs": {"guardrails@broodhall": {"options": {"disabled_guards": "pii,session-url", "allowed_email_domains": ""}}}}`,
 		"non-guard hook added":     `{"enabledPlugins": {"guardrails@broodhall": true}, "pluginConfigs": {"guardrails@broodhall": {"options": {"disabled_guards": "pii,session-url"}}}, "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "notify"}]}]}}`,
 		"plugin enabled as a list": `{"enabledPlugins": {"guardrails@broodhall": ["1.0"]}, "pluginConfigs": {"guardrails@broodhall": {"options": {"disabled_guards": "pii,session-url"}}}}`,
 	}

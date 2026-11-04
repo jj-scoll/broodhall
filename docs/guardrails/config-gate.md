@@ -16,7 +16,9 @@ which keeps the session on its current settings, when the change does any of thi
 
 - Sets `enabledPlugins` for `guardrails@<marketplace>` to `false`, or removes the entry.
 - Adds a family to the plugin's `disabled_guards` option in `pluginConfigs`. An unset option
-  counts as the default families, so unsetting an option that was empty also counts.
+  is empty (every family on), so removing an empty option changes nothing.
+- Turns the plugin's `observe` option on, so the optional guards only log.
+- Adds an entry to the plugin's `allowed_email_domains` option. Removing one passes.
 - Adds, changes or removes a `GUARDRAILS_*` or `CLAUDE_TOOLS_*` variable under `env`, `GUARDRAILS_OFF`
   included.
 - Adds a `PreToolUse` or `PermissionRequest` hook. Such a hook can allow or rewrite a call
@@ -25,6 +27,9 @@ which keeps the session on its current settings, when the change does any of thi
   `onFailure: block`, or drops `onFailure: block` from one.
 - Sets `disableAllHooks`, or sets `defaultMode` to `bypassPermissions`.
 - Removes a `deny` or `ask` permission rule.
+
+The gate judges the plugin options in any file it watches, including a user file that holds
+only `pluginConfigs` while a project or managed file enables the plugin.
 
 The reply lists each reason on stderr. Deleting a settings file is judged the same way, as a
 change to an empty file.

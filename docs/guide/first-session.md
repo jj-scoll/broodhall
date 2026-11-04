@@ -7,6 +7,9 @@ for its version and downloads it if it is missing, as described on the
 with a message that says how to retry; the notice and the [`fail_open`](../guardrails/options.md#fail_open)
 option cover the alternative. The next session start tries again.
 
+Run `/guardrails:setup` once to choose a profile and enter your email domains. See
+[Setup](../guardrails/setup.md).
+
 ## Defaults
 
 Every guard family is on by default. The core blocks (recursive delete of `/`, `~`, `$HOME`, and a few
