@@ -74,7 +74,7 @@ jobs:
             exit 0
           fi
           mapfile -t versions < <(jq -r .version plugins/*/.claude-plugin/plugin.json)
-          next=$(git log --format=%B "$last..HEAD" | .github/scripts/next-version.sh "${versions[@]}")
+          next=$(git log --no-merges --format=%x1e%B "$last..HEAD" | .github/scripts/next-version.sh "${versions[@]}")
           for f in plugins/*/.claude-plugin/plugin.json; do
             sed -i -E "0,/\"version\": *\"[^\"]*\"/s//\"version\": \"$next\"/" "$f"
           done
