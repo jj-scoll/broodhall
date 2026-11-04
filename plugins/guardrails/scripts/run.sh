@@ -1,9 +1,11 @@
 #!/bin/sh
 # guardrails hook launcher: runs this plugin version's claude-tools binary on the hook's stdin.
 # `run.sh install` (the SessionStart hook) downloads the binary from the GitHub release the
-# first time a version runs, and a failed install never stops the session start. Every other
-# call fails CLOSED: with no binary it exits 2 and says on stderr what failed, how to retry and
-# how to opt out, so PreToolUse blocks the tool call instead of letting it through unguarded.
+# first time a version runs, and a failed install never stops the session start. The guards
+# (pre-tool-use, read-dedup, large-read-guard, config-gate) fail CLOSED: with no binary they exit
+# 2 and say on stderr what failed, how to retry and how to opt out, so PreToolUse blocks the
+# tool call instead of letting it through unguarded. Every other hook exits 0 silently, since
+# exit 2 at Stop would keep Claude from ending its turn and at PreCompact would block compaction.
 # The opt-out is the fail_open option (CLAUDE_PLUGIN_OPTION_FAIL_OPEN) or, outside the plugin,
 # CLAUDE_TOOLS_FAIL_OPEN: either one set to true, 1 or yes makes a missing binary exit 0 silently.
 # shellcheck disable=SC2015 # `a && b || fail`: fail when any step fails, which is intended
@@ -21,6 +23,7 @@ export CLAUDE_TOOLS_PII_ALLOW="${CLAUDE_PLUGIN_OPTION_ALLOWED_EMAIL_DOMAINS-${CL
 # Client-data rules come from the user; with none set they do nothing (see docs/guardrails/pii.md).
 export CLAUDE_TOOLS_CLIENT_BUCKETS="${CLAUDE_PLUGIN_OPTION_CLIENT_DATA_BUCKETS-${CLAUDE_TOOLS_CLIENT_BUCKETS-}}"
 export CLAUDE_TOOLS_MASKED_DIRS="${CLAUDE_PLUGIN_OPTION_MASKED_COPY_DIRS-${CLAUDE_TOOLS_MASKED_DIRS-}}"
+export HANDOFF_TOKENS="${CLAUDE_PLUGIN_OPTION_HANDOFF_TOKENS-${HANDOFF_TOKENS-}}"
 # The opt-in rtk rewrite is off unless the rtk option (or CLAUDE_TOOLS_RTK) says on.
 export CLAUDE_TOOLS_RTK="${CLAUDE_PLUGIN_OPTION_RTK-${CLAUDE_TOOLS_RTK-}}"
 export CLAUDE_TOOLS_RTK_CMD="${CLAUDE_PLUGIN_OPTION_RTK_COMMAND-${CLAUDE_TOOLS_RTK_CMD-}}"
@@ -65,6 +68,10 @@ fi
 
 if [ ! -x "$bin" ]; then
 	cat >/dev/null
+	case ${1-} in
+	pre-tool-use | read-dedup | large-read-guard | config-gate) ;;
+	*) exit 0 ;;
+	esac
 	[ -n "$fail_open" ] && exit 0
 	{
 		printf 'guardrails: BLOCKED: the guard binary claude-tools %s is not installed (%s), so this tool call was not checked.\n' "$ver" "$bin"

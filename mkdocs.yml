@@ -46,6 +46,7 @@ nav:
       - Bash core: guardrails/bash-core.md
       - Git: guardrails/git.md
       - Settings files: guardrails/settings-files.md
+      - Config gate: guardrails/config-gate.md
       - Secret files: guardrails/secret-files.md
       - Egress: guardrails/egress.md
       - PII: guardrails/pii.md
@@ -53,6 +54,8 @@ nav:
       - Nudges: guardrails/nudges.md
       - Read limits: guardrails/read-limits.md
       - Retry loops: guardrails/retry-loops.md
+      - Handoff gate: guardrails/handoff-gate.md
+      - Receipt: guardrails/receipt.md
       - Options: guardrails/options.md
   - Memory:
       - Overview: memory/index.md

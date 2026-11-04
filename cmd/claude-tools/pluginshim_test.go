@@ -86,6 +86,41 @@ func TestShimNoBinaryFailsClosed(t *testing.T) {
 	}
 }
 
+// A missing binary blocks only the subcommands hooks.json marks onFailure: block (the guards).
+// The rest exit 0 silently: exit 2 at Stop would keep Claude from ending its turn, and at
+// PreCompact would block every compaction.
+func TestShimNoBinaryBlocksOnlyGuards(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(pluginDir, "hooks/hooks.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Hooks map[string][]struct {
+			Hooks []struct{ Command, OnFailure string }
+		}
+	}
+	if err := json.Unmarshal(b, &f); err != nil {
+		t.Fatal(err)
+	}
+	guard := map[string]bool{}
+	for _, groups := range f.Hooks {
+		for _, g := range groups {
+			for _, h := range g.Hooks {
+				sub := h.Command[strings.LastIndex(h.Command, " ")+1:]
+				guard[sub] = guard[sub] || h.OnFailure == "block"
+			}
+		}
+	}
+	delete(guard, "install")
+	for sub, blocks := range guard {
+		env := map[string]string{"CLAUDE_PLUGIN_DATA": t.TempDir()}
+		code, out := runShim(t, env, "{}", sub)
+		if want := map[bool]int{true: 2, false: 0}[blocks]; code != want || out != "" {
+			t.Errorf("%s with no binary: exit %d, stdout %q; want %d and nothing", sub, code, out, want)
+		}
+	}
+}
+
 // The plugin ships every guard on: the default off list is empty, and the manifest says so.
 func TestDefaultGuardsAllOn(t *testing.T) {
 	if d := readManifest(t).UserConfig["disabled_guards"].Default; d != "" {
@@ -208,9 +243,10 @@ func TestPluginHooksUseKnownCommands(t *testing.T) {
 }
 
 // The guards fail closed: a guard binary that crashes, is killed or hangs blocks the tool
-// call instead of letting it through unchecked. A missing binary blocks too: run.sh exits 2
-// then, unless the fail_open option is set (see TestShimNoBinaryFailsClosed). The other
-// hooks (install, retry-breaker) have no onFailure.
+// call instead of letting it through unchecked. A missing binary blocks them too: run.sh exits
+// 2 then, unless the fail_open option is set (see TestShimNoBinaryBlocksOnlyGuards). The
+// other hooks (install, retry-breaker, session-env, receipt, gate, compact-guard, and
+// config-gate at SessionStart, where it only takes a snapshot) have no onFailure.
 func TestPluginGuardHooksFailClosed(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(pluginDir, "hooks/hooks.json"))
 	if err != nil {
@@ -228,7 +264,7 @@ func TestPluginGuardHooksFailClosed(t *testing.T) {
 		for _, g := range groups {
 			for _, h := range g.Hooks {
 				want := ""
-				if event == "PreToolUse" {
+				if event == "PreToolUse" || event == "ConfigChange" {
 					want = "block"
 				}
 				if h.OnFailure != want {

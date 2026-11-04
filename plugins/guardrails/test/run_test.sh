@@ -3,9 +3,10 @@
 # sha256sum or shasum. Run: bash plugins/guardrails/test/run_test.sh
 #
 # Contract under test: guards fail CLOSED. With no usable binary (never installed, failed
-# download, checksum mismatch) every hook except `install` exits 2 with a stderr message that
-# says what failed, how to retry and how to opt out; the opt-out (fail_open) restores a silent
-# exit 0. `install` itself never fails the session. An unverified binary is never executed.
+# download, checksum mismatch) every guard (pre-tool-use, read-dedup, large-read-guard,
+# config-gate) exits 2 with a stderr message that says what failed, how to retry and how to
+# opt out; the opt-out (fail_open) restores a silent exit 0. The other hooks exit 0 silently,
+# and `install` itself never fails the session. An unverified binary is never executed.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/.." && pwd)
@@ -90,10 +91,17 @@ case $out in *"off=egress "*) ok "disabled_guards option beats env" ;; *) bad "d
 grep -q '"default": "pii' "$root/.claude-plugin/plugin.json" && bad "plugin.json default" "disabled_guards still defaults to a family list"
 
 # --- no binary: fail closed --------------------------------------------------------------
-for sub in pre-tool-use read-dedup large-read-guard retry-breaker; do
+for sub in pre-tool-use read-dedup large-read-guard config-gate; do
 	newcase "missing-$sub"
 	hook "$sub"
 	expect_blocked "no binary: $sub exits 2 with guidance"
+done
+# Not guards: exit 2 at Stop would keep Claude from ending its turn, at PreCompact would block
+# compaction.
+for sub in retry-breaker gate receipt compact-guard session-env; do
+	newcase "missing-$sub"
+	hook "$sub"
+	expect_silent_allow "no binary: $sub exits 0 silently"
 done
 
 newcase missing-optout-option

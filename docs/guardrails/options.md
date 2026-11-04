@@ -1,6 +1,6 @@
 # Options
 
-Seven plugin options, two files under `~/.config/claude-tools/`, and two environment variables.
+Nine plugin options, two files under `~/.config/claude-tools/`, and two environment variables.
 
 Set the plugin options with `/plugin configure guardrails@broodhall`, or from `/config`.
 
@@ -55,7 +55,9 @@ Outside the plugin the same list is read from `CLAUDE_TOOLS_PII_ALLOW`.
 | Default | off |
 | Description | By default a tool call is blocked, with a message saying how to retry, when the guard binary is not installed (a failed download or checksum). Turn this on to let tool calls through unguarded instead. |
 
-Every hook except the session-start install fails closed. With no binary at the expected
+The guards (`pre-tool-use`, `read-dedup`, `large-read-guard` and `config-gate`) fail closed;
+the other hooks exit 0 silently, so a missing binary never stops Claude from ending its turn
+or compacting. With no binary at the expected
 path (never downloaded, a failed download, a checksum mismatch), the launcher exits 2 and
 writes this to stderr, which Claude Code shows in place of the tool call (the path and
 version differ):
@@ -93,6 +95,33 @@ Outside the plugin the same list is read from `CLAUDE_TOOLS_CLIENT_BUCKETS`. See
 
 Outside the plugin the same list is read from `CLAUDE_TOOLS_MASKED_DIRS`. See
 [PII](pii.md#raw-client-data-ask).
+
+## `handoff_tokens`
+
+| | |
+| --- | --- |
+| Title | Handoff threshold (tokens) |
+| Default | empty |
+| Description | Context size at which the Stop gate asks Claude, once per session, to write a handoff. Leave empty for 80% of CLAUDE_CODE_AUTO_COMPACT_WINDOW (240000 for the default 300000 window). |
+
+Outside the plugin the same number is read from `HANDOFF_TOKENS`. A value that is not a
+whole number counts as empty. See [Handoff gate](handoff-gate.md).
+
+## `aws_session_tag`
+
+| | |
+| --- | --- |
+| Title | Tag AWS calls with the session id |
+| Default | off |
+| Description | Off by default. When on, each session sets AWS_SDK_UA_APP_ID=claude-<first 8 characters of the session id>, so AWS CLI and SDK calls made from Bash carry it in their User-Agent and CloudTrail records which session made them. |
+
+Opt in to have the `session-env` `SessionStart` hook append
+`export AWS_SDK_UA_APP_ID=claude-<id>` to the session's environment file. AWS calls made from
+Bash then show `app/claude-<id>` in their User-Agent, and CloudTrail's `userAgent` field names
+the session. A session resumed or compacted adds no second line; a new session id adds one.
+
+The hook never blocks and prints nothing. It writes nothing for a missing or unsafe session id.
+Outside the plugin, set `CLAUDE_TOOLS_AWS_SESSION_TAG=1`; a set plugin option wins over it.
 
 ## `rtk`
 
