@@ -19,12 +19,36 @@ var (
 )
 
 // stateDir is the handoff state dir the hooks share: $HANDOFF_STATE_DIR/claude-handoff.
+// run.sh always exports HANDOFF_STATE_DIR (an empty value means /tmp). When it is unset,
+// as for a status line started straight from settings.json, the base is the plugin data
+// dir the running binary was installed under, so every entry point agrees with the hooks.
 func stateDir() string {
-	base := os.Getenv("HANDOFF_STATE_DIR")
+	base, set := os.LookupEnv("HANDOFF_STATE_DIR")
+	if !set {
+		if exe, err := os.Executable(); err == nil {
+			if r, err := filepath.EvalSymlinks(exe); err == nil {
+				exe = r
+			}
+			base = pluginDataBase(exe)
+		}
+	}
 	if base == "" {
 		base = "/tmp"
 	}
 	return filepath.Join(base, "claude-handoff")
+}
+
+// pluginDataBase returns <data> for an executable at <data>/bin/<version>/claude-tools
+// where <data> is a guardrails plugin data dir (its name starts with "guardrails"), else "".
+func pluginDataBase(exe string) string {
+	verDir := filepath.Dir(exe)
+	binDir := filepath.Dir(verDir)
+	data := filepath.Dir(binDir)
+	if filepath.Base(exe) != "claude-tools" || filepath.Base(binDir) != "bin" ||
+		!strings.HasPrefix(filepath.Base(data), "guardrails") {
+		return ""
+	}
+	return data
 }
 
 func isFile(p string) bool {

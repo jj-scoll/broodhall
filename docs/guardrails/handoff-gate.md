@@ -115,8 +115,13 @@ The hooks keep small files named after the session id in the `claude-handoff` di
 the plugin's data directory: `<id>.gate`, `<id>.autoclear`, `<id>.rearm`, `<id>.claimed`,
 `<id>.compacts` and `<id>.compact-blocked`, plus one `writer.log` for all sessions. Set
 `HANDOFF_STATE_DIR` to move the base directory (`claude-handoff` is added under it); the gate,
-autoclear and context-guard must all see the same one. A failure to read or write these files
-never blocks anything.
+autoclear and context-guard must all see the same one. The hooks' launcher, `run.sh`, exports
+the variable itself. When it is unset (the status line runs the binary straight from
+`settings.json`, not through `run.sh`), `claude-tools` uses the plugin data directory it is
+installed in, found from its own path `<data>/bin/<version>/claude-tools`, so the status line's
+handoff segment reads the same files the hooks write. Outside such a layout it falls back to
+`/tmp`, and an explicitly set value, even an empty one, always wins. A failure to read or write these files never
+blocks anything.
 
 ### Progress markers
 
