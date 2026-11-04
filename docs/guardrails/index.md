@@ -28,6 +28,7 @@ real reply for each.
 | [Status line](statusline.md) | | An optional status line with context, prompt-cache and rate-limit segments. Wired in your own `settings.json`. |
 | [Doctor](doctor.md) | | A start-of-session check of the install: plugin enabled, binary checksum and version, hook reachability, duplicate guards. Silent when healthy. |
 | [Handoff gate](handoff-gate.md) | <span class="badge badge-block">BLOCK</span> | Blocks the first stop of a session once its context passes a threshold, to get a handoff written, and blocks a second manual `/compact`. |
+| [Write handoff](write-handoff.md) | | A subcommand, not a hook: `claude-tools write-handoff` writes the handoff from the transcript with a separate Haiku call on your Claude Code login. |
 | [Receipt](receipt.md) | | A one-line summary at Stop of what the guards did that turn. |
 | [Options](options.md) | | The settings that turn families off, say what to do without the binary, tell the guards which addresses and client data are yours, and opt in to the RTK rewrite. |
 
