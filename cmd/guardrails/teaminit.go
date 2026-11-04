@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -105,8 +106,12 @@ func teamInit(out, errw io.Writer, args []string) int {
 			"Or put it in managed-settings.d/ beside it, as a numbered file such as 20-broodhall.json.\n"+
 			"A plugin set to true here is force-enabled and users cannot turn it off.\n")
 	} else {
+		user := "~/.claude/settings.json"
+		if os.Getenv("CLAUDE_CONFIG_DIR") != "" {
+			user = filepath.Join(claudeConfigDir(), "settings.json")
+		}
 		fmt.Fprint(errw, "Merge this into .claude/settings.json and commit it. Each teammate accepts the folder trust prompt once,\n"+
-			"then Claude Code registers the marketplace and installs the plugins that live in this repository. For your own machine, merge it into ~/.claude/settings.json.\n")
+			"then Claude Code registers the marketplace and installs the plugins that live in this repository. For your own machine, merge it into "+user+".\n")
 	}
 	if enabled["rtk@"+broodhallMarketplace] != nil {
 		fmt.Fprint(errw, "rtk comes from another repository, and Claude Code does not install such a plugin from settings alone.\n"+
