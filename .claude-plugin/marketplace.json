@@ -2,7 +2,7 @@
   "name": "broodhall",
   "description": "Claude Code plugins from jj-scoll/broodhall",
   "owner": {
-    "name": "Jeff Scollick",
+    "name": "jj-scoll",
     "url": "https://github.com/jj-scoll"
   },
   "plugins": [
