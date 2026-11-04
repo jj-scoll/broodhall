@@ -1,0 +1,93 @@
+# Every push to main that changes shipped files cuts a release with no human step:
+#   prepare  computes the next shared version (.github/scripts/next-version.sh), rewrites every
+#            plugin.json to it, commits "release vX.Y.Z [skip ci]" and tags vX.Y.Z (one atomic push)
+#   release  calls release.yml for that tag, which builds all assets and creates the GitHub release
+# Commits and tags pushed with GITHUB_TOKEN trigger no workflow, which is why release.yml is
+# called here instead of waiting for its tag trigger.
+#
+# Loop safety, in layers: the token push triggers nothing; the commit says [skip ci]; the job is
+# skipped when the head commit is a release commit; and the diff guard below ignores plugin.json,
+# so a release commit alone never counts as a shipped change.
+name: autorelease
+
+on:
+  push:
+    branches: [main]
+    # Shipped files only. Docs, .github and tests do not cut a release. Keep in step with the
+    # pathspec in the "Release needed?" step.
+    paths:
+      - "plugins/**"
+      - "!plugins/*/test/**"
+      - "!plugins/*/tests/**"
+      - "cmd/**"
+      - "go.mod"
+      - "go.sum"
+      - ".claude-plugin/**"
+
+# One release at a time. A queued run waits (never cancelled mid-release) and builds from the
+# branch tip at the time it starts, so it picks up everything merged while it waited.
+concurrency:
+  group: autorelease
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    if: ${{ !startsWith(github.event.head_commit.message, 'release v') }}
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.cut.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Test the version scripts
+        run: bash .github/scripts/test/next-version_test.sh
+      - name: Cut the release commit and tag
+        id: cut
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          shipped=(plugins .claude-plugin cmd go.mod go.sum
+            ':(exclude)plugins/*/.claude-plugin/plugin.json'
+            ':(exclude,glob)plugins/*/test/**' ':(exclude,glob)plugins/*/tests/**')
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main --tags --force
+            git reset --hard origin/main
+            last=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)
+            if git diff --quiet "$last" HEAD -- "${shipped[@]}"; then
+              echo "No shipped change since $last; nothing to release."
+              exit 0
+            fi
+            mapfile -t versions < <(jq -r .version plugins/*/.claude-plugin/plugin.json)
+            next=$(git log --format=%B "$last..HEAD" | .github/scripts/next-version.sh "${versions[@]}")
+            for f in plugins/*/.claude-plugin/plugin.json; do
+              sed -i -E "0,/\"version\": *\"[^\"]*\"/s//\"version\": \"$next\"/" "$f"
+            done
+            .github/scripts/check-versions.sh
+            git commit -a -m "release v$next [skip ci]"
+            git tag "v$next"
+            # Atomic: either the commit and the tag both land or neither does. A rejection
+            # means main moved; start over from the new tip so the version is recomputed.
+            if git push --atomic origin HEAD:refs/heads/main "refs/tags/v$next"; then
+              echo "tag=v$next" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "push rejected (attempt $attempt); main moved, retrying"
+            git tag -d "v$next"
+            sleep $((attempt * 3))
+          done
+          echo "could not push the release after 5 attempts" >&2
+          exit 1
+
+  release:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.tag != '' }}
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+    permissions:
+      contents: write
