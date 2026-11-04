@@ -190,7 +190,8 @@ func TestStatuslineMalformedNeverBreaks(t *testing.T) {
 
 // With no account flags there is no badge, and an empty identity line is not printed.
 func TestStatuslineNoAccountByDefault(t *testing.T) {
-	out := renderStatuslineEnv(t, `{"model":{"display_name":"Opus 5.5"}}`, map[string]string{"CLAUDE_CONFIG_DIR": "/home/x/.second"})
+	// A fixed cwd: the fallback is the process cwd, which on GitHub runners is under /home/runner/work.
+	out := renderStatuslineEnv(t, `{"model":{"display_name":"Opus 5.5"},"cwd":"/tmp/proj"}`, map[string]string{"CLAUDE_CONFIG_DIR": "/home/x/.second"})
 	if strings.Contains(out, "personal") || strings.Contains(out, "work") {
 		t.Errorf("badge without -account flags: %q", out)
 	}
