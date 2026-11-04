@@ -65,6 +65,10 @@ func ruleOfPending(b []byte) string {
 // consumeAsk removes one pending file and logs the outcome, exactly once even when two hooks
 // race for it: only the caller whose remove succeeds logs.
 func consumeAsk(session, path, kind string) {
+	// Only a regular file counts: a symlink would put another file's text in the ledger.
+	if st, err := os.Lstat(path); err != nil || !st.Mode().IsRegular() {
+		return
+	}
 	b, _ := os.ReadFile(path)
 	if os.Remove(path) != nil {
 		return
@@ -95,7 +99,7 @@ func askOutcomeRun(data []byte) int {
 		return 0
 	}
 	path := askFile(in.SessionID, in.ToolUseID)
-	if _, err := os.Lstat(path); err != nil {
+	if _, err := os.Lstat(path); err != nil { // the whole cost when nothing is pending
 		return 0
 	}
 	consumeAsk(in.SessionID, path, "ran")

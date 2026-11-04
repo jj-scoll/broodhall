@@ -25,7 +25,9 @@ func receipt(args []string) int {
 	if err != nil || json.Unmarshal(data, &in) != nil {
 		return 0
 	}
-	resolveAsks(in.SessionID, 0) // asks nobody followed up by Stop: not run
+	if in.SessionID != "" {
+		resolveAsks(in.SessionID, 0) // asks nobody followed up by Stop: not run
+	}
 	evs, commit := newGuardEvents(in.SessionID)
 	line := receiptLine(evs)
 	if line == "" {

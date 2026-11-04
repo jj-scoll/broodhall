@@ -249,3 +249,95 @@ func TestReportNoHintBelowTenAsks(t *testing.T) {
 		t.Errorf("hint with 9 asks:\n%s", out.String())
 	}
 }
+
+func TestReceiptWithoutSessionLeavesOtherSessionsPending(t *testing.T) {
+	t.Setenv("HANDOFF_STATE_DIR", t.TempDir())
+	askPre(t, "sC", "toolu_1", "git stash")
+	for _, in := range []string{`{"hook_event_name":"Stop"}`, `{"hook_event_name":"Stop","session_id":""}`} {
+		withStdin(t, in, func() { receipt(nil) })
+	}
+	if got := ledgerKinds(t, "sC"); got != "ask git-stash" {
+		t.Errorf("ledger = %q", got)
+	}
+	withStdin(t, `{"hook_event_name":"Stop","session_id":"sC"}`, func() { receipt(nil) })
+	if got := ledgerKinds(t, "sC"); got != "ask git-stash, not-run git-stash" {
+		t.Errorf("receipt must resolve its own session: %q", got)
+	}
+}
+
+func withStdin(t *testing.T, s string, f func()) {
+	t.Helper()
+	r, w, _ := os.Pipe()
+	w.WriteString(s)
+	w.Close()
+	old := os.Stdin
+	os.Stdin = r
+	defer func() { os.Stdin = old }()
+	f()
+}
+
+func TestAskOutcomeOnlyConsumesRegularFiles(t *testing.T) {
+	t.Setenv("HANDOFF_STATE_DIR", t.TempDir())
+	os.MkdirAll(stateDir(), 0o755)
+	secret := filepath.Join(t.TempDir(), "passwd")
+	os.WriteFile(secret, []byte("root:x:0:0\n"), 0o600)
+	os.Symlink(secret, askFile("s1", "toolu_L"))
+	os.Mkdir(askFile("s1", "toolu_D"), 0o755)
+	askPost("PostToolUse", "s1", "toolu_L", "")
+	askPost("PostToolUse", "s1", "toolu_D", "")
+	resolveAsks("s1", 0)
+	if got := ledgerKinds(t, "s1"); got != "" {
+		t.Errorf("non-regular pending files must be ignored, ledger = %q", got)
+	}
+}
+
+// Only the caller whose remove succeeds logs.
+func TestConsumeAskLogsOnce(t *testing.T) {
+	t.Setenv("HANDOFF_STATE_DIR", t.TempDir())
+	askPre(t, "s1", "toolu_1", "git stash")
+	p := askFile("s1", "toolu_1")
+	consumeAsk("s1", p, "ran")
+	consumeAsk("s1", p, "ran") // the file is gone, e.g. another hook won the race
+	if n := strings.Count(ledgerKinds(t, "s1"), "ran"); n != 1 {
+		t.Errorf("ran logged %d times", n)
+	}
+}
+
+func TestAskOutcomeEventNameAndIDShape(t *testing.T) {
+	t.Setenv("HANDOFF_STATE_DIR", t.TempDir())
+	askPre(t, "s1", "toolu_1", "git stash")
+	askOutcomeRun([]byte(`{"hook_event_name":"PreToolUse","session_id":"s1","tool_use_id":"toolu_1"}`))
+	askOutcomeRun([]byte(`{"session_id":"s1","tool_use_id":"toolu_1"}`))
+	if got := ledgerKinds(t, "s1"); got != "ask git-stash" {
+		t.Errorf("only Post events resolve: %q", got)
+	}
+	victim := filepath.Join(stateDir(), "victim")
+	os.WriteFile(victim, []byte("x"), 0o600)
+	askOutcomeRun([]byte(`{"hook_event_name":"PostToolUse","session_id":"s1.ask.","tool_use_id":"/../victim"}`))
+	askOutcomeRun([]byte(`{"hook_event_name":"PostToolUse","session_id":"s1","tool_use_id":"/../victim"}`))
+	if _, err := os.Stat(victim); err != nil {
+		t.Errorf("a path-shaped id deleted a file: %v", err)
+	}
+}
+
+func TestRelaxHintBoundary(t *testing.T) {
+	for _, c := range []struct {
+		ran, not int
+		hint     bool
+	}{{9, 1, true}, {8, 2, false}, {10, 0, true}, {17, 2, false}, {18, 2, true}} {
+		t.Setenv("HANDOFF_STATE_DIR", t.TempDir())
+		for i := 0; i < c.ran+c.not; i++ {
+			logGuardEvent("s1", "ask", "r")
+			k := "ran"
+			if i >= c.ran {
+				k = "not-run"
+			}
+			logGuardEvent("s1", k, "r")
+		}
+		var out bytes.Buffer
+		guardReportRun(&out)
+		if got := strings.Contains(out.String(), "consider relaxing"); got != c.hint {
+			t.Errorf("ran %d not-run %d: hint %v, want %v", c.ran, c.not, got, c.hint)
+		}
+	}
+}

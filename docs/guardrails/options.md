@@ -99,6 +99,8 @@ and `not-run` (no follow-up by the session's Stop, or none within 10 minutes for
 A denial and an abandoned prompt look the same, so the report cannot say "denied". A rule
 with at least 10 answered asks, 90% or more of them approved, gets a "consider relaxing" hint.
 Would-asks from observe mode are never counted as approved.
+The report settles old pending asks as it runs, so an approval that comes more than 10 minutes
+after its ask is not counted.
 
 ## `fail_open`
 
