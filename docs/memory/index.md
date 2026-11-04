@@ -50,7 +50,11 @@ on [Privacy and redaction](privacy.md).
    titled "Context compaction (manual)" or "(auto)". `search` finds it, and
    `get_observations` with its `S<n>` ID (for example `S12`) returns the full text. The
    folder keeps summaries while the daemon is stopped, and the same compaction is never
-   stored twice. A file that cannot be read as a summary moves to `compactions/rejected/`.
+   stored twice. A file that cannot be read as a summary moves to `compactions/rejected/`,
+   which is never read back and is cleared after 7 days. The summary is filed under
+   `CLAUDE_PROJECT_DIR` when it is set, else the hook's working directory. The context block
+   that follows a compaction leaves out that session's own summary, because Claude Code
+   already put it in the conversation.
 7. **Tools.** An MCP server named `memory` gives Claude 11 tools, listed below.
 8. **UI.** The daemon serves a local web page on `127.0.0.1:9495`. See
    [UI and Quack](ui-and-quack.md).

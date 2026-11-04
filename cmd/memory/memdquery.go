@@ -899,12 +899,8 @@ func memTimeline(db *sql.DB, args map[string]any) (string, error) {
 		if err != nil {
 			return "", err
 		}
-	case strings.HasPrefix(strAnchor, "S") || strings.HasPrefix(strAnchor, "#S"):
-		m := regexp.MustCompile(`^#?S(\d+)$`).FindStringSubmatch(strAnchor)
-		var sid int64
-		if m != nil {
-			sid, _ = strconv.ParseInt(m[1], 10, 64)
-		}
+	case looksLikeSummaryAnchor(strAnchor):
+		sid, _ := parseSummaryID(strAnchor)
 		if sid <= 0 {
 			return "A session anchor looks like S12: the letter S and a positive whole number", nil
 		}
@@ -1321,7 +1317,7 @@ func memGetObservations(db *sql.DB, args map[string]any) (string, error) {
 		if sumOut == "" {
 			return "None of those IDs match a session summary.", nil
 		}
-		return sumOut, nil
+		return memdHC(sumOut, memdCapObservations), nil
 	}
 	dir := "DESC"
 	if qStr(args, "orderBy") == "date_asc" {
@@ -1380,12 +1376,29 @@ func qSummaryID(v any) (int64, bool) {
 	if !ok {
 		return 0, false
 	}
+	return parseSummaryID(s)
+}
+
+// parseSummaryID is the one S<n> parser.
+func parseSummaryID(s string) (int64, bool) {
 	s = strings.TrimPrefix(strings.TrimSpace(s), "#")
 	if len(s) < 2 || (s[0] != 'S' && s[0] != 's') {
 		return 0, false
 	}
+	for _, c := range s[1:] {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+	}
 	n, err := strconv.ParseInt(s[1:], 10, 64)
 	return n, err == nil && n > 0
+}
+
+// looksLikeSummaryAnchor: an anchor that starts like a session id gets the session-anchor
+// error when it is not one, not the timestamp error.
+func looksLikeSummaryAnchor(s string) bool {
+	s = strings.TrimPrefix(strings.TrimSpace(s), "#")
+	return s != "" && (s[0] == 'S' || s[0] == 's')
 }
 
 // getSummaries renders the full text of session summaries (model-written ones and captured

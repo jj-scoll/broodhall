@@ -186,6 +186,16 @@ expect_open "compact-capture with no binary prints nothing"
 n=$(ls "$MEMORY_DIR/compactions"/*.json 2>/dev/null | wc -l)
 if [ "$n" -eq 1 ] && grep -q 'we fixed it' "$MEMORY_DIR"/compactions/*.json; then ok "compact-capture with no binary spools the raw payload"; else bad "compact-capture with no binary spools the raw payload" "files=$n"; fi
 if ls "$MEMORY_DIR/compactions"/.* >/dev/null 2>&1 && [ -n "$(find "$MEMORY_DIR/compactions" -name '.*.tmp' 2>/dev/null)" ]; then bad "no temp files left in the spool" "$(ls -a "$MEMORY_DIR/compactions")"; else ok "no temp files left in the spool"; fi
+# The raw spool reaches its final name only by a rename from a dot-tmp file, so the daemon never
+# reads a half-written copy: a shim mv records what it is asked to move.
+newcase t2d-mv
+real_mv=$(command -v mv)
+mkdir -p "$tmp/t2d-mv/shim"
+printf '#!/bin/sh\necho "$*" >>"%s"\nexec "%s" "$@"\n' "$tmp/t2d-mv/mvlog" "$real_mv" >"$tmp/t2d-mv/shim/mv"
+chmod +x "$tmp/t2d-mv/shim/mv"
+export MEMORY_DIR=$tmp/t2d-mv/mem
+out=$(printf '%s' "$payload" | PATH="$tmp/t2d-mv/shim:$PATH" sh "$run_sh" compact-capture 2>/dev/null)
+if grep -q '/\.raw-[^ ]*\.json\.tmp .*/raw-[^ ]*\.json$' "$tmp/t2d-mv/mvlog" 2>/dev/null; then ok "the raw spool is written to a dot-tmp name and renamed"; else bad "the raw spool is written to a dot-tmp name and renamed" "mv log: $(cat "$tmp/t2d-mv/mvlog" 2>&1)"; fi
 newcase t2d-stub
 mkstub "$tmp/t2d-stub/memory"
 export MEMORY_BIN=$tmp/t2d-stub/memory MEMORY_DIR=$tmp/t2d-stub/mem

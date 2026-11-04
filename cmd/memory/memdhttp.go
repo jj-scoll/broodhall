@@ -63,7 +63,7 @@ func memdHandler(db *sql.DB) http.Handler {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write(contextJSON(buildStartContext(db, project, r.URL.Query().Get("source"), time.Now())))
+		w.Write(contextJSON(buildStartContextFor(db, project, r.URL.Query().Get("source"), r.URL.Query().Get("session_id"), time.Now())))
 	})
 	mux.HandleFunc("GET /by-file", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Query().Get("path")

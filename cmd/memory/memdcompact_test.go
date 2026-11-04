@@ -104,7 +104,7 @@ func TestCompactionDrainIngestsSearchableIdempotent(t *testing.T) {
 	if err := memCompactCapture(strings.NewReader(in), spool, when); err != nil {
 		t.Fatal(err)
 	}
-	n, err := drainCompactions(db, spool)
+	n, err := drainCompactions(context.Background(), db, spool)
 	if err != nil || n != 1 {
 		t.Fatalf("drain n=%d err=%v", n, err)
 	}
@@ -118,7 +118,7 @@ func TestCompactionDrainIngestsSearchableIdempotent(t *testing.T) {
 	if err := memCompactCapture(strings.NewReader(in), spool, when.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := drainCompactions(db, spool); err != nil {
+	if _, err := drainCompactions(context.Background(), db, spool); err != nil {
 		t.Fatal(err)
 	}
 	if got := countRows(t, db, `SELECT count(*) FROM summaries`); got != 1 {
@@ -159,7 +159,7 @@ func TestCompactionDrainRawPayloadAndGarbage(t *testing.T) {
 	os.WriteFile(filepath.Join(spool, "raw-1.json"),
 		[]byte(compactPayload("sess-r", "/nonexistent/rawproj", "manual", "raw okapi summary key=AKIAIOSFODNN7EXAMPLE")), 0o600)
 	os.WriteFile(filepath.Join(spool, "bad.json"), []byte("{not json"), 0o600)
-	n, err := drainCompactions(db, spool)
+	n, err := drainCompactions(context.Background(), db, spool)
 	if err != nil || n != 1 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}

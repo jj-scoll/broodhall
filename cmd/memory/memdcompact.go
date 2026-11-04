@@ -37,6 +37,14 @@ const compactSummaryMax = 200 * 1024
 // compactDrainPoll is how often the daemon looks at the spool. A var so tests need no sleeps.
 var compactDrainPoll = 5 * time.Second
 
+// compactTmpMaxAge is how long a .tmp spool file may sit before the drain deletes it: a hook
+// writes and renames within milliseconds, so an older one is a killed writer's leftover.
+// compactRejectedMaxAge is how long a set-aside capture is kept for inspection.
+const (
+	compactTmpMaxAge      = time.Hour
+	compactRejectedMaxAge = 7 * 24 * time.Hour
+)
+
 var safeSessionID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 
 // compactRecord is a spool file: the PostCompact payload fields memory uses. ts is absent from
@@ -46,6 +54,7 @@ type compactRecord struct {
 	TS             string `json:"ts,omitempty"`
 	Trigger        string `json:"trigger"`
 	Cwd            string `json:"cwd"`
+	ProjectDir     string `json:"project_dir,omitempty"`
 	TranscriptPath string `json:"transcript_path"`
 	Summary        string `json:"compact_summary"`
 }
@@ -74,6 +83,8 @@ func memCompactCapture(in io.Reader, spool string, now time.Time) error {
 	if err := r.validate(); err != nil {
 		return err
 	}
+	// CLAUDE_PROJECT_DIR is what the other hooks name the project from; the cwd is the fallback.
+	r.ProjectDir = os.Getenv("CLAUDE_PROJECT_DIR")
 	r.Summary = memdRedact(r.Summary)
 	r.TS = now.UTC().Format(time.RFC3339Nano)
 	out, err := json.Marshal(r)
@@ -115,11 +126,16 @@ func compactKey(sessionID, summary string) string {
 // drainCompactions ingests every spool record and returns how many became new summaries. A
 // file that cannot be a capture moves to rejected/ (kept, not retried); a database error stops
 // the pass and leaves the file for the next one.
-func drainCompactions(db *sql.DB, spool string) (int, error) {
+func drainCompactions(ctx context.Context, db *sql.DB, spool string) (int, error) {
+	pruneSpool(spool, time.Now())
+	// Only the top level: rejected/ is never read back.
 	files, _ := filepath.Glob(filepath.Join(spool, "*.json"))
 	sort.Strings(files)
 	added := 0
 	for _, f := range files {
+		if ctx.Err() != nil {
+			return added, nil
+		}
 		b, err := os.ReadFile(f)
 		if err != nil {
 			continue
@@ -147,9 +163,26 @@ func drainCompactions(db *sql.DB, spool string) (int, error) {
 	return added, nil
 }
 
+// pruneSpool deletes stale .tmp files from the spool and set-aside captures past their keep time.
+func pruneSpool(spool string, now time.Time) {
+	remove := func(pattern string, maxAge time.Duration) {
+		m, _ := filepath.Glob(pattern)
+		for _, f := range m {
+			if st, err := os.Stat(f); err == nil && st.Mode().IsRegular() && now.Sub(st.ModTime()) > maxAge {
+				os.Remove(f)
+			}
+		}
+	}
+	remove(filepath.Join(spool, ".*.tmp"), compactTmpMaxAge)
+	remove(filepath.Join(spool, "rejected", "*"), compactRejectedMaxAge)
+}
+
 func setAside(spool, f string) {
 	rej := filepath.Join(spool, "rejected")
-	if os.MkdirAll(rej, 0o700) == nil && os.Rename(f, filepath.Join(rej, filepath.Base(f))) == nil {
+	dst := filepath.Join(rej, filepath.Base(f))
+	if os.MkdirAll(rej, 0o700) == nil && os.Rename(f, dst) == nil {
+		now := time.Now()
+		os.Chtimes(dst, now, now) // the keep time starts now, not at the capture
 		log.Printf("memory compact: set aside unusable capture %s", filepath.Base(f))
 		return
 	}
@@ -167,7 +200,9 @@ func storeCompaction(db *sql.DB, r *compactRecord, when time.Time) (bool, error)
 		trigger = "unknown"
 	}
 	project := memdUnknownProject
-	if strings.TrimSpace(r.Cwd) != "" {
+	if dir := strings.TrimSpace(r.ProjectDir); dir != "" {
+		project = projectKey(dir)
+	} else if strings.TrimSpace(r.Cwd) != "" {
 		project = projectKey(r.Cwd)
 	} else {
 		var p string
@@ -219,7 +254,7 @@ func storeCompaction(db *sql.DB, r *compactRecord, when time.Time) (bool, error)
 // runCompactionDrain ingests the spool at start and then every compactDrainPoll until ctx ends.
 func runCompactionDrain(ctx context.Context, db *sql.DB, spool string) {
 	for {
-		if n, err := drainCompactions(db, spool); err != nil {
+		if n, err := drainCompactions(ctx, db, spool); err != nil {
 			log.Printf("memory compact: %v", err)
 		} else if n > 0 {
 			log.Printf("memory compact: ingested %d compaction summaries", n)

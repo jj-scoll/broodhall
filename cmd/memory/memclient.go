@@ -224,8 +224,9 @@ func memContext(args []string) int {
 		return empty()
 	}
 	var in struct {
-		Cwd    string `json:"cwd"`
-		Source string `json:"source"`
+		Cwd       string `json:"cwd"`
+		Source    string `json:"source"`
+		SessionID string `json:"session_id"`
 	}
 	if json.Unmarshal(data, &in) != nil {
 		return empty()
@@ -240,6 +241,9 @@ func memContext(args []string) int {
 		q := "/context?project=" + url.QueryEscape(pk(dir))
 		if in.Source != "" {
 			q += "&source=" + url.QueryEscape(in.Source)
+		}
+		if in.SessionID != "" {
+			q += "&session_id=" + url.QueryEscape(in.SessionID)
 		}
 		b, err := memGet(sock, q, memContextBudget)
 		ch <- res{b, err}
