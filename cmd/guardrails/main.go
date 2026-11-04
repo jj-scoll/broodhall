@@ -1,11 +1,19 @@
-// claude-tools: the guardrails plugin's Claude Code hooks as one binary, one subcommand each.
+// guardrails: the guardrails plugin's Claude Code hooks as one binary, one subcommand each.
 // The plugin's hooks/hooks.json runs them through scripts/run.sh.
 package main
 
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 )
+
+// isGuardBinary reports whether path names this binary: guardrails, or claude-tools, its name
+// before the rename, which older plugin versions install and settings.json hooks still call.
+func isGuardBinary(path string) bool {
+	b := filepath.Base(path)
+	return b == "guardrails" || b == "claude-tools"
+}
 
 var commands = map[string]func(args []string) int{
 	"gate":             gate,
@@ -29,7 +37,7 @@ var commands = map[string]func(args []string) int{
 
 func main() {
 	if len(os.Args) < 2 || commands[os.Args[1]] == nil {
-		fmt.Fprintln(os.Stderr, "usage: claude-tools <pre-tool-use|gate|autoclear|compact-guard|read-dedup|large-read-guard|retry-breaker|ask-outcome|record-edit|config-gate|session-env|receipt|guard-report|redact|pii-rules|statusline|doctor|write-handoff|version> [args]")
+		fmt.Fprintln(os.Stderr, "usage: guardrails <pre-tool-use|gate|autoclear|compact-guard|read-dedup|large-read-guard|retry-breaker|ask-outcome|record-edit|config-gate|session-env|receipt|guard-report|redact|pii-rules|statusline|doctor|write-handoff|version> [args]")
 		os.Exit(2)
 	}
 	os.Exit(commands[os.Args[1]](os.Args[2:]))

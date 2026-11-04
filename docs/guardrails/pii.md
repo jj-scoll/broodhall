@@ -20,7 +20,7 @@ turn it off.
 
 ### SQL output: MASK
 
-With the guard on, these commands are rewritten to run under `claude-tools redact --pii`:
+With the guard on, these commands are rewritten to run under `guardrails redact --pii`:
 
 - `psql`, forced to `--csv` so the redactor sees column names, then printed in the format you
   asked for (`-t`, `-A`, `-F` are restored).
@@ -32,10 +32,10 @@ With the guard on, these commands are rewritten to run under `claude-tools redac
 For `psql -h db -c "select email from users"`, Claude's call becomes:
 
 ```text
-claude-tools redact --pii --private --in=csv --to=aligned --footer -- psql --csv -h db -c "select email from users"
+guardrails redact --pii --private --in=csv --to=aligned --footer -- psql --csv -h db -c "select email from users"
 ```
 
-(The reply carries the full path of the binary in place of `claude-tools`.) The redactor
+(The reply carries the full path of the binary in place of `guardrails`.) The redactor
 masks:
 
 - Cells in columns whose names match the PII rules: email, phone, person name, address,
@@ -92,7 +92,7 @@ The rules live in `~/.config/claude-tools/pii-columns.json` (see [Options](optio
 Claude cannot change them: an Edit, Write, MultiEdit or NotebookEdit on that file, a Bash
 command that writes it (a redirect, `sed -i`, `tee`, `mv`, `rm`, `cp` onto it, an editor, an
 interpreter near a write), and a Bash command that sets `HOME` or `XDG_CONFIG_HOME` while
-running `claude-tools` are all blocked. Reading the file passes.
+running `guardrails` are all blocked. Reading the file passes.
 
 ```text
 BLOCKED: PII rules (~/.config/claude-tools/pii-columns.json) are the user's to edit, not the model's.

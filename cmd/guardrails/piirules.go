@@ -5,14 +5,14 @@ package main
 // Load order: (1) $XDG_CONFIG_HOME/claude-tools/pii-columns.json, or
 // ~/.config/claude-tools/pii-columns.json; (2) the copy embedded in the binary. The user owns the
 // file; the model must not be able to loosen masking, so:
-//   - the path has no claude-tools specific environment override (the model could set one in
+//   - the path has no guardrails specific environment override (the model could set one in
 //     its own Bash command). XDG_CONFIG_HOME and HOME are the only inputs, and the
 //     PreToolUse guard (piirulesguard.go) denies Bash commands that assign either one;
 //   - a missing, unreadable or invalid file falls back to the embedded rules, never to "no
 //     rules" and never to a panic: every masking path (redact and any separate masking tool) goes through
 //     loadPIIRules, which cannot fail.
 //
-// `claude-tools doctor` reports which source is active. `pii-rules init` seeds the file from
+// `guardrails doctor` reports which source is active. `pii-rules init` seeds the file from
 // the embedded copy; `pii-rules check [path]` validates one.
 
 import (
@@ -26,7 +26,8 @@ import (
 	"sync"
 )
 
-// piiRulesFile is the file name under <config dir>/claude-tools/.
+// piiRulesFile is the file name under <config dir>/claude-tools/. The dir keeps the binary's
+// old name, as do ~/.local/state/claude-tools and the pii-key there, so existing user data stays.
 const piiRulesFile = "pii-columns.json"
 
 // piiRulesPath returns the user rules file path, or "" when none can be named. A variable so
@@ -118,7 +119,7 @@ func piiRulesCmd(args []string) int { return piiRulesRun(os.Stdout, os.Stderr, a
 // piiRulesRun is `pii-rules init | check [path]`.
 func piiRulesRun(w, errw io.Writer, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(errw, "usage: claude-tools pii-rules init | check [path]")
+		fmt.Fprintln(errw, "usage: guardrails pii-rules init | check [path]")
 		return 2
 	}
 	switch args[0] {

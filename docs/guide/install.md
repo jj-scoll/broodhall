@@ -19,7 +19,7 @@ Start a new session afterwards.
 
 ### guardrails
 
-- Linux or macOS, on amd64 or arm64. Those are the four `claude-tools` archives the release
+- Linux or macOS, on amd64 or arm64. Those are the four `guardrails` archives the release
   publishes.
 - `curl` and `tar` on your `PATH`. The launcher uses them to fetch and unpack the binary, and
   `sha256sum` or `shasum` to check it.
@@ -67,7 +67,7 @@ No other plugin states a minimum Claude Code version.
 
 On its first SessionStart, and again at the first SessionStart after each plugin update, the
 plugin downloads the static binary for its own version from this repo's GitHub release. The
-download is a `claude-tools_<os>_<arch>.tar.gz` of about 1.7 MB that unpacks to a binary of
+download is a `guardrails_<os>_<arch>.tar.gz` of about 1.7 MB that unpacks to a binary of
 about 4 MB. It is checked against the release's `checksums.txt` by sha256, then kept in the
 plugin's data directory under `bin/<version>/`, so a version is downloaded once.
 
@@ -96,7 +96,7 @@ Set `CLAUDE_TOOLS_BIN`, in the environment Claude Code runs in, to the path of a
 built. The launcher then uses that binary and skips the download.
 
 ```
-CGO_ENABLED=0 go build -o claude-tools ./cmd/claude-tools
+CGO_ENABLED=0 go build -o guardrails ./cmd/guardrails
 ```
 
 For memory, set `MEMORY_BIN` instead. The program needs cgo and the DuckDB extensions; see

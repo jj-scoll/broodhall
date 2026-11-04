@@ -7,7 +7,7 @@ package main
 //
 //   - Bash: a plain reader of a protected file (cat, head, tail, grep, rg, sed -n 'Np',
 //     jq ., yq .), or a recursive grep/rg of a directory holding one, is rewritten to
-//     `claude-tools redact --secrets -- <reader ...>`. Only flags that print whole lines
+//     `guardrails redact --secrets -- <reader ...>`. Only flags that print whole lines
 //     pass, because key-name masking needs the key on the line. Metadata commands (ls,
 //     stat, test, wc, ...) pass. Any other command naming a protected file asks: base64,
 //     xxd, cp or python would get past the mask. So does a protected path anywhere else in
@@ -38,7 +38,7 @@ var secretPathsDefault = []string{
 	"~/.local/state/claude-tools/pii-key",
 }
 
-const secretMaskNote = "pre-tool-use masked this read of a protected secret file (`claude-tools redact --secrets`): " +
+const secretMaskNote = "pre-tool-use masked this read of a protected secret file (`guardrails redact --secrets`): " +
 	"token shapes show as [kind:tag] and values under secret-looking keys as [secret:tag]; equal values share a tag. " +
 	"The real values stay in the file: run the tool that uses it rather than copying values."
 

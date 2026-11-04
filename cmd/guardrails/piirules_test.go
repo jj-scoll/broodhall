@@ -258,6 +258,9 @@ func TestGuardDeniesRulesFileWrites(t *testing.T) {
 		"cd /tmp && HOME=/x /nohome/user/.claude/bin/claude-tools redact",
 		"echo hi | HOME=/x claude-tools redact",
 		`bash -c 'HOME=/x claude-tools redact'`,
+		"XDG_CONFIG_HOME=/tmp/loose guardrails redact --pii",
+		"HOME=/x ~/.claude/plugins/data/guardrails-broodhall/bin/1.6.0/guardrails redact",
+		`bash -c 'HOME=/x guardrails redact'`,
 	}
 	for _, cmd := range denied {
 		t.Run(cmd, func(t *testing.T) {
@@ -283,11 +286,12 @@ func TestGuardAllowsRulesFileReads(t *testing.T) {
 		"jq '.rules | length' " + f,
 		"ls -la ~/.config/claude-tools",
 		"claude-tools pii-rules init",
+		"guardrails pii-rules init",
 		"claude-tools pii-rules check " + f,
 		"cat " + f + " 2>/dev/null",
 		"cat " + f + " > /tmp/copy.json",
-		"diff " + f + " cmd/claude-tools/pii-columns.json",
-		"sed -i 's/a/b/' cmd/claude-tools/pii-columns.json",
+		"diff " + f + " cmd/guardrails/pii-columns.json",
+		"sed -i 's/a/b/' cmd/guardrails/pii-columns.json",
 		"cp " + f + " /tmp/backup.json",
 		"HOME=$(mktemp -d) git status",
 		"XDG_CONFIG_HOME=/tmp/x nvim --version",
@@ -352,7 +356,7 @@ func TestGuardDeniesRulesFileEditTools(t *testing.T) {
 		if code, _ := runToolHook(t, home, "Read", map[string]any{"file_path": file}); code != 0 {
 			t.Errorf("Read of the rules file: exit %d", code)
 		}
-		repoCopy := filepath.Join(home, "src", "claude-tools", "cmd", "claude-tools", "pii-columns.json")
+		repoCopy := filepath.Join(home, "src", "broodhall", "cmd", "guardrails", "pii-columns.json")
 		if code, _ := runToolHook(t, home, "Edit", map[string]any{"file_path": repoCopy}); code != 0 {
 			t.Errorf("Edit of the repo copy: exit %d", code)
 		}

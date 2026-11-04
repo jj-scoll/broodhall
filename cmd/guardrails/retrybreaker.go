@@ -7,7 +7,7 @@ package main
 // never nudges. A success forgets that command's count. Never blocks: exit 0 always.
 //
 // Wiring: PostToolUseFailure and PostToolUse, matcher Bash, command
-// `claude-tools retry-breaker`.
+// `guardrails retry-breaker`.
 
 import (
 	"encoding/json"

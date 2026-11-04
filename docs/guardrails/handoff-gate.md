@@ -21,7 +21,7 @@ gate  ->  autoclear  ->  write-handoff  ->  context-guard runs /clear  ->  conti
    Claude for only what the transcript cannot show: it writes `.handoff-next-<session>.md` in
    the working directory, with a first line `file: <handoff file name>`, then `## Next Steps`
    and `## Open Questions`. Claude is told not to write the handoff itself.
-2. **autoclear** (`Stop`). On the stop that ends that turn, it starts `claude-tools
+2. **autoclear** (`Stop`). On the stop that ends that turn, it starts `guardrails
    write-handoff <transcript> <next-steps file> <cwd> <session>` in the background and returns
    at once. It never blocks the stop.
 3. **write-handoff**. Writes the handoff file from the transcript and the next-steps file,
@@ -118,8 +118,8 @@ the plugin's data directory: `<id>.gate`, `<id>.autoclear`, `<id>.rearm`, `<id>.
 `HANDOFF_STATE_DIR` to move the base directory (`claude-handoff` is added under it); the gate,
 autoclear and context-guard must all see the same one. The hooks' launcher, `run.sh`, exports
 the variable itself. When it is unset (the status line runs the binary straight from
-`settings.json`, not through `run.sh`), `claude-tools` uses the plugin data directory it is
-installed in, found from its own path `<data>/bin/<version>/claude-tools`, so the status line's
+`settings.json`, not through `run.sh`), `guardrails` uses the plugin data directory it is
+installed in, found from its own path `<data>/bin/<version>/guardrails`, so the status line's
 handoff segment reads the same files the hooks write. Outside such a layout it falls back to
 `/tmp`, and an explicitly set value, even an empty one, always wins. A failure to read or write these files never
 blocks anything.

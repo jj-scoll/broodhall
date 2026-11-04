@@ -1,7 +1,7 @@
 #!/bin/sh
-# guardrails hook launcher: runs this plugin version's claude-tools binary on the hook's stdin.
+# guardrails hook launcher: runs this plugin version's guardrails binary on the hook's stdin.
 # `run.sh install` (the SessionStart hook) downloads the binary from the GitHub release the
-# first time a version runs, records its sha256 next to it, then runs `claude-tools doctor
+# first time a version runs, records its sha256 next to it, then runs `guardrails doctor
 # -hook`, which says nothing unless the install has a problem. A failed install or a failed
 # doctor never stops the session start. The guards
 # (pre-tool-use, read-dedup, large-read-guard, config-gate) fail CLOSED: with no binary they exit
@@ -10,6 +10,9 @@
 # exit 2 at Stop would keep Claude from ending its turn and at PreCompact would block compaction.
 # The opt-out is the fail_open option (CLAUDE_PLUGIN_OPTION_FAIL_OPEN) or, outside the plugin,
 # CLAUDE_TOOLS_FAIL_OPEN: either one set to true, 1 or yes makes a missing binary exit 0 silently.
+# The binary was named claude-tools before the rename; the CLAUDE_TOOLS_* variables keep that
+# name. Each plugin version downloads its own release, so older versions still fetch
+# claude-tools_<os>_<arch>.tar.gz from their own tags.
 # shellcheck disable=SC2015 # `a && b || fail`: fail when any step fails, which is intended
 set -u
 root=${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
@@ -28,12 +31,15 @@ if [ -z "$data" ]; then
 		cfg=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
 		data=$cfg/plugins/data/guardrails
 		for d in "$cfg"/plugins/data/guardrails-*; do
-			[ -x "$d/bin/$ver/claude-tools" ] && data=$d
+			[ -x "$d/bin/$ver/guardrails" ] || [ -x "$d/bin/$ver/claude-tools" ] && data=$d
 		done
 		;;
 	esac
 fi
-dest=$data/bin/$ver/claude-tools
+dest=$data/bin/$ver/guardrails
+# Main can advertise a version whose release predates the rename until the next release ships:
+# the launcher before the rename installed that version's binary as claude-tools, so use it.
+[ -x "$dest" ] || [ ! -x "${dest%/*}/claude-tools" ] || dest=${dest%/*}/claude-tools
 bin=${CLAUDE_TOOLS_BIN:-$dest}
 export CLAUDE_PLUGIN_ROOT="$root"
 
@@ -67,7 +73,7 @@ if [ "${1-}" = install ]; then
 		else
 			effect="so tool calls are blocked until it installs (set the fail_open option to allow them unguarded)"
 		fi
-		printf '{"systemMessage":"guardrails: could not install claude-tools %s (%s), %s. It retries at the next session start."}\n' "$ver" "$1" "$effect"
+		printf '{"systemMessage":"guardrails: could not install guardrails %s (%s), %s. It retries at the next session start."}\n' "$ver" "$1" "$effect"
 		exit 0
 	}
 	base=${CLAUDE_TOOLS_RELEASE_URL:-https://github.com/jj-scoll/broodhall/releases/download}
@@ -77,23 +83,27 @@ if [ "${1-}" = install ]; then
 	aarch64 | arm64) arch=arm64 ;;
 	*) fail "unsupported CPU $(uname -m)" ;;
 	esac
-	asset=claude-tools_${os}_$arch.tar.gz
+	asset=guardrails_${os}_$arch.tar.gz want=$asset member=guardrails
 	mkdir -p "$data/bin" && tmp=$(mktemp -d "$data/bin/.download.XXXXXX") || fail "cannot write $data"
 	trap 'rm -rf "$tmp"' EXIT
-	curl -fsSL --max-time 60 -o "$tmp/$asset" "$base/v$ver/$asset" &&
+	# A release made before the rename has only claude-tools_<os>_<arch>.tar.gz (see dest above).
+	{ curl -fsSL --max-time 60 -o "$tmp/$asset" "$base/v$ver/$asset" || {
+		asset=claude-tools_${os}_$arch.tar.gz member=claude-tools
+		curl -fsSL --max-time 60 -o "$tmp/$asset" "$base/v$ver/$asset"
+	}; } &&
 		curl -fsSL --max-time 30 -o "$tmp/checksums.txt" "$base/v$ver/checksums.txt" ||
-		fail "download of $asset failed"
+		fail "download of $want failed"
 	if command -v sha256sum >/dev/null; then sum=sha256sum; else sum='shasum -a 256'; fi
 	# Pick the asset's line first: `$sum -c` on empty input exits 0 or errors depending on the
 	# shasum build, so an asset missing from checksums.txt is refused here, by name.
 	line=$(grep "  $asset\$" "$tmp/checksums.txt")
 	[ -n "$line" ] || fail "no checksum for $asset in checksums.txt"
 	(cd "$tmp" && printf '%s\n' "$line" | $sum -c - >/dev/null 2>&1) || fail "checksum mismatch"
-	tar -xzf "$tmp/$asset" -C "$tmp" claude-tools && mkdir -p "${dest%/*}" &&
-		mv -f "$tmp/claude-tools" "$dest" || fail "unpack failed"
+	tar -xzf "$tmp/$asset" -C "$tmp" "$member" && mkdir -p "${dest%/*}" &&
+		mv -f "$tmp/$member" "$dest" || fail "unpack failed"
 	# What doctor compares the binary with later: the unpacked file's hash, taken after the
 	# archive passed the release checksum.
-	$sum "$dest" | sed 's|  .*|  claude-tools|' >"$dest.sha256"
+	$sum "$dest" | sed 's|  .*|  guardrails|' >"$dest.sha256"
 	doctor
 fi
 
@@ -105,7 +115,7 @@ if [ ! -x "$bin" ]; then
 	esac
 	[ -n "$fail_open" ] && exit 0
 	{
-		printf 'guardrails: BLOCKED: the guard binary claude-tools %s is not installed (%s), so this tool call was not checked.\n' "$ver" "$bin"
+		printf 'guardrails: BLOCKED: the guard binary guardrails %s is not installed (%s), so this tool call was not checked.\n' "$ver" "$bin"
 		printf 'Retry: start a new session (SessionStart downloads it), or run: sh "%s/scripts/run.sh" install\n' "$root"
 		printf 'Opt out: set the guardrails option fail_open to true (or CLAUDE_TOOLS_FAIL_OPEN=1) to allow tool calls without guards.\n'
 	} >&2

@@ -9,9 +9,11 @@ A Claude Code marketplace with four plugins.
 | context-guard | Runs the `/clear` at the end of the guardrails handoff chain, warns as the context grows, and blocks prompts past a limit. | guardrails (installed with it) and Claude Code 2.1.317 or newer. | On: warns at 180000 tokens, blocks at 260000. |
 | rtk | Tells Claude how [rtk](https://github.com/jj-scoll/rtk)-condensed command output reads. | rtk from the jj-scoll fork on `PATH`. | The session-start note is on. The command rewrite is off until you turn on the guardrails `rtk` option. |
 
-The guardrails hooks are one static Go binary named `claude-tools`, so that name shows up in
-paths and commands. memory has no `/plugin configure` options; it reads environment variables
-and an optional settings file instead.
+The guardrails hooks are one static Go binary, also named `guardrails` (in older releases,
+`claude-tools`). Its config and state directories (`~/.config/claude-tools`,
+`~/.local/state/claude-tools`) and its `CLAUDE_TOOLS_*` environment variables keep the old
+name. memory has no `/plugin configure` options; it reads environment variables and an optional
+settings file instead.
 
 ## Install
 

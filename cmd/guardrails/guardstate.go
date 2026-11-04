@@ -38,13 +38,14 @@ func stateDir() string {
 	return filepath.Join(base, "claude-handoff")
 }
 
-// pluginDataBase returns <data> for an executable at <data>/bin/<version>/claude-tools
-// where <data> is a guardrails plugin data dir (its name starts with "guardrails"), else "".
+// pluginDataBase returns <data> for an executable at <data>/bin/<version>/guardrails (or
+// claude-tools, the name before the rename) where <data> is a guardrails plugin data dir (its
+// name starts with "guardrails"), else "".
 func pluginDataBase(exe string) string {
 	verDir := filepath.Dir(exe)
 	binDir := filepath.Dir(verDir)
 	data := filepath.Dir(binDir)
-	if filepath.Base(exe) != "claude-tools" || filepath.Base(binDir) != "bin" ||
+	if !isGuardBinary(exe) || filepath.Base(binDir) != "bin" ||
 		!strings.HasPrefix(filepath.Base(data), "guardrails") {
 		return ""
 	}

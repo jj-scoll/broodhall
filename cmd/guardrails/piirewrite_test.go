@@ -80,6 +80,7 @@ func TestPIIRewrite(t *testing.T) {
 		`duckdb -ui`, `duckdb --version`, `duckdb -version`, `duckdb --help`,
 		`echo psql -c x`, `git commit -m "psql -t -A"`, `which psql duckdb`,
 		`CT redact --pii --in=csv -- psql --csv -c x`, `/nohome/user/.claude/bin/claude-tools redact --pii -- duckdb -json -c "from 'a.parquet'"`,
+		`/nohome/user/.claude/plugins/data/guardrails-broodhall/bin/1.6.0/guardrails redact --pii -- duckdb -json -c "from 'a.parquet'"`,
 		`aws rds-data begin-transaction --resource-arn a`, `aws athena start-query-execution --query-string x`,
 		`python3 -c "import duckdb; duckdb.sql('from x.parquet').show()"`,
 		`psql -c "unterminated`,

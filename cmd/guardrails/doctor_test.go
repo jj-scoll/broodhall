@@ -154,7 +154,7 @@ func newPluginFixture(t *testing.T) *pluginFixture {
 	write(filepath.Join(f.root, "scripts/run.sh"), "#!/bin/sh\n", 0o755)
 	bins := filepath.Join(dir, "path")
 	write(filepath.Join(bins, "sh"), "#!/bin/true\n", 0o755)
-	f.bin = write(filepath.Join(dir, "data/bin/0.2.0/claude-tools"), "binary bytes", 0o755)
+	f.bin = write(filepath.Join(dir, "data/bin/0.2.0/guardrails"), "binary bytes", 0o755)
 	t.Setenv("PATH", bins)
 	t.Setenv("HOME", dir)
 	f.writeSettings(t, `{"enabledPlugins":{"guardrails@broodhall":true}}`)
@@ -171,7 +171,7 @@ func (f *pluginFixture) writeSettings(t *testing.T, body string) {
 func (f *pluginFixture) record(t *testing.T, content string) {
 	t.Helper()
 	sum := sha256.Sum256([]byte(content))
-	line := hex.EncodeToString(sum[:]) + "  claude-tools\n"
+	line := hex.EncodeToString(sum[:]) + "  guardrails\n"
 	if err := os.WriteFile(f.bin+".sha256", []byte(line), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -252,17 +252,39 @@ func TestCheckPluginHooks(t *testing.T) {
 	}
 }
 
+// Direct calls of the binary are understood under its name, guardrails, and under the name it
+// had before, claude-tools, which hooks in users' settings.json still call.
+func TestCheckHookCommandDirectBinary(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"guardrails", "claude-tools"} {
+		bin := filepath.Join(dir, name)
+		if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if got := checkHookCommand(bin + " pre-tool-use"); got != "" {
+			t.Errorf("%s pre-tool-use: got %q, want ok", name, got)
+		}
+		if got := checkHookCommand(bin + " retired-thing"); !strings.Contains(got, `no subcommand "retired-thing"`) {
+			t.Errorf("%s retired-thing: got %q, want an unknown subcommand", name, got)
+		}
+		if got := checkHookCommand(bin); got != name+": no subcommand given" {
+			t.Errorf("%s alone: got %q", name, got)
+		}
+	}
+}
+
 func TestDuplicateGuards(t *testing.T) {
 	tests := []struct {
 		name, settings string
 		want           int
 	}{
 		{"none", `{"hooks":{"PreToolUse":[{"hooks":[{"command":"rtk hook claude"}]}]}}`, 0},
-		{"direct binary entry", `{"hooks":{"PreToolUse":[{"hooks":[{"command":"/b/claude-tools pre-tool-use"}]}]}}`, 1},
+		{"direct binary entry", `{"hooks":{"PreToolUse":[{"hooks":[{"command":"/b/guardrails pre-tool-use"}]}]}}`, 1},
+		{"direct entry, old binary name", `{"hooks":{"PreToolUse":[{"hooks":[{"command":"/b/claude-tools pre-tool-use"}]}]}}`, 1},
 		{"quoted binary path", `{"hooks":{"PreToolUse":[{"hooks":[{"command":"\"$HOME/bin/claude-tools\" read-dedup"}]}]}}`, 1},
 		{"launcher of the plugin copied in", `{"hooks":{"PreToolUse":[{"hooks":[{"command":"sh /x/guardrails/scripts/run.sh large-read-guard"}]}]}}`, 1},
 		{"two entries", `{"hooks":{"PreToolUse":[{"hooks":[{"command":"/b/claude-tools pre-tool-use"},{"command":"/b/claude-tools retry-breaker"}]}]}}`, 2},
-		{"non-guard subcommand", `{"hooks":{"SessionStart":[{"hooks":[{"command":"/b/claude-tools version"}]}]}}`, 0},
+		{"non-guard subcommand", `{"hooks":{"SessionStart":[{"hooks":[{"command":"/b/guardrails version"}]}]}}`, 0},
 		{"statusline is not a guard", `{"statusLine":{"type":"command","command":"/b/claude-tools statusline"}}`, 0},
 	}
 	f := newPluginFixture(t)
@@ -337,7 +359,7 @@ func TestDoctorProblems(t *testing.T) {
 	if code := doctor(&out, f.env(false)); code != 1 {
 		t.Errorf("problems, plain mode: exit %d, want 1", code)
 	}
-	for _, want := range []string{"does not match", "binary is 0.1.2 but the plugin is 0.2.0", "pre-tool-use"} {
+	for _, want := range []string{"guardrails doctor: FAIL", "does not match", "binary is 0.1.2 but the plugin is 0.2.0", "pre-tool-use"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("want %q in:\n%s", want, out.String())
 		}

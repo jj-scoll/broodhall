@@ -52,8 +52,10 @@ or `#major` in the title of one of the PR's commits, or use a `feat:` or `type!:
 The `release` workflow stops unless the tag equals `v<version>` and all three versions are
 equal, then runs the tests and builds:
 
-- `claude-tools_<os>_<arch>.tar.gz` (guardrails): static binaries for linux and darwin on
-  amd64 and arm64, built with `CGO_ENABLED=0`.
+- `guardrails_<os>_<arch>.tar.gz` (guardrails): static binaries for linux and darwin on
+  amd64 and arm64, built with `CGO_ENABLED=0`. Older releases name it
+  `claude-tools_<os>_<arch>.tar.gz`; each plugin version downloads from its own tag, so older
+  versions keep working.
 - `memory_<os>_<arch>.tar.xz` (memory): the program and `ext/` (the DuckDB extensions it
   loads), built with cgo on four native runners: Linux amd64 and arm64 (on Ubuntu 22.04, which
   sets the glibc floor at 2.35), and macOS amd64 and arm64. The tests run with the extensions
@@ -79,7 +81,9 @@ versions to the same `X.Y.Z`, commit, then tag that commit `vX.Y.Z` and push the
 
 To rebuild a release whose workflow failed after the tag was pushed, run the `release`
 workflow by hand (Actions, release, Run workflow) with the existing tag. If the GitHub
-release was already created, delete it first. A failed automatic run leaves `main` and the tags
+release was already created, delete it first. For a tag from before the binary was renamed
+(its source has `cmd/claude-tools`), pick that tag under "Use workflow from", so the build
+makes the `claude-tools_*` assets its launcher downloads. A failed automatic run leaves `main` and the tags
 as they were; re-run it, or merge the next change.
 
 ## Setup

@@ -88,9 +88,10 @@ hooks; see [Handoff gate](../guardrails/handoff-gate.md#when-a-link-is-missing).
 
 The module runs `sh scripts/run.sh` from its own plugin directory. The launcher looks under
 `$CLAUDE_CONFIG_DIR/plugins/data` (default `~/.claude/plugins/data`) for the newest
-`guardrails-*/bin/*/claude-tools`, which is the binary guardrails' own launcher unpacked for
-its version. It prints that guardrails data directory as the state directory, because that is
-where the guardrails hooks keep `claude-handoff/`. It runs only two things: `state`, and
+`guardrails-*/bin/*/guardrails`, which is the binary guardrails' own launcher unpacked for
+its version (`guardrails-*/bin/*/claude-tools` for an older guardrails). It prints that
+guardrails data directory as the state directory, because that is where the guardrails hooks
+keep `claude-handoff/`. It runs only two things: `state`, and
 `autoclear` with the arguments above.
 
 If you use `CLAUDE_TOOLS_BIN` or `HANDOFF_STATE_DIR` for guardrails, set the same values in

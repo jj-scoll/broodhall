@@ -3,7 +3,7 @@
 # with the doctor. Needs sh, tar, curl, sha256sum or shasum. Run: bash plugins/guardrails/test/install_test.sh
 #
 # Contract under test: install records the unpacked binary's sha256 beside it, then runs
-# `claude-tools doctor -hook` and passes its output through; install always exits 0, whether
+# `guardrails doctor -hook` and passes its output through; install always exits 0, whether
 # doctor succeeds, crashes, or the download fails; a binary that failed its checksum is
 # never run.
 set -u
@@ -21,7 +21,7 @@ bad() { fail=$((fail + 1)); printf 'FAIL %s: %s\n' "$1" "$2"; }
 if command -v sha256sum >/dev/null; then sum=sha256sum; else sum='shasum -a 256'; fi
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 case $(uname -m) in x86_64 | amd64) arch=amd64 ;; *) arch=arm64 ;; esac
-asset=claude-tools_${os}_$arch.tar.gz
+asset=guardrails_${os}_$arch.tar.gz
 
 # A stub binary: records its arguments and CLAUDE_PLUGIN_ROOT, and answers `doctor -hook`
 # according to STUB_MODE (ok: one problem line, crash: exit 3 with partial output).
@@ -45,8 +45,8 @@ EOF
 mkrelease() {
 	rel=$1
 	mkdir -p "$rel/v$ver" "$rel/work"
-	mkstub "$rel/work/claude-tools"
-	tar -czf "$rel/v$ver/$asset" -C "$rel/work" claude-tools
+	mkstub "$rel/work/guardrails"
+	tar -czf "$rel/v$ver/$asset" -C "$rel/work" guardrails
 	(cd "$rel/v$ver" && $sum "$asset" >checksums.txt)
 	# A wrong sum for certain. Swapping the real sum's first digit for 0 left it unchanged one run
 	# in sixteen (the archive embeds its mtime, so the sum varies), which made this case flaky.
@@ -69,7 +69,7 @@ install() { # <case>
 	rc=$?
 }
 
-bin() { printf %s "$tmp/$1/data/bin/$ver/claude-tools"; }
+bin() { printf %s "$tmp/$1/data/bin/$ver/guardrails"; }
 
 # --- 1. fresh install: binary in place, checksum recorded, doctor run and passed through
 newcase t1
@@ -80,7 +80,7 @@ install t1
 want=$($sum "$(bin t1)" | sed 's/ .*//')
 got=$(sed 's/ .*//' "$(bin t1).sha256" 2>/dev/null)
 [ -n "$want" ] && [ "$want" = "$got" ] && ok "install records the unpacked binary's sha256" || bad "install records the unpacked binary's sha256" "want=$want got=$got"
-grep -q '  claude-tools$' "$(bin t1).sha256" && ok "the record is in checksums.txt format" || bad "the record is in checksums.txt format" "$(cat "$(bin t1).sha256")"
+grep -q '  guardrails$' "$(bin t1).sha256" && ok "the record is in checksums.txt format" || bad "the record is in checksums.txt format" "$(cat "$(bin t1).sha256")"
 printf %s "$out" | grep -q 'doctor says hi' && ok "doctor's reply passes through install" || bad "doctor's reply passes through install" "out=$out"
 grep -q "^doctor -hook root=$root\$" "$tmp/t1/mark" && ok "doctor runs with -hook and CLAUDE_PLUGIN_ROOT set" || bad "doctor runs with -hook and CLAUDE_PLUGIN_ROOT set" "$(cat "$tmp/t1/mark")"
 [ -z "$(ls -A "$tmp/t1/data/bin" | grep '^\.download')" ] && ok "install removes its download directory" || bad "install removes its download directory" "$(ls -A "$tmp/t1/data/bin")"

@@ -26,12 +26,12 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go vet ./cmd/claude-tools/...
+      - run: go vet ./cmd/guardrails/...
       # Compile the test binary in its own step, so step times split build from run.
-      - run: go test -run '^$' ./cmd/claude-tools/...
+      - run: go test -run '^$' ./cmd/guardrails/...
       - run: |
           set -o pipefail
-          go test -v ./cmd/claude-tools/... | tee "$RUNNER_TEMP/go-test.log"
+          go test -v ./cmd/guardrails/... | tee "$RUNNER_TEMP/go-test.log"
       - name: Slowest tests
         if: always()
         run: |

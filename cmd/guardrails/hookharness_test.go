@@ -12,7 +12,7 @@ import (
 // TestMain keeps every test's guard state and ledger out of the real /tmp/claude-handoff;
 // tests that check state set their own HANDOFF_STATE_DIR on top.
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "claude-tools-test-")
+	dir, err := os.MkdirTemp("", "guardrails-test-")
 	if err != nil {
 		panic(err)
 	}

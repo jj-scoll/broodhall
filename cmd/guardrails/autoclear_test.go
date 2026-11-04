@@ -10,7 +10,7 @@ import (
 )
 
 // autoclearWorld gives one test its own state dir, a fake writer in place of
-// `claude-tools write-handoff`, and the background half run in-process. The fake follows the
+// `guardrails write-handoff`, and the background half run in-process. The fake follows the
 // writer's contract: <transcript> <next-steps file> <cwd> <session>; it writes HANDOFF-w.md
 // in cwd, removes the next-steps file and prints the path, or fails when FAKE_WRITER_FAIL is set.
 type autoclearWorld struct {
