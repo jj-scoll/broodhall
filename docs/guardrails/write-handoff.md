@@ -23,7 +23,10 @@ claude-tools write-handoff <transcript.jsonl> <next-steps file> <cwd> <session i
 | `session id` | Used for the default name, `HANDOFF-<first 8 characters>.md`. |
 
 The command prints the path of the handoff on stdout and a one-line summary (time, cost,
-gaps found, whether the memory briefing was stored) on stderr. It exits 0 on success and
+gaps found, whether the memory briefing was stored) on stderr. Before that summary, stderr
+gets one line per `claude` call (`writer: in=… out=… $…`, then `fix: …` if a second call ran;
+input tokens include cache reads and writes), the list of gaps the check found, and, after a
+fix, the gaps that remain. A fix reply that is not a handoff is reported there too. It exits 0 on success and
 non-zero on any failure, and on failure it writes no handoff and leaves the next-steps file
 in place. A file name that is not `HANDOFF` followed by letters, digits, `.`, `_` or `-` and
 ending in `.md` is replaced by the default name.
@@ -34,6 +37,12 @@ ending in `.md` is replaced by the default name.
    of each result) and a facts block that a script extracts from it: the typed prompts word
    for word, the answer to every question asked, files changed, mutating git commands and
    background jobs still running. Secret-looking values are masked in both.
+   The digest is capped at 200 KB (about 50k tokens, a few cents; the cap is a constant, not
+   a setting). Over the cap, the oldest tool-result lines go first, then the oldest lines of
+   any kind, and a line at the top says how many were omitted; the recent end is kept and
+   the run never fails for size. The facts block is never cut, except that the background-jobs
+   list shows the latest 10 jobs (descriptions that differ only in digits count as one) and
+   says how many were left out.
 2. Sends the memory plugin's handoff skill, the digest, the facts and the next steps to one
    `claude -p` call that answers with a JSON object, one key per section: Goal, Where Things
    Stand, Next Action, Dead Ends, Decisions and Constraints, Locations, Open Questions.
@@ -41,7 +50,8 @@ ending in `.md` is replaced by the default name.
    carried, every path, commit and PR or issue number found in the input, every running
    background job mentioned.
 4. Only when that check finds gaps, makes one more call that fixes just those. A reply that
-   is not a handoff is ignored and the first draft stands.
+   is not a handoff is ignored and the first draft stands. The fixed text is checked again
+   and any remaining gaps are logged.
 5. Writes `HANDOFF-<name>.md` to `cwd`, then offers a short briefing to the memory daemon.
 
 ## Login, model and cost
@@ -49,7 +59,8 @@ ending in `.md` is replaced by the default name.
 The calls use your own Claude Code login and the model `claude-haiku-5-5`. There is no key
 file and no API mode: `ANTHROPIC_API_KEY` is removed from the environment of the `claude`
 child, so a key left in your shell bills nothing. One handoff costs one Haiku call, or two
-when the check finds gaps. The summary line shows the cost Claude Code reports.
+when the check finds gaps. The prompt asks for third-person or impersonal wording, since a
+different session reads the note. The summary line shows the cost Claude Code reports.
 
 Each call runs as `claude -p --safe-mode --no-session-persistence --strict-mcp-config
 --tools "" --model claude-haiku-5-5 --effort high --output-format json`, in an empty

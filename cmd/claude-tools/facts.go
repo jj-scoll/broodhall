@@ -17,6 +17,8 @@ import (
 
 const promptCap = 1000
 
+var digitRun = regexp.MustCompile(`\d+`)
+
 var (
 	gitMutating = pyRe(`\bgit\b.*\b(commit|push|checkout|switch|worktree|merge|rebase|reset|tag|cherry-pick|stash)\b`+
 		`|\bgh pr (create|merge)\b`, 0)
@@ -350,17 +352,42 @@ func buildFacts(path, until string) (string, error) {
 	out = append(out, "", "### Git", "cwd "+pyStr(cwd)+", branch "+br)
 	out = append(out, git...)
 	out = append(out, "", "### Background jobs still running at the cut")
+	out = append(out, orNone(jobLines(&bg))...)
+	return redact(strings.Join(out, "\n")), nil
+}
+
+const maxBgJobs = 10 // jobs listed in the facts block
+
+// jobLines lists the running background jobs. Jobs whose descriptions differ only in digits
+// (a batch of "Wait for PR 101", "Wait for PR 102") count as one, the latest; of those, the
+// latest maxBgJobs are listed and a line says how many were left out.
+func jobLines(bg *ordered[bgJob]) []string {
+	seen := map[string]bool{}
+	var keep []string // newest first
+	for i := len(bg.keys) - 1; i >= 0; i-- {
+		id := bg.keys[i]
+		if k := digitRun.ReplaceAllString(bg.vals[id].desc, "#"); !seen[k] {
+			seen[k] = true
+			keep = append(keep, id)
+		}
+	}
+	listed := keep
+	if len(listed) > maxBgJobs {
+		listed = listed[:maxBgJobs]
+	}
 	var jobs []string
-	for _, id := range bg.keys {
-		j := bg.vals[id]
-		line := "- " + id + ": " + j.desc
+	for i := len(listed) - 1; i >= 0; i-- {
+		j := bg.vals[listed[i]]
+		line := "- " + listed[i] + ": " + j.desc
 		if j.output != "" {
 			line += " (output " + j.output + ")"
 		}
 		jobs = append(jobs, line)
 	}
-	out = append(out, orNone(jobs)...)
-	return redact(strings.Join(out, "\n")), nil
+	if n := len(bg.keys) - len(listed); n > 0 {
+		jobs = append(jobs, fmt.Sprintf("(%d more background jobs omitted: older, or similar to a listed one)", n))
+	}
+	return jobs
 }
 
 func orNone(lines []string) []string {
