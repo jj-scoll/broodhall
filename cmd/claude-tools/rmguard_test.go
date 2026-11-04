@@ -3,7 +3,7 @@ package main
 import "testing"
 
 func TestRmRootTarget(t *testing.T) {
-	const home = "/home/user"
+	const home = "/nohome/user"
 	tests := []struct {
 		name string
 		cmd  string
@@ -18,7 +18,7 @@ func TestRmRootTarget(t *testing.T) {
 		{"HOME braces", "rm -rf ${HOME}", "$HOME"},
 		{"HOME quoted", `rm -rf "$HOME"`, "$HOME"},
 		{"HOME glob", "rm -rf $HOME/*", "$HOME"},
-		{"literal home dir", "rm -rf /home/user", "~"},
+		{"literal home dir", "rm -rf /nohome/user", "~"},
 		{"/home", "rm -rf /home", "/home"},
 		{"/home slash", "rm -rf /home/", "/home"},
 		{"/nix", "rm -rf /nix", "/nix"},
@@ -56,7 +56,7 @@ func TestRmRootTarget(t *testing.T) {
 		// the 45/45 false positives: subpaths
 		{"scratchpad", "rm -rf /tmp/claude-1000/-home-user-ask/abc/scratchpad/work", ""},
 		{"nix store", "rm -rf /nix/store/abc-foo.drv", ""},
-		{"project dir", "rm -rf /home/user/src/x/build", ""},
+		{"project dir", "rm -rf /nohome/user/src/x/build", ""},
 		{"tilde subdir", "rm -rf ~/.cache/tool", ""},
 		{"HOME subdir", "rm -rf $HOME/projects/x/node_modules", ""},
 		{"storage subdir", "rm -rf /storage/old", ""},

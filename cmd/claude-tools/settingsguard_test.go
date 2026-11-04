@@ -25,7 +25,7 @@ func TestSettingsGuardAsksOnWrites(t *testing.T) {
 		`jq '.permissions.allow += ["Bash(curl *)"]' ~/.claude/settings.json > /tmp/s && mv /tmp/s ~/.claude/settings.json`,
 		"sed -i 's/block/x/' ~/.claude/settings.json",
 		"echo '{}' > $HOME/.claude/settings.local.json",
-		"echo '{}' > /home/user/.claude-work/settings.json",
+		"echo '{}' > /nohome/user/.claude-work/settings.json",
 		"cp /tmp/loose.json ~/.claude/settings.json",
 		"rm ~/.claude/settings.json",
 		"echo x | tee .claude/settings.local.json",
@@ -65,7 +65,7 @@ func TestSettingsGuardAllowsReads(t *testing.T) {
 	for _, cmd := range allowed {
 		t.Run(cmd, func(t *testing.T) {
 			// settingsGuard alone: find ~/.claude also meets the secret-file guard (.credentials.json).
-			if d := settingsGuard(&guardEnv{Cwd: "/work", Home: "/home/user"}, cmd); d.Ask || d.Exit != 0 {
+			if d := settingsGuard(&guardEnv{Cwd: "/work", Home: "/nohome/user"}, cmd); d.Ask || d.Exit != 0 {
 				t.Errorf("got %s msg %q, want allow", d.Kind(), d.Msg)
 			}
 		})

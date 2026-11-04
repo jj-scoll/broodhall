@@ -223,7 +223,7 @@ func TestPIIRulesCheck(t *testing.T) {
 // --- PreToolUse guard ---
 
 func guardCmd(cmd string) decision {
-	return decide(&guardEnv{Now: time.Unix(1_800_000_000, 0), Session: "s", Cwd: "/work", Home: "/home/user", State: memState{}}, cmd)
+	return decide(&guardEnv{Now: time.Unix(1_800_000_000, 0), Session: "s", Cwd: "/work", Home: "/nohome/user", State: memState{}}, cmd)
 }
 
 func TestGuardDeniesRulesFileWrites(t *testing.T) {
@@ -231,7 +231,7 @@ func TestGuardDeniesRulesFileWrites(t *testing.T) {
 	const f = "~/.config/claude-tools/pii-columns.json"
 	denied := []string{
 		"sed -i 's/email/zzz/' " + f,
-		"sed -i.bak 's/a/b/' /home/user/.config/claude-tools/pii-columns.json",
+		"sed -i.bak 's/a/b/' /nohome/user/.config/claude-tools/pii-columns.json",
 		"echo '{}' > " + f,
 		"echo '{}' >> $HOME/.config/claude-tools/pii-columns.json",
 		`cat x.json >| "${HOME}/.config/claude-tools/pii-columns.json"`,
@@ -241,10 +241,10 @@ func TestGuardDeniesRulesFileWrites(t *testing.T) {
 		"rm -rf ~/.config/claude-tools",
 		"chmod 666 " + f,
 		"echo hi | tee " + f,
-		"tee -a /home/user/.config/claude-tools/pii-columns.json < /tmp/x",
+		"tee -a /nohome/user/.config/claude-tools/pii-columns.json < /tmp/x",
 		"install -m 644 /tmp/x " + f,
 		"truncate -s 0 " + f,
-		`python3 -c "open('/home/user/.config/claude-tools/pii-columns.json','w').write('{}')"`,
+		`python3 -c "open('/nohome/user/.config/claude-tools/pii-columns.json','w').write('{}')"`,
 		`perl -pi -e 's/email/x/' ` + f,
 		"cd ~/.config/claude-tools && sed -i 's/a/b/' pii-columns.json",
 		"cd ~/.config/claude-tools; echo '{}' > pii-columns.json",
@@ -255,7 +255,7 @@ func TestGuardDeniesRulesFileWrites(t *testing.T) {
 		"HOME=/tmp/x claude-tools redact",
 		"XDG_CONFIG_HOME=/tmp/x ~/.claude/bin/claude-tools pii-" + "mirror a b",
 		"env HOME=/x claude-tools redact",
-		"cd /tmp && HOME=/x /home/user/.claude/bin/claude-tools redact",
+		"cd /tmp && HOME=/x /nohome/user/.claude/bin/claude-tools redact",
 		"echo hi | HOME=/x claude-tools redact",
 		`bash -c 'HOME=/x claude-tools redact'`,
 	}
@@ -279,7 +279,7 @@ func TestGuardAllowsRulesFileReads(t *testing.T) {
 	const f = "~/.config/claude-tools/pii-columns.json"
 	allowed := []string{
 		"cat " + f,
-		"rg -n email /home/user/.config/claude-tools/pii-columns.json",
+		"rg -n email /nohome/user/.config/claude-tools/pii-columns.json",
 		"jq '.rules | length' " + f,
 		"ls -la ~/.config/claude-tools",
 		"claude-tools pii-rules init",

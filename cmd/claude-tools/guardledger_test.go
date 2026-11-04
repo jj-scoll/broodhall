@@ -45,7 +45,7 @@ func TestGuardLedgerReadsOnlyNewEvents(t *testing.T) {
 func TestGuardLedgerKeepsOnlyRuleIDs(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HANDOFF_STATE_DIR", dir)
-	logGuardEvent("s", "block", "dangerous:rm -rf /home/user")
+	logGuardEvent("s", "block", "dangerous:rm -rf /nohome/user")
 	logGuardEvent("../escape", "ask", "x")
 	logGuardEvent("", "ask", "x")
 	if evs, _ := newGuardEvents("s"); eventList(evs) != "block dangerous:rm" {
