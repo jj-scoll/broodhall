@@ -298,9 +298,11 @@ mkslowcurl() {
 	mkdir -p "$1"
 	cat >"$1/curl" <<EOF
 #!/bin/sh
-echo "\$*" >>"$1/curl.log"
 sleep $2
-exec $realcurl "\$@"
+$realcurl "\$@"
+rc=\$?
+echo "pid=\$\$ ppid=\$PPID rc=\$rc \$*" >>"$1/curl.log"
+exit \$rc
 EOF
 	chmod +x "$1/curl"
 }
@@ -527,7 +529,7 @@ for t in 1 2 3 4 5 6 7 8 9 10 11 12; do
 	for n in 1 2 3 4; do
 		grep -q BLOCKED "$c/e$n" && racefail="$racefail race-$t:guard$n-blocked"
 	done
-	[ "$(grep -c 'tar.gz' "$c/path/curl.log")" = 1 ] || racefail="$racefail race-$t:downloads=$(grep -c 'tar.gz' "$c/path/curl.log")"
+	[ "$(grep -c 'tar.gz' "$c/path/curl.log")" = 1 ] || racefail="$racefail race-$t:downloads=$(grep -c 'tar.gz' "$c/path/curl.log") [curl.log: $(cat "$c/path/curl.log")] [install.log: $(cat "$c/data/install.log" 2>/dev/null)] [i: $(cat "$c/i")]"
 done
 if [ -z "$racefail" ]; then ok "first-install race: no guard blocks and the release downloads once (12 trials)"; else bad "first-install race: no guard blocks and the release downloads once (12 trials)" "$racefail"; fi
 
