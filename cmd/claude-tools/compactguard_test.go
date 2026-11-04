@@ -128,3 +128,50 @@ func TestCompactGuardForgetsReadDedupLedger(t *testing.T) {
 		t.Errorf("nudge after compaction: %q", out)
 	}
 }
+
+func TestReadDedupSkipsUnsafeSessionIDs(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "f.txt")
+	os.WriteFile(file, []byte("hello\n"), 0o644)
+	tests := []struct{ name, session, ledger string }{
+		{"slash", "../tmp/rd-x", "/tmp/claude-readcache-../tmp/rd-x"},
+		{"dotdot", "..", "/tmp/claude-readcache-.."},
+		{"underscore", "ver_under_1", "/tmp/claude-readcache-ver_under_1"},
+		{"missing", "", "/tmp/claude-readcache-nosession"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Remove(tt.ledger)
+			t.Cleanup(func() { os.Remove(tt.ledger) })
+			sid := ""
+			if tt.session != "" {
+				sid = fmt.Sprintf(`"session_id":%q,`, tt.session)
+			}
+			read := fmt.Sprintf(`{%s"tool_name":"Read","cwd":%q,"tool_input":{"file_path":%q}}`, sid, filepath.Dir(file), file)
+			for i := 0; i < 2; i++ {
+				if code, out, _ := runHook(t, readDedup, read); code != 0 || out != "" {
+					t.Fatalf("read %d: exit %d, output %q; want silent", i, code, out)
+				}
+			}
+			if _, err := os.Stat(tt.ledger); err == nil {
+				t.Errorf("ledger %s was written", tt.ledger)
+			}
+		})
+	}
+}
+
+func TestReadDedupUUIDSessionClearedByCompaction(t *testing.T) {
+	gateEnv(t)
+	session := "7c04244b-7e74-4b7f-91cd-632add8d565b"
+	t.Cleanup(func() { os.Remove(readCachePath(session)) })
+	file := filepath.Join(t.TempDir(), "f.txt")
+	os.WriteFile(file, []byte("hello\n"), 0o644)
+	read := fmt.Sprintf(`{"session_id":%q,"tool_name":"Read","cwd":%q,"tool_input":{"file_path":%q}}`, session, filepath.Dir(file), file)
+	runHook(t, readDedup, read)
+	if _, out, _ := runHook(t, readDedup, read); !strings.Contains(out, "already read") {
+		t.Fatalf("no nudge for a UUID session: %q", out)
+	}
+	runHook(t, compactGuard, compactPayload(session, "auto"))
+	if _, out, _ := runHook(t, readDedup, read); out != "" {
+		t.Errorf("nudge after compaction: %q", out)
+	}
+}

@@ -54,7 +54,11 @@ func readDedup(args []string) int {
 		return 0
 	}
 	file := in.ToolInput.FilePath
-	session := jqRaw(in.SessionID, "nosession")
+	// Same check as compact-guard, so the ledger path is safe and compaction can clear it.
+	session := jqRaw(in.SessionID, "")
+	if !safeSession.MatchString(session) {
+		return 0
+	}
 
 	// stat -c %Y / %s: no symlink follow.
 	st, err := os.Lstat(file)
