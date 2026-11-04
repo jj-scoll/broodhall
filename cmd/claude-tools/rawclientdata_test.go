@@ -42,7 +42,7 @@ func TestRawClientDataAsk(t *testing.T) {
 	allows := []string{
 		`python3 -c "print(1)"`,
 		`python3 q.py ~/.cache/mirror/acme-prod-clientdata/data/x.parquet`,
-		`python3 q.py /home/user/.cache/mirror/acme-prod-clientdata/data/x.parquet`,
+		`python3 q.py /nohome/user/.cache/mirror/acme-prod-clientdata/data/x.parquet`,
 		`python3 -c "import duckdb; print(duckdb.sql(\"from 's3://acme-own-bucket/runs/a.parquet'\"))"`,
 		`duckdb -csv -c "from 's3://acme-prod-clientdata/data/x.parquet'"`,
 		`aws s3 ls s3://acme-prod-clientdata/data/`,

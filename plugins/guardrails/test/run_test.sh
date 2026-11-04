@@ -25,10 +25,12 @@ os=$(uname -s | tr '[:upper:]' '[:lower:]')
 case $(uname -m) in x86_64 | amd64) arch=amd64 ;; *) arch=arm64 ;; esac
 asset=claude-tools_${os}_$arch.tar.gz
 
-# A stub binary: records its argv, the env the launcher sets and stdin, exits 3.
+# A stub binary: records its argv, the env the launcher sets and stdin, exits 3. `doctor` is
+# silent, as a healthy install's doctor is (install_test.sh covers what doctor prints).
 mkstub() {
 	cat >"$1" <<'EOF'
 #!/bin/sh
+[ "${1-}" = doctor ] && exit 0
 echo "args=$* off=${CLAUDE_TOOLS_OFF-unset} allow=${CLAUDE_TOOLS_PII_ALLOW-unset} stdin=$(cat)"
 exit 3
 EOF

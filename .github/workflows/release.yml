@@ -26,7 +26,7 @@ jobs:
         run: |
           for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
             os=${t%/*} arch=${t#*/}
-            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.stampRev=$GITHUB_SHA" \
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.stampRev=$GITHUB_SHA -X main.stampVersion=$GITHUB_REF_NAME" \
               -o "build/${os}_$arch/claude-tools" ./cmd/claude-tools
             mkdir -p dist && tar -czf "dist/claude-tools_${os}_$arch.tar.gz" -C "build/${os}_$arch" claude-tools
           done
