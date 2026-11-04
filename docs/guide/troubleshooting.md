@@ -30,7 +30,7 @@ and opt out; with `fail_open` set they run unguarded instead. The next session s
 | `no checksum for <file> in checksums.txt` | `checksums.txt` has no line for the tarball. It was not installed. |
 | `checksum mismatch` | The tarball's sha256 did not match `checksums.txt`. It was not installed. |
 | `unpack failed` | `tar` could not extract the binary, or it could not be moved into place. |
-| `another install is running` | Another session was installing and did not finish within 90 seconds. Start a new session once it is done. |
+| `another install is running` | Another session was installing and did not finish within 90 seconds. Start a new session once it is done. If the notice appears at once, the plugin data directory may not be writable. Check its permissions. |
 
 ## A doctor message at session start
 

@@ -90,7 +90,7 @@ raise protection and pass silently.
 ## From a terminal
 
 The skill runs the `setup` subcommand through the plugin launcher. You can run it by hand.
-`guardrails` is not on your `PATH`, so set the alias from
+`guardrails` is not on your `PATH`, so define the shell function from
 [Run it from a terminal](index.md#run-it-from-a-terminal) first:
 
 ```sh

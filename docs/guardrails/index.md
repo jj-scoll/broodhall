@@ -50,11 +50,15 @@ have no family name in it either. See [Options](options.md).
 
 The plugin does not put `guardrails` on your `PATH`. The binary lives in the plugin data
 directory, under `bin/<version>/`. To run commands such as `guardrails setup` or
-`guardrails team-init` by hand, first point an alias at the newest installed version:
+`guardrails team-init` by hand, start one Claude Code session first so the binary is
+downloaded. Then define this shell function. It runs the newest installed version:
 
 ```sh
-alias guardrails="$(ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/data/guardrails-broodhall/bin/*/guardrails | sort -V | tail -1)"
+guardrails() {
+	"$(printf '%s\n' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/data/guardrails-broodhall/bin/[0-9]*/guardrails | sort -V | tail -n 1)" "$@"
+}
 guardrails version
 ```
 
-The alias lasts for that shell. Set it again after a plugin update to pick up the new version.
+The function lasts for that shell. Add it to your shell's rc file to keep it. It finds the
+newest version each time it runs, so a plugin update needs no change.
