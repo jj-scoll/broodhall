@@ -73,6 +73,7 @@ const (
 )
 
 // costPrices is matched by longest model-id prefix, so a dated id (…-20251001) finds its row.
+// A prefix must end at a non-digit, so claude-opus-4-10 does not take claude-opus-4-1's row.
 var costPrices = map[string]modelPrice{
 	"claude-fable-5-1":  {10, 50, 12.5, 20, 0.25},
 	"claude-mythos-5-1": {10, 50, 12.5, 20, 0.25},
@@ -84,15 +85,16 @@ var costPrices = map[string]modelPrice{
 	"claude-opus-4-6":   {5, 25, 6.25, 10, 0.50},
 	"claude-opus-4-7":   {5, 25, 6.25, 10, 0.50},
 	"claude-opus-4-8":   {5, 25, 6.25, 10, 0.50},
-	// Opus 4.1 and the original Opus 4 (dated ids like claude-opus-4-20250514) cost 3x as much.
+	// Opus 4.1 and the original Opus 4 (claude-opus-4-20250514, alias claude-opus-4-0) cost 3x as much.
 	// The page lists 4.1 and says earlier releases keep their pricing, so Opus 4 uses the same row.
-	"claude-opus-4-1":    {15, 75, 18.75, 30, 1.50},
-	"claude-opus-4-2025": {15, 75, 18.75, 30, 1.50},
-	"claude-sonnet-5-5":  {2, 10, 2.5, 4, 0.10},
-	"claude-sonnet-5":    {2, 10, 2.5, 4, 0.20},
-	"claude-sonnet-4":    {3, 15, 3.75, 6, 0.30},
-	"claude-haiku-5-5":   {0.10, 0.50, 0.125, 0.20, 0.01},
-	"claude-haiku-4-5":   {1, 5, 1.25, 2, 0.10},
+	"claude-opus-4-1":        {15, 75, 18.75, 30, 1.50},
+	"claude-opus-4-0":        {15, 75, 18.75, 30, 1.50},
+	"claude-opus-4-20250514": {15, 75, 18.75, 30, 1.50},
+	"claude-sonnet-5-5":      {2, 10, 2.5, 4, 0.10},
+	"claude-sonnet-5":        {2, 10, 2.5, 4, 0.20},
+	"claude-sonnet-4":        {3, 15, 3.75, 6, 0.30},
+	"claude-haiku-5-5":       {0.10, 0.50, 0.125, 0.20, 0.01},
+	"claude-haiku-4-5":       {1, 5, 1.25, 2, 0.10},
 }
 
 // haikuLongPrice is Claude Haiku 5.5 for prompts over 100,000 tokens.
@@ -103,7 +105,8 @@ var haikuLongPrice = modelPrice{0.50, 2.50, 0.625, 1, 0.05}
 func priceFor(model string, promptTokens int64) (modelPrice, bool) {
 	best := ""
 	for k := range costPrices {
-		if strings.HasPrefix(model, k) && len(k) > len(best) {
+		if strings.HasPrefix(model, k) && len(k) > len(best) &&
+			(len(model) == len(k) || model[len(k)] < '0' || model[len(k)] > '9') {
 			best = k
 		}
 	}
