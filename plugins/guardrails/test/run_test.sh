@@ -423,23 +423,57 @@ newcase concurrent-install
 mkrelease "$c/rel"
 mkslowcurl "$c/path" 1
 export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
-# Traced (sh -x to x1/x2) so a CI failure shows how each installer decided about the lock.
-PS4='+T ' PATH=$c/path:$PATH sh -x "$run_sh" install </dev/null >"$c/o1" 2>"$c/x1" &
+PATH=$c/path:$PATH sh "$run_sh" install </dev/null >"$c/o1" 2>&1 &
 p1=$!
-PS4='+T ' PATH=$c/path:$PATH sh -x "$run_sh" install </dev/null >"$c/o2" 2>"$c/x2" &
+PATH=$c/path:$PATH sh "$run_sh" install </dev/null >"$c/o2" 2>&1 &
 p2=$!
 wait "$p1" "$p2"
-locktrace() { grep -anE 'lock|kill|find|mkdir|mv |p=|\$\$|echo [0-9]' "$1" | grep -av 'setting\|export'; }
-[ "$(grep -c 'tar.gz' "$c/path/curl.log")" = 1 ] && ok "two concurrent installs download once" || bad "two concurrent installs download once" "downloads: $(grep -c 'tar.gz' "$c/path/curl.log") p1=$p1 p2=$p2 [curl.log: $(cat "$c/path/curl.log")] [bin: $(ls -A "$c/data/bin")]
---- x1 ---
-$(locktrace "$c/x1")
---- x2 ---
-$(locktrace "$c/x2")"
-grep -av '^++*T ' "$c/x1" >"$c/e1"
-grep -av '^++*T ' "$c/x2" >"$c/e2"
-[ ! -s "$c/o1" ] && [ ! -s "$c/o2" ] && [ ! -s "$c/e1" ] && [ ! -s "$c/e2" ] && [ -x "$c/data/bin/$ver/guardrails" ] && ok "two concurrent installs both succeed silently" || bad "two concurrent installs both succeed silently" "o1=$(cat "$c/o1" "$c/e1") o2=$(cat "$c/o2" "$c/e2")"
+[ "$(grep -c 'tar.gz' "$c/path/curl.log")" = 1 ] && ok "two concurrent installs download once" || bad "two concurrent installs download once" "downloads: $(grep -c 'tar.gz' "$c/path/curl.log") [curl.log: $(cat "$c/path/curl.log")]"
+[ ! -s "$c/o1" ] && [ ! -s "$c/o2" ] && [ -x "$c/data/bin/$ver/guardrails" ] && ok "two concurrent installs both succeed silently" || bad "two concurrent installs both succeed silently" "o1=$(cat "$c/o1") o2=$(cat "$c/o2")"
 (cd "$c/data/bin/$ver" && printf '%s\n' "$($sum guardrails | cut -d' ' -f1)  guardrails" | cmp -s - guardrails.sha256) && ok "the sha256 record matches the installed binary" || bad "the sha256 record matches the installed binary" "$(cat "$c/data/bin/$ver/guardrails.sha256")"
 ls -A "$c/data/bin" | grep -q '^\.download\.' && bad "no download temp dirs left behind" "$(ls -A "$c/data/bin")" || ok "no download temp dirs left behind"
+
+# uutils mkdir (Ubuntu 25.10 and later) does not reliably fail when another process creates
+# the same directory at the same moment, so mkdir cannot be what makes the lock exclusive. This
+# stub never fails on an existing directory, which makes that race happen every time.
+mkloosemkdir() { # <dir>
+	realmkdir=$(command -v mkdir)
+	cat >"$1/mkdir" <<EOF
+#!/bin/sh
+for a; do last=\$a; done
+$realmkdir "\$@" 2>/dev/null || [ -d "\$last" ]
+EOF
+	chmod +x "$1/mkdir"
+}
+
+newcase concurrent-install-loose-mkdir
+mkrelease "$c/rel"
+mkslowcurl "$c/path" 1
+mkloosemkdir "$c/path"
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+PATH=$c/path:$PATH sh "$run_sh" install </dev/null >"$c/o1" 2>&1 &
+p1=$!
+PATH=$c/path:$PATH sh "$run_sh" install </dev/null >"$c/o2" 2>&1 &
+p2=$!
+wait "$p1" "$p2"
+[ "$(grep -c 'tar.gz' "$c/path/curl.log")" = 1 ] && ok "non-exclusive mkdir: two concurrent installs download once" || bad "non-exclusive mkdir: two concurrent installs download once" "downloads: $(grep -c 'tar.gz' "$c/path/curl.log")"
+[ ! -s "$c/o1" ] && [ ! -s "$c/o2" ] && [ -x "$c/data/bin/$ver/guardrails" ] && ok "non-exclusive mkdir: both installs succeed silently" || bad "non-exclusive mkdir: both installs succeed silently" "o1=$(cat "$c/o1") o2=$(cat "$c/o2")"
+
+# A live install holds the lock: a guard must not start a second one, even when mkdir succeeds.
+newcase inflight-loose-mkdir
+mkrelease "$c/rel"
+mkslowcurl "$c/path" 0
+mkloosemkdir "$c/path"
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+sleep 30 &
+holder=$!
+mkdir -p "$c/data/bin/.install-lock"
+echo "$holder" >"$c/data/bin/.install-lock/pid"
+PATH=$c/path:$PATH GUARDRAILS_INSTALL_WAIT=1 hook pre-tool-use
+sleep 2 # a wrongly started background install would have downloaded by now
+kill "$holder" 2>/dev/null
+n=$(grep -c 'tar.gz' "$c/path/curl.log" 2>/dev/null)
+[ "${n:-0}" = 0 ] && ok "non-exclusive mkdir: a held lock starts no second install" || bad "non-exclusive mkdir: a held lock starts no second install" "downloads: ${n:-0}"
 
 # The other installer can finish between this one's binary check and its lock: it checked
 # before the binary landed and took the lock after it was freed. A mkdir on PATH plays that

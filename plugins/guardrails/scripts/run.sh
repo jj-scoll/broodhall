@@ -88,8 +88,8 @@ true | TRUE | True | 1 | yes) fail_open=1 ;;
 esac
 
 # One installer at a time: the lock dir $data/bin/.install-lock belongs to the process whose pid
-# is in $lock/pid (a lock with no pid file yet counts as held). A lock whose process is gone, or
-# that is older than 15 minutes, is taken over. A failed install leaves a stamp, and the guards
+# is in $lock/pid (an empty pid file counts as held). A lock whose process is gone, or that is
+# older than 15 minutes, is taken over. A failed install leaves a stamp, and the guards
 # do not start another install for 5 minutes (`run.sh install` always tries).
 lock=$data/bin/.install-lock
 stamp=$data/bin/.fail-$ver
@@ -107,15 +107,16 @@ lock_live() {
 	fi
 	kill -0 "$p" 2>/dev/null
 }
-# take_lock makes the lock dir ours. Only mkdir creates it; a dead or expired lock is moved
-# aside before it is removed, so a fresh lock another process made meanwhile is never the one
-# deleted.
+# take_lock makes the lock ours. The pid file is the claim: set -C creates it with O_EXCL, which
+# the kernel makes exclusive. mkdir is not: uutils mkdir (Ubuntu 25.10 and later) can let two
+# racing processes both succeed. A dead or expired lock is moved aside and removed first.
+claim_lock() { (set -C && echo $$ >"$lock/pid") 2>/dev/null; }
 take_lock() {
-	mkdir -p "$data/bin" 2>/dev/null || return 1
-	mkdir "$lock" 2>/dev/null && return 0
+	mkdir -p "$lock" 2>/dev/null || return 1
+	claim_lock && return 0
 	lock_live && return 1
 	mv "$lock" "$lock.stale.$$" 2>/dev/null && rm -rf "$lock.stale.$$"
-	mkdir "$lock" 2>/dev/null
+	mkdir -p "$lock" 2>/dev/null && claim_lock
 }
 recent_failure() { [ -n "$(find "$stamp" -mmin -5 2>/dev/null)" ]; }
 
@@ -190,6 +191,7 @@ start_install() {
 	recent_failure && ! lock_live && return 1
 	take_lock || return 0 # lost the race to another starter, which is installing
 	spawn sh "$0" install-locked
+	echo $! >"$lock/pid" 2>/dev/null # the installer holds it now, however soon this guard exits
 	return 0
 }
 
