@@ -16,6 +16,10 @@ claude plugin install context-guard@broodhall
 
 context-guard declares guardrails as a dependency, so Claude Code installs guardrails with it.
 If you already have guardrails, nothing changes. You can still install guardrails first.
+Claude Code does not stop you from disabling or uninstalling guardrails later, and context-guard
+stays enabled when you do. Running the context-guard install again may not bring guardrails
+back (it reported "already installed" in testing with a local marketplace), so reinstall it
+directly with `claude plugin install guardrails@broodhall`.
 
 Requirements:
 
