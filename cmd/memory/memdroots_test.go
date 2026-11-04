@@ -67,10 +67,35 @@ func TestMemdRootsEnvOverride(t *testing.T) {
 	t.Setenv("HOME", home)
 	mkdirs(t, filepath.Join(home, ".claude", "projects"))
 	a, b := filepath.Join(home, "a"), filepath.Join(home, "b")
-	t.Setenv("MEMORY_CONFIG_DIRS", a+string(os.PathListSeparator)+b)
+	sep := string(os.PathListSeparator)
+	// A relative entry would resolve against the daemon's cwd: ignored, like the XDG vars.
+	t.Setenv("MEMORY_CONFIG_DIRS", a+sep+"rel/dir"+sep+"~/.claude"+sep+b)
 	want := map[string]string{filepath.Join(a, "projects"): "a", filepath.Join(b, "projects"): "b"}
 	if got := defaultMemdRoots(); !reflect.DeepEqual(got, want) {
 		t.Errorf("roots = %v, want %v", got, want)
+	}
+}
+
+// A config dir reached through a symlink keeps one spelling whichever account starts the
+// daemon, so its stored offsets and backfill cutoff keep matching across restarts.
+func TestMemdRootsSymlinkSpellingIsStable(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("MEMORY_CONFIG_DIRS", "")
+	real := filepath.Join(home, "data", "work")
+	mkdirs(t, filepath.Join(home, ".claude", "projects"), filepath.Join(real, "projects"))
+	if err := os.Symlink(real, filepath.Join(home, ".claude-work")); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		filepath.Join(home, ".claude", "projects"):      "claude",
+		filepath.Join(home, ".claude-work", "projects"): "claude-work",
+	}
+	for _, cfg := range []string{"", real, filepath.Join(home, ".claude-work")} {
+		t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+		if got := defaultMemdRoots(); !reflect.DeepEqual(got, want) {
+			t.Errorf("CLAUDE_CONFIG_DIR=%q: roots = %v, want %v", cfg, got, want)
+		}
 	}
 }
 

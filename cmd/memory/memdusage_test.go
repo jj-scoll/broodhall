@@ -252,7 +252,7 @@ func TestUsageBackfillReadsFilesTheTailerSkipped(t *testing.T) {
 		}
 	}
 	var wm int64
-	if err := e.db.QueryRow(`SELECT last_id FROM import_watermarks WHERE table_name = 'api_usage'`).Scan(&wm); err != nil || wm != memdUsageBackfillVersion {
+	if err := e.db.QueryRow(`SELECT last_id FROM import_watermarks WHERE table_name = ?`, usageWatermarkKey(e.root)).Scan(&wm); err != nil || wm != memdUsageBackfillVersion {
 		t.Fatalf("watermark = %d (%v), want %d", wm, err, memdUsageBackfillVersion)
 	}
 	// With the watermark set the pass does not read files again: a new old file is left alone.
@@ -264,12 +264,44 @@ func TestUsageBackfillReadsFilesTheTailerSkipped(t *testing.T) {
 		t.Fatalf("backfill ran again after the watermark: rows = %d", n)
 	}
 	// Dropping the watermark re-runs it, still without double counting.
-	e.db.Exec(`DELETE FROM import_watermarks WHERE table_name = 'api_usage'`)
+	e.db.Exec(`DELETE FROM import_watermarks WHERE table_name = ?`, usageWatermarkKey(e.root))
 	tl.BackfillUsage(context.Background())
 	var out int64
 	e.db.QueryRow(`SELECT sum(output_tokens) FROM api_usage`).Scan(&out)
 	if n := usageCount(t, e.db); n != 4 || out != 4+1+1+1 {
 		t.Fatalf("rerun: rows = %d out = %d, want 4 and 7", n, out)
+	}
+}
+
+// The usage history of each root is read once per root: a root added later (another account's
+// config dir) is backfilled even though the roots read before, and the pre-root watermark,
+// are already done; the roots already read are not read again.
+func TestUsageBackfillPerRoot(t *testing.T) {
+	e := newTailEnv(t, "")
+	old := time.Date(2026, 9, 1, 2, 0, 0, 0, time.UTC)
+	a := usageLine{sess: "s1", mid: "msg_A", rid: "req_A", model: "m", ts: "2026-09-01T01:00:00.000Z", out: 1}
+	os.Chtimes(writeTranscript(t, e.dir, "s1.jsonl", a.String()), old, old)
+	if err := e.tailer().BackfillUsage(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.Exec(`INSERT INTO import_watermarks VALUES ('api_usage', 1) ON CONFLICT (table_name) DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+
+	other := t.TempDir()
+	b := usageLine{sess: "s2", mid: "msg_B", rid: "req_B", model: "m", ts: "2026-09-01T01:00:00.000Z", out: 1}
+	os.Chtimes(writeTranscript(t, filepath.Join(other, "projects", "-work-demo"), "s2.jsonl", b.String()), old, old)
+	c := usageLine{sess: "s3", mid: "msg_C", rid: "req_C", model: "m", ts: "2026-09-01T01:00:00.000Z", out: 1}
+	os.Chtimes(writeTranscript(t, e.dir, "s3.jsonl", c.String()), old, old) // root already read
+
+	tl := newMemdTailer(e.db, map[string]string{e.root: "a", other: "b"}, tailStart)
+	if err := tl.BackfillUsage(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for mid, want := range map[string]int{"msg_A": 1, "msg_B": 1, "msg_C": 0} {
+		if got := tailCount(t, e.db, "SELECT count(*) FROM api_usage WHERE message_id = ?", mid); got != want {
+			t.Errorf("%s rows = %d, want %d", mid, got, want)
+		}
 	}
 }
 
@@ -412,7 +444,7 @@ func TestUsageBackfillSpeed(t *testing.T) {
 		t.Fatalf("sum(output) = %d, want %d (the largest of three partials per key)", out, int64(n)*102)
 	}
 	// Dropping the watermark re-reads everything: every key conflicts, across batch edges too.
-	tl.db.Exec(`DELETE FROM import_watermarks WHERE table_name = 'api_usage'`)
+	tl.db.Exec(`DELETE FROM import_watermarks WHERE table_name LIKE 'api_usage%'`)
 	if err := tl.BackfillUsage(context.Background()); err != nil {
 		t.Fatal(err)
 	}

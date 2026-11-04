@@ -33,7 +33,7 @@ starts.
 | `MEMORY_EXT_DIR` | `<state directory>/ext` | Where the daemon finds the DuckDB extensions `fts`, `httpfs` and `quack`. The launcher sets this to the extensions that came with the download, so you rarely set it. |
 | `MEMORY_SETTINGS` | `~/.config/memory/settings.json` | Path of the settings file. |
 | `MEMORY_LOOKUP_SHELL` | unset | Set to `1` to run the lookup before `Bash`, `Grep` and `Glob` too. It then needs the hook matcher to include them; the plugin's matcher is <code>Edit&#124;Write&#124;NotebookEdit</code>, so on its own this has no effect. |
-| `MEMORY_CONFIG_DIRS` | unset | A `:`-separated list of Claude config directories. When set, the daemon reads `projects/` under exactly these instead of finding them itself. |
+| `MEMORY_CONFIG_DIRS` | unset | A `:`-separated list of Claude config directories. When set, the daemon reads `projects/` under exactly these instead of finding them itself. A relative path is ignored. |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | The daemon reads transcripts from `projects/` under it, and under every other `~/.claude*` directory that has a `projects/`. |
 | `CLAUDE_PROJECT_DIR` | the hook's working directory | Which project a hook or tool call belongs to. Claude Code sets it. |
 | `XDG_RUNTIME_DIR` | set by your system | Holds `memory.sock`. The launcher falls back to a private directory under `$TMPDIR` when it is unset. |
@@ -69,4 +69,9 @@ account's transcripts, whichever account started it.
 
 When the daemon starts, a transcript it has not seen before is read from the last time
 memory read that account's directory, at most 24 hours back. So sessions that ran while
-memory was not reading an account are caught up, not lost.
+memory was not reading an account are caught up, back to that limit. A directory memory has
+never read is read from the daemon's start, like a first install. The token usage behind
+`memory cost` is read in full for each directory, once.
+
+The daemon looks for the directories when it starts. A new `~/.claude*` account directory is
+picked up at the next daemon start.
