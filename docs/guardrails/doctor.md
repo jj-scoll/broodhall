@@ -36,7 +36,7 @@ are skipped.
 
 ## Version output
 
-`claude-tools version` prints the release and the commit, such as `0.2.0 (5b8331f)`. Release
-builds stamp both. A build made by `go install ...@v0.2.0` reports the release from the module
+`claude-tools version` prints the release and the commit, such as `X.Y.Z (5b8331f)`. Release
+builds stamp both. A build made by `go install ...@vX.Y.Z` reports the release from the module
 version, and a build in a git checkout reports the commit, with `-dirty` for uncommitted
 changes. `unknown` means none of these was available, and doctor fails the version check.

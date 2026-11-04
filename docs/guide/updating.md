@@ -4,6 +4,7 @@
 claude plugin update guardrails@broodhall
 claude plugin update memory@broodhall
 claude plugin update context-guard@broodhall
+claude plugin update rtk@broodhall
 ```
 
 Restart Claude Code to apply the update. At the next session start the plugin finds no
@@ -13,6 +14,13 @@ are off for that session with a one-line notice, and the next session start retr
 
 The launcher never removes a previous version's binary, so old ones stay in `bin/` until you
 delete them.
+
+## Versioning
+
+guardrails, memory and context-guard share one version. Every release moves all three to the
+same `X.Y.Z`, even when only one of them changed. The jump to 1.0.0 was not a breaking change:
+it was the first release with the shared version. rtk is versioned on its own, in the
+[jj-scoll/rtk](https://github.com/jj-scoll/rtk) repository. See the [Changelog](changelog.md).
 
 ## memory
 
@@ -27,3 +35,10 @@ pkill -f 'memory serve'
 ```
 
 Your stored memories stay where they are, in the state directory.
+
+## rtk
+
+The rtk plugin comes from the fork's `develop` branch. Claude Code delivers a plugin update when
+the plugin's version changes, so a change on that branch arrives once the fork bumps the
+version in its `plugin.json`. An update does not touch the rtk binary; rebuild that as in
+[Install the rtk binary](../rtk/index.md#install-the-rtk-binary).

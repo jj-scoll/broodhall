@@ -41,6 +41,7 @@ nav:
       - Updating: guide/updating.md
       - Uninstall: guide/uninstall.md
       - Troubleshooting: guide/troubleshooting.md
+      - Changelog: guide/changelog.md
   - Guardrails:
       - Overview: guardrails/index.md
       - Bash core: guardrails/bash-core.md
