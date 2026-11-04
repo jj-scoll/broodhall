@@ -103,16 +103,11 @@ func newSecretGuard(home, xdg, cwd string) *secretGuard {
 	return g
 }
 
-// files is what a path word may name: ~ and $HOME expanded, made absolute, globs expanded
+// files is what a path word may name: ~, $HOME and $CLAUDE_CONFIG_DIR expanded, made absolute, globs expanded
 // (dot files only for a dotted pattern, as the shell does). Nil when it holds other
 // expansions.
 func (g *secretGuard) files(w string) []string {
-	for _, v := range []string{"${HOME}", "$HOME"} {
-		if strings.HasPrefix(w, v) {
-			w = g.home + w[len(v):]
-		}
-	}
-	w = expandHome(w, g.home)
+	w = expandHome(expandPathVars(w, g.home), g.home)
 	if w == "" || strings.ContainsAny(w, "$`") {
 		return nil
 	}
@@ -141,6 +136,8 @@ func (g *secretGuard) protected(word string) (file, under bool) {
 			for _, p := range g.paths {
 				ok, _ := filepath.Match(p, c)
 				file = file || ok
+				// A ~/.claude* dir that does not exist yet is not in g.paths.
+				file = file || filepath.Base(c) == ".credentials.json" && isClaudeConfigDir(filepath.Dir(c), g.home)
 				under = under || strings.HasPrefix(p, strings.TrimSuffix(c, "/")+"/")
 			}
 		}
@@ -356,13 +353,18 @@ func (g *secretGuard) scan(cmd string) secretScan {
 	return s
 }
 
-// unaccounted reports whether cmd spells a protected path (as written, from ~ or $HOME;
+// unaccounted reports whether cmd spells a protected path (as written, from ~, $HOME or
+// $CLAUDE_CONFIG_DIR;
 // a glob up to its first wildcard) outside the covered byte ranges.
 func (g *secretGuard) unaccounted(cmd string, covered [][2]int) bool {
+	cfg := claudeConfigEnv(g.home)
 	for _, p := range g.paths {
 		forms := []string{p}
 		if rest, ok := strings.CutPrefix(p, g.home+"/"); ok && g.home != "" {
 			forms = append(forms, "~/"+rest, "$HOME/"+rest, "${HOME}/"+rest)
+		}
+		if rest, ok := strings.CutPrefix(p, cfg+"/"); ok && cfg != "" {
+			forms = append(forms, "$CLAUDE_CONFIG_DIR/"+rest, "${CLAUDE_CONFIG_DIR}/"+rest)
 		}
 		for _, n := range forms {
 			exact := true

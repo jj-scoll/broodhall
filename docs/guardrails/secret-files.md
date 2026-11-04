@@ -37,7 +37,8 @@ These files, plus the ones you add:
 
 - A Claude config directory is the session's `CLAUDE_CONFIG_DIR`, whatever its name, or a
   directory right in your home whose name starts with `.claude`: `~/.claude`,
-  `~/.claude-work`, `~/.claude-personal`. A config directory with another name that this
+  `~/.claude-work`, `~/.claude-personal`. It counts even before it exists, and a command
+  may name it as `$CLAUDE_CONFIG_DIR`. A config directory with another name that this
   session does not use is not covered. Add it to `secret-paths`.
 - The PII key is `~/.local/state/guardrails/pii-key`, or under `$XDG_STATE_HOME/guardrails/`
   when `XDG_STATE_HOME` is set. That is where the plugin keeps it.
@@ -45,8 +46,9 @@ These files, plus the ones you add:
   Markdown-to-Confluence tool. It holds an Atlassian API token in plain text.
 
 Add a path or glob per line to `~/.config/guardrails/secret-paths` (`~` allowed, `#`
-comments). With `XDG_CONFIG_HOME` set, the file is `$XDG_CONFIG_HOME/guardrails/secret-paths`. That list adds to the defaults, and the list file is protected too. See
-[Options](options.md).
+comments). With `XDG_CONFIG_HOME` set, the file is
+`$XDG_CONFIG_HOME/guardrails/secret-paths`. That list adds to the defaults, and the list
+file is protected too. See [Options](options.md).
 
 ## What it does
 

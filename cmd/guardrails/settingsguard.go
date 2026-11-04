@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -47,7 +48,20 @@ func isClaudeConfigDir(p, home string) bool {
 	if cfg := claudeConfigEnv(home); cfg != "" && (p == cfg || p == resolveForCompare(cfg, "/")) {
 		return true
 	}
-	return home != "" && filepath.Dir(p) == filepath.Clean(home) && strings.HasPrefix(filepath.Base(p), ".claude")
+	d := filepath.Dir(p)
+	return home != "" && (d == filepath.Clean(home) || d == resolveForCompare(home, "/")) && strings.HasPrefix(filepath.Base(p), ".claude")
+}
+
+// expandPathVars replaces a leading $HOME or $CLAUDE_CONFIG_DIR (also in braces) in a path
+// word. The hook runs with the session's environment, so these are the values the shell uses.
+func expandPathVars(w, home string) string {
+	cfg := claudeConfigEnv(home)
+	for _, kv := range [][2]string{{"${HOME}", home}, {"$HOME", home}, {"${CLAUDE_CONFIG_DIR}", cfg}, {"$CLAUDE_CONFIG_DIR", cfg}} {
+		if rest, ok := strings.CutPrefix(w, kv[0]); ok && kv[1] != "" && (rest == "" || rest[0] == '/') {
+			return kv[1] + rest
+		}
+	}
+	return w
 }
 
 // claudeConfigDirs lists the Claude config directories (isClaudeConfigDir) that can hold a
@@ -254,25 +268,40 @@ func settingsGuard(env *guardEnv, cmd string) decision {
 	if setupWriteCall(cmd) {
 		return settingsAsk("guardrails setup -write")
 	}
-	cfg := claudeConfigEnv(env.Home)
-	if !strings.Contains(cmd, ".claude") && !strings.Contains(cmd, "settings") && (cfg == "" || !strings.Contains(cmd, filepath.Base(cfg))) {
+	quick := []string{".claude", "settings"}
+	if cfg := claudeConfigEnv(env.Home); cfg != "" {
+		quick = append(quick, "CLAUDE_CONFIG_DIR", filepath.Base(cfg), filepath.Base(resolveForCompare(cfg, "/")))
+	}
+	if !slices.ContainsFunc(quick, func(q string) bool { return strings.Contains(cmd, q) }) {
 		return decision{}
 	}
+	cwd := env.Cwd
 	expand := func(tok string) string {
-		for _, v := range []string{"$HOME", "${HOME}"} {
-			tok = strings.ReplaceAll(tok, v, env.Home)
-		}
-		tok = expandHome(tok, env.Home)
+		tok = expandHome(expandPathVars(tok, env.Home), env.Home)
 		if !filepath.IsAbs(tok) {
-			tok = filepath.Join(env.Cwd, tok)
+			tok = filepath.Join(cwd, tok)
 		}
 		return filepath.Clean(tok)
 	}
-	// dirRef: the command (or the cwd) is in a config dir, so a bare settings.json is one.
-	dirRef := isClaudeDir(env.Cwd, env.Home)
-	for _, t := range tokSplitRE.Split(cmd, -1) {
-		dirRef = dirRef || t != "" && isClaudeDir(expand(t), env.Home)
+	// Each segment runs where the cd or pushd before it moved, as secretGuard.scan follows
+	// them (a subshell's cd is kept after it ends: that can only ask more). dirRef: the
+	// command names a config dir or runs in one, so a bare settings.json is in one.
+	// tokSplitRE splits at braces, so ${HOME} becomes $HOME first.
+	cmd = strings.NewReplacer(">|", ">", "${HOME}", "$HOME", "${CLAUDE_CONFIG_DIR}", "$CLAUDE_CONFIG_DIR").Replace(cmd)
+	segs := segSplitRE.Split(cmd, -1)
+	cwds := make([]string, len(segs))
+	dirRef := false
+	for i, seg := range segs {
+		cwds[i] = cwd
+		dirRef = dirRef || isClaudeDir(cwd, env.Home)
+		for _, t := range tokSplitRE.Split(seg, -1) {
+			dirRef = dirRef || t != "" && isClaudeDir(expand(t), env.Home)
+		}
+		if f := strings.Fields(strings.TrimLeft(seg, " \t({")); len(f) > 1 && (f[0] == "cd" || f[0] == "pushd") {
+			cwd = expand(strings.Trim(f[len(f)-1], `"')}`))
+		}
 	}
+	dirRef = dirRef || isClaudeDir(cwd, env.Home)
 	isFile := func(tok string) bool {
 		return tok != "" && (isSettingsPath(expand(tok), env.Home) || dirRef && settingsNameRE.MatchString(tok))
 	}
@@ -280,7 +309,8 @@ func settingsGuard(env *guardEnv, cmd string) decision {
 	// Per segment, so a pass below can't hide a write later in the command. rmdir removes
 	// only empty directories, and find writes only with -delete or a writing -exec
 	// (guard-replay: `rmdir .claude/worktrees .claude`, `find ~/.claude -exec ls -l {} \;`).
-	for _, seg := range segSplitRE.Split(strings.ReplaceAll(cmd, ">|", ">"), -1) {
+	for i, seg := range segs {
+		cwd = cwds[i]
 		switch op := fileWriteOp(seg, isFile, isDir); {
 		case op == "", op == "rmdir", op == "find" && !findWrites(seg):
 		default:

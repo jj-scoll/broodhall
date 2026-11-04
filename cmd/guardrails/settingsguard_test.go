@@ -82,6 +82,14 @@ func TestSettingsGuardFollowsConfigDirs(t *testing.T) {
 		"sed -i 's/a/b/' ~/.claude-personal/settings.local.json",
 		"cd ~/claude && sed -i 's/a/b/' settings.json",
 		"rm -rf ~/claude",
+		// cd and pushd move where a relative path points (main asked for the first by name).
+		"cd ~ && echo '{}' > .claude-work/settings.json",
+		"cd ~ && sed -i s/a/b/ .claude-personal/settings.json",
+		"pushd ~ && cd .claude-personal && sed -i s/a/b/ settings.json",
+		"(cd ~ && rm -rf .claude-work)",
+		// The variable as written: the hook has the same CLAUDE_CONFIG_DIR as the shell.
+		"echo '{}' > $CLAUDE_CONFIG_DIR/settings.json",
+		"sed -i s/a/b/ ${CLAUDE_CONFIG_DIR}/settings.local.json",
 	} {
 		t.Run("Bash/"+cmd, func(t *testing.T) {
 			if d := settingsGuard(env, cmd); !d.Ask || !strings.HasPrefix(d.Rule, "settings:") {
@@ -89,9 +97,39 @@ func TestSettingsGuardFollowsConfigDirs(t *testing.T) {
 			}
 		})
 	}
-	if d := settingsGuard(env, "echo '{}' > ~/claude-notes/settings.json"); d.Ask {
-		t.Errorf("other dir: got %s, want allow", d.Kind())
+	for _, cmd := range []string{
+		"echo '{}' > ~/claude-notes/settings.json",
+		"cd ~/src && echo '{}' > .claude-work/settings.json",
+		"echo '{}' > $CLAUDE_CONFIG_DIR_OLD/settings.json",
+	} {
+		if d := settingsGuard(env, cmd); d.Ask {
+			t.Errorf("%q: got %s, want allow", cmd, d.Kind())
+		}
 	}
+}
+
+// The same rule when home or CLAUDE_CONFIG_DIR is a symlink: the real path counts, and a
+// command naming the real config dir is not skipped.
+func TestSettingsGuardSymlinkedDirs(t *testing.T) {
+	real := t.TempDir()
+	home := filepath.Join(t.TempDir(), "homelink")
+	os.Symlink(real, home)
+	os.MkdirAll(filepath.Join(real, ".claude-work"), 0o755)
+	os.MkdirAll(filepath.Join(real, "claude2"), 0o755)
+	os.Symlink(filepath.Join(real, "claude2"), filepath.Join(real, "cfglink"))
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, "cfglink"))
+	t.Run("Edit real path under a symlinked home", func(t *testing.T) {
+		code, out := runToolHookOut(t, home, "Edit", map[string]any{"file_path": filepath.Join(real, ".claude-work", "settings.json")})
+		if code != 0 || !strings.Contains(out, `"ask"`) {
+			t.Errorf("exit %d out %q, want ask", code, out)
+		}
+	})
+	t.Run("rm the real dir of a symlinked CLAUDE_CONFIG_DIR", func(t *testing.T) {
+		t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(real, "cfglink"))
+		if d := settingsGuard(&guardEnv{Cwd: "/work", Home: real}, "rm -rf ~/claude2"); !d.Ask {
+			t.Errorf("got %s, want ask", d.Kind())
+		}
+	})
 }
 
 func TestSettingsGuardAllowsReads(t *testing.T) {

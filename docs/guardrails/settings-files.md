@@ -17,8 +17,10 @@ The target is `settings.json` or `settings.local.json` in one of these:
 - a directory right in your home whose name starts with `.claude`, such as `~/.claude`,
   `~/.claude-work` or `~/.claude-personal`.
 
-This is the same rule the [Secret files](secret-files.md) guard uses for credentials. A
-config directory with another name that this session does not use is not covered.
+The last two are the Claude config directories, the same ones whose credentials the
+[Secret files](secret-files.md) guard protects. A command may name the session's as
+`$CLAUDE_CONFIG_DIR`, and a `cd` or `pushd` earlier in the command is followed. A config
+directory with another name that this session does not use is not covered.
 
 - **Edit, Write, MultiEdit and NotebookEdit** on one of those files. Symlinks are resolved,
   so a link that points at one counts.

@@ -139,6 +139,16 @@ func TestSecretPathsFollowConfigDirs(t *testing.T) {
 		{"cat ~/xdgstate/guardrails/pii-key", "context:secret-file:mask"},
 		{"cat ~/xdgstate/claude-tools/pii-key", "context:secret-file:mask"},
 		{"cat ~/.local/state/guardrails/pii-key", "context:secret-file:mask"},
+		// The variable as written: the hook has the same CLAUDE_CONFIG_DIR as the shell.
+		{"cat $CLAUDE_CONFIG_DIR/.credentials.json", "context:secret-file:mask"},
+		{"cat ${CLAUDE_CONFIG_DIR}/.credentials.json", "context:secret-file:mask"},
+		{"base64 $CLAUDE_CONFIG_DIR/.credentials.json", "ask:secret-file:base64"},
+		{"bash -c 'cat $CLAUDE_CONFIG_DIR/.credentials.json'", "ask:secret-file:text"},
+		{"cat $CLAUDE_CONFIG_DIR_OLD/.credentials.json", "allow"},
+		{"cd ~ && cat .claude-personal/.credentials.json", "context:secret-file:mask"},
+		// A ~/.claude* dir that does not exist yet: nothing to read, but planting one asks.
+		{"echo x > ~/.claude-new/.credentials.json", "ask:secret-file:echo"},
+		{"mkdir -p ~/.claude-new && cp /tmp/c ~/.claude-new/.credentials.json", "ask:secret-file:cp"},
 		// Not a Claude config dir: not right in home, or not named .claude*.
 		{"cat ~/other/.credentials.json", "allow"},
 		{"cat ~/src/app/.claude-x/.credentials.json", "allow"},
@@ -146,6 +156,9 @@ func TestSecretPathsFollowConfigDirs(t *testing.T) {
 		if got := decide(env, c.cmd).Kind(); got != c.want {
 			t.Errorf("%q: got %s, want %s", c.cmd, got, c.want)
 		}
+	}
+	if d, ok := secretFileToolDecision("Write", map[string]any{"file_path": filepath.Join(h, ".claude-new/.credentials.json")}, env.Cwd, h, ""); !ok || !d.Ask {
+		t.Errorf("Write into a new ~/.claude* dir: %+v %v, want ask", d, ok)
 	}
 	for _, p := range []string{"claude/.credentials.json", ".claude-personal/.credentials.json", "xdgstate/guardrails/pii-key"} {
 		if d, ok := secretFileToolDecision("Read", map[string]any{"file_path": filepath.Join(h, p)}, env.Cwd, h, ""); !ok || d.Exit != 2 {
