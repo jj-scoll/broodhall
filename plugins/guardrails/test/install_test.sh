@@ -136,15 +136,26 @@ newcase t6
 mkrelease "$tmp/t6/rel"
 export CLAUDE_TOOLS_RELEASE_URL=file://$tmp/t6/rel
 mkdir -p "$tmp/t6/path"
-for d in $(printf %s "$PATH" | tr : ' '); do
+while IFS= read -r d; do # one PATH entry per line, so entries with spaces stay whole
 	for f in "$d"/*; do
 		n=${f##*/}
 		[ "$n" = curl ] || [ -e "$tmp/t6/path/$n" ] || ln -s "$f" "$tmp/t6/path/$n" 2>/dev/null
 	done
-done
+done < <(printf '%s\n' "$PATH" | tr : '\n')
 out=$(printf '{"source":"startup"}' | PATH=$tmp/t6/path sh "$run_sh" install 2>"$tmp/t6/stderr")
 rc=$?
 if [ "$rc" -eq 0 ] && [ ! -e "$(bin t6)" ] && printf %s "$out" | grep -q 'curl not found'; then ok "with no curl the notice says curl not found"; else bad "with no curl the notice says curl not found" "rc=$rc out=$out"; fi
+
+# --- 7. a data dir it cannot create: the notice says cannot write, at once, not another install
+newcase t7
+mkdir -p "$tmp/t7/ro"
+chmod 555 "$tmp/t7/ro"
+export CLAUDE_PLUGIN_DATA=$tmp/t7/ro/data
+start=$(date +%s)
+install t7
+took=$(($(date +%s) - start))
+chmod 755 "$tmp/t7/ro"
+if [ "$rc" -eq 0 ] && [ "$took" -lt 5 ] && printf %s "$out" | grep -q 'cannot write' && ! printf %s "$out" | grep -q 'another install'; then ok "an unwritable data dir says cannot write"; else bad "an unwritable data dir says cannot write" "rc=$rc took=${took}s out=$out"; fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -213,6 +213,8 @@ install-locked) # the detached child of start_install, which took the lock
 install)
 	doctor() { "$curbin" doctor -hook || true; exit 0; }
 	[ -x "$curbin" ] && doctor
+	# Checked before the lock, which would otherwise report an unwritable dir as a running install.
+	mkdir -p "$data/bin" 2>/dev/null || { say_fail "cannot write $data"; exit 0; }
 	if ! take_lock; then # another installer is running: wait for it instead of racing it
 		n=90
 		while [ "$n" -gt 0 ] && lock_live; do
