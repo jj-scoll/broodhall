@@ -428,7 +428,7 @@ p1=$!
 PATH=$c/path:$PATH sh "$run_sh" install </dev/null >"$c/o2" 2>&1 &
 p2=$!
 wait "$p1" "$p2"
-[ "$(grep -c 'tar.gz' "$c/path/curl.log")" = 1 ] && ok "two concurrent installs download once" || bad "two concurrent installs download once" "downloads: $(grep -c 'tar.gz' "$c/path/curl.log")"
+[ "$(grep -c 'tar.gz' "$c/path/curl.log")" = 1 ] && ok "two concurrent installs download once" || bad "two concurrent installs download once" "downloads: $(grep -c 'tar.gz' "$c/path/curl.log") p1=$p1 p2=$p2 [curl.log: $(cat "$c/path/curl.log")] [o1: $(cat "$c/o1")] [o2: $(cat "$c/o2")] [bin: $(ls -A "$c/data/bin")]"
 [ ! -s "$c/o1" ] && [ ! -s "$c/o2" ] && [ -x "$c/data/bin/$ver/guardrails" ] && ok "two concurrent installs both succeed silently" || bad "two concurrent installs both succeed silently" "o1=$(cat "$c/o1") o2=$(cat "$c/o2")"
 (cd "$c/data/bin/$ver" && printf '%s\n' "$($sum guardrails | cut -d' ' -f1)  guardrails" | cmp -s - guardrails.sha256) && ok "the sha256 record matches the installed binary" || bad "the sha256 record matches the installed binary" "$(cat "$c/data/bin/$ver/guardrails.sha256")"
 ls -A "$c/data/bin" | grep -q '^\.download\.' && bad "no download temp dirs left behind" "$(ls -A "$c/data/bin")" || ok "no download temp dirs left behind"
