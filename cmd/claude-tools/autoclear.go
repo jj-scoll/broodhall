@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -79,6 +80,7 @@ func continueLine(file, transcript string) string {
 func arm(state, session, file, transcript string) {
 	if os.Getenv("HANDOFF_AUTOCLEAR") == "0" {
 		logWriter(state, session+" no clear: HANDOFF_AUTOCLEAR=0")
+		os.WriteFile(filepath.Join(state, session+".written"), []byte(file+"\n"), 0o644) // for the statusline
 		return
 	}
 	if err := os.WriteFile(filepath.Join(state, session+".rearm"), []byte(file+"\n"+transcript+"\n"), 0o644); err != nil {
@@ -115,7 +117,9 @@ func done(state, session, outcome, text string) bool {
 	}
 	switch outcome {
 	case "ok":
-		os.Remove(claimed)
+		if os.Rename(claimed, filepath.Join(state, session+".cleared")) != nil { // for the statusline
+			os.Remove(claimed)
+		}
 		logWriter(state, session+" "+text)
 	case "fail":
 		os.Rename(claimed, filepath.Join(state, session+".rearm"))
@@ -139,9 +143,22 @@ func logWriter(state, line string) {
 func writeAndArm(session, next, cwd, transcript string) {
 	state := stateDir()
 	logWriter(state, session+" writer start")
+	// Progress markers for the statusline: .writing holds the start epoch while the writer
+	// runs; it becomes .failed, or gives way to .rearm / .written. Outcomes of an earlier
+	// run go.
+	writing := filepath.Join(state, session+".writing")
+	for _, s := range []string{"failed", "written", "cleared"} {
+		os.Remove(filepath.Join(state, session+"."+s))
+	}
+	os.WriteFile(writing, []byte(strconv.FormatInt(time.Now().Unix(), 10)+"\n"), 0o644)
+	failed := func() {
+		os.WriteFile(filepath.Join(state, session+".failed"), nil, 0o644)
+		os.Remove(writing)
+	}
 	cmd, err := writerCommand(transcript, next, cwd, session)
 	if err != nil {
 		logWriter(state, session+" writer failed: "+err.Error())
+		failed()
 		return
 	}
 	if log, err := os.OpenFile(filepath.Join(state, "writer.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
@@ -152,9 +169,11 @@ func writeAndArm(session, next, cwd, transcript string) {
 	file := strings.TrimRight(string(out), "\n")
 	if err != nil || file == "" {
 		logWriter(state, session+" writer failed")
+		failed()
 		return
 	}
 	arm(state, session, file, transcript)
+	os.Remove(writing)
 }
 
 func autoclear(args []string) int {

@@ -447,7 +447,7 @@ func cmdOut(name string, args ...string) (string, bool) {
 // slSegmentNames is every segment -segments can name, in line order: the identity line
 // (account, session, pr, worktree, effort, style) and the main line.
 const slSegmentNames = "account,session,pr,worktree,effort,style," +
-	"host,user,dir,branch,time,model,elapsed,ctx,cache,ttl,keepalive,totals,reqs,five,reset,week,guards,drift"
+	"host,user,dir,branch,time,model,elapsed,ctx,cache,ttl,keepalive,totals,reqs,five,reset,week,handoff,guards,drift"
 
 // slConfig is the statusline's options, set by flags in the statusLine command.
 type slConfig struct {
@@ -734,6 +734,12 @@ func statusline(args []string) int {
 	if week != "" {
 		f, _ := strconv.ParseFloat(week, 64)
 		add("week", 4, "\033[38;5;222m7d:%.0f%%\033[0m", f)
+	}
+	// auto-handoff progress for this session; stats a few state files, only while it applies
+	if cfg.segments["handoff"] {
+		if text, col := handoffSegment(stateDir(), alt(in, "", "session_id"), nowSec); text != "" {
+			add("handoff", 1, "\033[38;5;%dm%s\033[0m", col, text)
+		}
 	}
 	if g := guardSummary(alt(in, "", "session_id")); g != "" {
 		add("guards", 3, "\033[38;5;245m%s\033[0m", g)
