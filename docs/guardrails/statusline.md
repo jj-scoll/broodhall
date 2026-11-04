@@ -114,6 +114,7 @@ Line 2:
 | `five`, `reset` | 5-hour rate-limit use and the time to its reset. |
 | `week` | 7-day rate-limit use. |
 | `handoff` | Progress of the [auto-handoff](handoff-gate.md) for this session, only while it applies. See below. |
+| `rc` | `⇄ rc` while [Remote Control](https://code.claude.com/docs/en/remote-control) is on for this session. Nothing when it is off. See below. |
 | `guards` | What the guards masked, asked about, blocked or noted this session. |
 | `drift` | A warning when the last 60 tool calls repeat one read, command or edit. |
 
@@ -139,6 +140,22 @@ Turn it off by leaving `handoff` out of `-segments`.
 
 A `writing` marker older than 15 minutes is taken for a dead writer and ignored. A new gate
 mark newer than the last writer start shows `next-steps` in place of an earlier outcome.
+
+### The rc segment
+
+Claude Code does not pass Remote Control state to a `statusLine` command. While Remote
+Control is on it keeps writing a `bridge-session` line into the session transcript, about
+every 20 to 40 entries. The segment shows `⇄ rc` when one of those lines is among the last
+100 lines of the transcript. It reads at most the last 4 MiB of the file, so a transcript of
+tens of megabytes adds well under a millisecond. A missing or unreadable transcript shows
+nothing. Turn it off by leaving `rc` out of `-segments`.
+
+It can be wrong in two ways:
+
+- After you turn Remote Control off, the segment stays until the session has written about
+  100 more lines, which is a few turns.
+- A session that has just turned Remote Control on may show nothing until the first
+  `bridge-session` line is written.
 
 ## Examples
 
