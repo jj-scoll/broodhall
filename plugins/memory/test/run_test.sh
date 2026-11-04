@@ -34,6 +34,7 @@ ok)
 	context) cat >/dev/null; echo '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"stub memory"}}' ;;
 	lookup) cat >/dev/null; echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"stub lookup"}}' ;;
 	serve) exit 0 ;;
+	cost) sleep "${STUB_SLEEP-0}"; echo "stub cost $*" ;;
 	*) cat >/dev/null ;;
 	esac ;;
 crash) echo '{"decision":"block","reason":"partial"}'; echo "boom" >&2; exit 3 ;;
@@ -307,6 +308,21 @@ PATH=$old_path
 settle t12
 if [ -e "$tmp/t12/path/curl-called" ]; then ok "a stale install lock is taken over"; else bad "a stale install lock is taken over" "curl was never called"; fi
 if [ -d "$tmp/t12/data/bin/.install-lock" ]; then bad "the installer releases its lock" "lock still held"; else ok "the installer releases its lock"; fi
+
+# --- 13. `cost` is run by a person: it never waits for stdin (a terminal never sends EOF),
+# passes its flags through, and is not killed by the hook watchdog
+newcase t13
+mkrelease "$tmp/t13/rel"
+mkdir -p "$tmp/t13/data/bin/$ver"
+mkstub "$tmp/t13/data/bin/$ver/memory"
+c=$tmp/t13
+out=$( (sleep 8) | STUB_SLEEP=3 timeout 6 sh "$run_sh" cost --days 3 2>"$c/stderr")
+rc=$?
+if [ "$rc" -eq 0 ] && [ "$out" = "stub cost cost --days 3" ]; then
+	ok "cost ignores an open stdin, keeps its flags and outlives the 2 s hook limit"
+else
+	bad "cost ignores an open stdin, keeps its flags and outlives the 2 s hook limit" "rc=$rc out=$out"
+fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
