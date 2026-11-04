@@ -66,6 +66,19 @@ func decide(env *guardEnv, cmd string) decision {
 	if rule != "" && !env.Off["git"] {
 		return askDecision(rule, what)
 	}
+	// Git commands that skip hooks or signing: the same confirmation, the same family.
+	if !env.Off["git"] {
+		var bRule, bWhat string
+		if cmds, ok := parseShell(cmd); ok {
+			bRule, bWhat = gitHookBypass(cmds)
+		} else {
+			bRule, bWhat = gitHookBypassText(cmd)
+		}
+		if bRule != "" {
+			return decision{Ask: true, Rule: bRule,
+				Msg: "ASK: " + bWhat + ". A failing hook or a signing error is the repository's own check; fix the cause, or confirm with the user before skipping it."}
+		}
+	}
 	// Python reading raw client data prints it unmasked: the user confirms.
 	if d := rawClientDataRule(cmd); d.Ask && !env.Off["raw-client-data"] {
 		return d

@@ -45,18 +45,26 @@ func isAssignment(w string) bool {
 // peelWrappers drops leading assignments and wrappers (sudo -u x, env A=b, timeout 5, nice -n 5,
 // xargs -n1, ...) so w[0] is the command that actually runs.
 func peelWrappers(w []string) []string {
+	rest, _ := peelWrappersEnv(w)
+	return rest
+}
+
+// peelWrappersEnv is peelWrappers that also returns the assignments it dropped (VAR=x git
+// commit, env VAR=x git commit), which the command runs with in its environment.
+func peelWrappersEnv(w []string) (rest, env []string) {
 	for len(w) > 0 {
 		if isAssignment(w[0]) {
+			env = append(env, w[0])
 			w = w[1:]
 			continue
 		}
-		rest, ok := peelOne(w)
+		next, ok := peelOne(w)
 		if !ok {
-			return w
+			return w, env
 		}
-		w = rest
+		w = next
 	}
-	return w
+	return w, env
 }
 
 // skipOpts drops the leading options of a wrapper's argv; valued names those that take the

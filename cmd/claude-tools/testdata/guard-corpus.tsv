@@ -159,3 +159,8 @@ allow	block:dangerous:rm -rf /	su -c "rm -fr /"
 allow	block:dangerous:rm -rf /	watch -n 1 "rm -fr /"
 allow	block:dangerous:git push --force	nice -n 5 git push origin --force x
 allow	ask:unparsed-destructive	echo ${(f)x}; rm -fr /
+allow	ask:git-hook-bypass	git commit --no-verify -m x
+allow	ask:git-hook-bypass	HUSKY=0 git push
+allow	ask:git-hook-bypass	git -c core.hooksPath=/dev/null commit -m x
+allow	allow	git log -n 5
+allow	allow	git push -n

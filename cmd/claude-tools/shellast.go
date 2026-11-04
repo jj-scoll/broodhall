@@ -25,6 +25,9 @@ type simpleCmd struct {
 	Words    []string
 	Redirs   []astRedir
 	ForkBomb bool // a function that pipes itself into itself in the background
+	// Env holds the NAME=value assignments the command runs with: VAR=x prefixes, those
+	// dropped from env/sudo, and the arguments of export.
+	Env []string
 }
 
 const maxShellDepth = 5
@@ -83,7 +86,20 @@ func parseShellDepth(cmd string, depth int, ms *mountSet) ([]simpleCmd, bool) {
 				for i, w := range call.Args {
 					ws[i] = wordText(w)
 				}
-				sc.Words = peelWrappers(ws)
+				sc.Words, sc.Env = peelWrappersEnv(ws)
+				for _, as := range call.Assigns {
+					if as.Name != nil && as.Value != nil && len(call.Args) > 0 {
+						sc.Env = append(sc.Env, as.Name.Value+"="+wordText(as.Value))
+					}
+				}
+			}
+			if decl, isDecl := n.Cmd.(*syntax.DeclClause); isDecl && decl.Variant != nil && decl.Variant.Value == "export" {
+				sc.Words = []string{"export"}
+				for _, as := range decl.Args {
+					if as.Name != nil && as.Value != nil {
+						sc.Env = append(sc.Env, as.Name.Value+"="+wordText(as.Value))
+					}
+				}
 			}
 			var feeds []string // heredoc / here-string bodies
 			for _, r := range n.Redirs {

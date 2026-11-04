@@ -2,6 +2,7 @@
 
 <span class="badge badge-block">BLOCK</span> a force-push.
 <span class="badge badge-ask">ASK</span> before a git command that throws away work.
+<span class="badge badge-ask">ASK</span> before a git command that skips hooks or commit signing.
 
 !!! why "Why it exists"
     A force-push rewrites a shared branch on the remote, and other people's work can vanish
@@ -48,6 +49,27 @@ ASK: git reset --hard discards uncommitted changes and moves the branch. Confirm
 The other asks differ only in the first sentence, for example
 `ASK: git clean -f deletes untracked files for good. Confirm with the user before running it; ...`.
 
+### Skipped hooks and signing: ASK
+
+A hook that fails or a signing error is a check the repository's owner set up. Claude should
+fix the cause, not step around it. These ask, and you decide.
+
+| Command | Why it asks |
+| --- | --- |
+| `git commit --no-verify` or `-n`, `git am --no-verify` or `-n` | skips the pre-commit, commit-msg and applypatch hooks |
+| `git push --no-verify`, `git merge --no-verify`, `git rebase --no-verify`, `git pull --no-verify` | skips the pre-push, pre-merge-commit and pre-rebase hooks |
+| `git -c core.hooksPath=...`, `git config core.hooksPath ...` | points git at another hooks directory, such as `/dev/null` |
+| `HUSKY=0`, `HUSKY_SKIP_HOOKS=1`, `LEFTHOOK=0`, `SKIP=...` before a `git commit`, `push`, `merge`, `rebase`, `am`, `cherry-pick`, `revert` or `pull` (also set with `env` or `export`) | switches Husky, Lefthook or pre-commit off |
+| `--no-gpg-sign`, `git tag --no-sign`, `git -c commit.gpgsign=false`, `git config commit.gpgsign false` | turns signing off (also `tag.gpgsign` and `push.gpgsign`) |
+
+```text
+ASK: git commit --no-verify skips the repository's hooks. A failing hook or a signing error is the repository's own check; fix the cause, or confirm with the user before skipping it.
+```
+
+The short `-n` counts only where git means `--no-verify` by it: `git commit` and `git am`. For
+`git push` it is `--dry-run`, for `git merge`, `rebase` and `pull` it is `--no-stat`, and for
+`git revert` and `git cherry-pick` it is `--no-commit`. None of those ask.
+
 ## What passes
 
 - `git push origin main`, `git push -o ci.skip origin x`, and
@@ -59,18 +81,27 @@ The other asks differ only in the first sentence, for example
 - `git clean -n`, `git clean -fdn` and `git clean --dry-run -f`, which delete nothing.
 - `git branch -d merged-feature`, `git branch -a`, `git branch --show-current`.
 - `git stash pop`, `git stash list`, `git stash show -p`, `git stash apply`.
+- `git log -n 5`, `git push -n`, `git merge -n`, `git revert -n HEAD`, `git clean -n`.
+- `git commit -S`, `git config core.hooksPath` and `--get` (reads), `git config --unset
+  core.hooksPath`, `git config commit.gpgsign true`, `HUSKY=1`, `SKIP=` with no value, and
+  `HUSKY=0 npm ci` or `HUSKY=0 git status`, which run no hook.
 - Text that only mentions a command: `echo "run git reset --hard to undo"`, a commit message,
-  a heredoc being written to a file.
+  a heredoc being written to a file, `git commit -m "use --no-verify to skip hooks"`.
 
-If a command cannot be parsed, the destructive-verb check reads it as loose words instead and
-still asks, so a broken quote does not slip a `git reset --hard` through.
+If a command cannot be parsed, the destructive-verb and skipped-hook checks read it as loose
+words instead and still ask, so a broken quote does not slip a `git reset --hard` or a
+`git commit --no-verify` through.
+
+Not covered: a git alias that holds `commit -n`, `--no-verify` spelled as a shortened option
+(`--no-ver`), and edits to `.git/hooks` files or `.git/config` made with other tools.
 
 ## Turning it off
 
 The two halves differ.
 
-- The destructive local commands are the `git` family. Add `git` to `disabled_guards` (or to
-  `CLAUDE_TOOLS_OFF`, a comma-separated list) and they run without asking. The plugin's
+- The destructive local commands and the skipped-hook asks are the `git` family. Add `git` to `disabled_guards` (or to
+  `CLAUDE_TOOLS_OFF`, a comma-separated list) and they run without asking. There is no
+  separate switch for the skipped-hook asks. The plugin's
   default list is empty, so they ask until you change it.
 - The force-push block cannot be turned off.
 
