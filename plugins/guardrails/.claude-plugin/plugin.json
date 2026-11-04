@@ -28,6 +28,17 @@
       "title": "Tag AWS calls with the session id",
       "description": "Off by default. When on, each session sets AWS_SDK_UA_APP_ID=claude-<first 8 characters of the session id>, so AWS CLI and SDK calls made from Bash carry it in their User-Agent and CloudTrail records which session made them.",
       "default": false
+    },
+    "rtk": {
+      "type": "boolean",
+      "title": "Rewrite commands with RTK",
+      "description": "Off by default. When on, the pre-tool-use hook runs `rtk hook claude` after its own checks and applies RTK's token-saving command rewrite. Needs RTK installed. Do not also install RTK's own Claude Code hook."
+    },
+    "rtk_command": {
+      "type": "string",
+      "title": "RTK command or path",
+      "description": "The rtk executable to run when the rtk option is on. Empty means `rtk` from PATH.",
+      "default": ""
     }
   }
 }

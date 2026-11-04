@@ -26,7 +26,7 @@ real reply for each.
 | [Read limits](read-limits.md) | <span class="badge badge-note">NOTE</span> <span class="badge badge-block">BLOCK</span> | Notes a re-read of an unchanged file and a large file read; blocks a full read of a very large code file. |
 | [Retry loops](retry-loops.md) | <span class="badge badge-note">NOTE</span> | Notes on the third failure of the same Bash command. |
 | [Receipt](receipt.md) | | A one-line summary at Stop of what the guards did that turn. |
-| [Options](options.md) | | The settings that turn families off and tell the guards which addresses are yours. |
+| [Options](options.md) | | The settings that turn families off, tell the guards which addresses are yours, and opt in to the RTK rewrite. |
 
 ## What can be turned off
 
