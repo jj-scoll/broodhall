@@ -14,7 +14,9 @@ the third column. A dash means the field is absent from the entry.
 | `PostToolUseFailure` | `Bash` | `retry-breaker` | — |
 
 The entries with `onFailure: block` are the ones that fail closed. The `SessionStart` entry
-sets a timeout of 120 seconds.
+sets a timeout of 120 seconds. After `install` puts the binary in place (or finds it there)
+the launcher runs `claude-tools doctor -hook`, which prints only problems and always exits 0.
+See [Doctor](../guardrails/doctor.md).
 
 ## memory
 

@@ -1,7 +1,9 @@
 #!/bin/sh
 # guardrails hook launcher: runs this plugin version's claude-tools binary on the hook's stdin.
 # `run.sh install` (the SessionStart hook) downloads the binary from the GitHub release the
-# first time a version runs. Every other call fails open: with no binary it exits 0 and
+# first time a version runs, records its sha256 next to it, then runs `claude-tools doctor
+# -hook`, which says nothing unless the install has a problem and never blocks the session.
+# Every other call fails open: with no binary it exits 0 and
 # prints nothing, which allows the tool call, so a failed download never stops a session.
 # shellcheck disable=SC2015 # `a && b || fail`: fail when any step fails, which is intended
 set -u
@@ -10,6 +12,7 @@ data=${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/guardrails}
 ver=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json")
 dest=$data/bin/$ver/claude-tools
 bin=${CLAUDE_TOOLS_BIN:-$dest}
+export CLAUDE_PLUGIN_ROOT="$root"
 
 # userConfig options reach hooks as CLAUDE_PLUGIN_OPTION_<KEY>. An option the user never set
 # falls back to the same env var outside the plugin, then to plugin.json's default.
@@ -19,7 +22,8 @@ export CLAUDE_TOOLS_PII_ALLOW="${CLAUDE_PLUGIN_OPTION_ALLOWED_EMAIL_DOMAINS-${CL
 export HANDOFF_STATE_DIR="${HANDOFF_STATE_DIR-$data}"
 
 if [ "${1-}" = install ]; then
-	[ -x "$bin" ] && exit 0
+	doctor() { "$bin" doctor -hook || true; exit 0; }
+	[ -x "$bin" ] && doctor
 	fail() {
 		printf '{"systemMessage":"guardrails: could not install claude-tools %s (%s), so its guards are off this session. It retries at the next session start."}\n' "$ver" "$1"
 		exit 0
@@ -41,7 +45,10 @@ if [ "${1-}" = install ]; then
 	(cd "$tmp" && grep "  $asset\$" checksums.txt | $sum -c - >/dev/null 2>&1) || fail "checksum mismatch"
 	tar -xzf "$tmp/$asset" -C "$tmp" claude-tools && mkdir -p "${dest%/*}" &&
 		mv -f "$tmp/claude-tools" "$dest" || fail "unpack failed"
-	exit 0
+	# What doctor compares the binary with later: the unpacked file's hash, taken after the
+	# archive passed the release checksum.
+	$sum "$dest" | sed 's|  .*|  claude-tools|' >"$dest.sha256"
+	doctor
 fi
 
 if [ ! -x "$bin" ]; then

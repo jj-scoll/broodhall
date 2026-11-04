@@ -53,6 +53,8 @@ nav:
       - Nudges: guardrails/nudges.md
       - Read limits: guardrails/read-limits.md
       - Retry loops: guardrails/retry-loops.md
+      - Status line: guardrails/statusline.md
+      - Doctor: guardrails/doctor.md
       - Options: guardrails/options.md
   - Memory:
       - Overview: memory/index.md

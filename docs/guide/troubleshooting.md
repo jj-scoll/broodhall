@@ -26,6 +26,12 @@ next session start retries. The reasons:
 | `checksum mismatch` | The tarball's sha256 did not match `checksums.txt`, or `checksums.txt` has no line for the tarball. It was not installed. |
 | `unpack failed` | `tar` could not extract the binary, or it could not be moved into place. |
 
+## A doctor message at session start
+
+The launcher runs `claude-tools doctor -hook` after the install step and shows its message
+only when something is wrong. [Doctor](../guardrails/doctor.md) lists each check and what
+passes it. It never blocks a session.
+
 ## Guards seem to be off
 
 - The binary may be missing. With no binary, the launcher allows every call. Start a new
