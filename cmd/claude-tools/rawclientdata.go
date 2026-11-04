@@ -2,8 +2,8 @@ package main
 
 // raw-client-data: Python that reads client data prints it unmasked, because redact --pii
 // can only wrap SQL clients whose output names its columns. Client data is the S3 objects
-// clientDataS3RE matches and local parquet files; a masked copy kept under ~/.cache/ is
-// fine. The user confirms each such run.
+// clientDataS3RE matches and local parquet files; a parquet file under a directory the user
+// lists as a masked-copy dir (clientrules.go) is fine. The user confirms each such run.
 
 import (
 	"bytes"
@@ -43,7 +43,7 @@ func rawClientDataRule(cmd string) decision {
 		if ref != "" {
 			break
 		}
-		if !strings.Contains(p, "://") && !strings.Contains(p, "/.cache/pii-safe/") {
+		if !strings.Contains(p, "://") && !isMaskedCopy(p) {
 			ref = p
 		}
 	}

@@ -13,8 +13,10 @@ the third column. A dash means the field is absent from the entry.
 | `PostToolUse` | `Bash` | `retry-breaker` | — |
 | `PostToolUseFailure` | `Bash` | `retry-breaker` | — |
 
-The entries with `onFailure: block` are the ones that fail closed. The `SessionStart` entry
-sets a timeout of 120 seconds.
+The entries with `onFailure: block` fail closed when the binary crashes or hangs. All the
+guard launchers (every entry but `SessionStart`) also fail closed when the binary is not
+installed: `run.sh` exits 2 with a message on stderr, unless the [`fail_open`](../guardrails/options.md#fail_open)
+option is on. The `SessionStart` entry sets a timeout of 120 seconds and never blocks.
 
 ## memory
 

@@ -71,7 +71,7 @@ The two halves differ.
 
 - The destructive local commands are the `git` family. Add `git` to `disabled_guards` (or to
   `CLAUDE_TOOLS_OFF`, a comma-separated list) and they run without asking. The plugin's
-  default list is `pii,raw-client-data,session-url`, so they ask until you change it.
+  default list is empty, so they ask until you change it.
 - The force-push block cannot be turned off.
 
 See [Options](options.md).

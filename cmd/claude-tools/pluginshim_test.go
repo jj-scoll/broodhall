@@ -1,7 +1,7 @@
 package main
 
 // The guardrails plugin (plugins/guardrails) runs every hook through scripts/run.sh, which
-// fetches this version's binary on SessionStart and otherwise fails open.
+// fetches this version's binary on SessionStart and otherwise fails closed (opt-out: fail_open).
 
 import (
 	"archive/tar"
@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,7 +28,7 @@ const fakeTool = "#!/bin/sh\necho \"args=$*\"\necho \"off=$CLAUDE_TOOLS_OFF\"\ne
 type pluginManifest struct {
 	Version    string `json:"version"`
 	UserConfig map[string]struct {
-		Default string `json:"default"`
+		Default any `json:"default"`
 	} `json:"userConfig"`
 }
 
@@ -73,10 +74,22 @@ func writeExe(t *testing.T, path, body string) {
 	}
 }
 
-func TestShimNoBinaryFailsOpen(t *testing.T) {
-	code, out := runShim(t, map[string]string{"CLAUDE_PLUGIN_DATA": t.TempDir()}, `{"tool_name":"Bash"}`, "pre-tool-use")
-	if code != 0 || out != "" {
-		t.Fatalf("no binary: exit %d, stdout %q; want 0 and nothing (allow)", code, out)
+func TestShimNoBinaryFailsClosed(t *testing.T) {
+	env := map[string]string{"CLAUDE_PLUGIN_DATA": t.TempDir()}
+	code, out := runShim(t, env, `{"tool_name":"Bash"}`, "pre-tool-use")
+	if code != 2 || out != "" {
+		t.Fatalf("no binary: exit %d, stdout %q; want 2 and nothing on stdout (block)", code, out)
+	}
+	env["CLAUDE_PLUGIN_OPTION_FAIL_OPEN"] = "true"
+	if code, out = runShim(t, env, `{"tool_name":"Bash"}`, "pre-tool-use"); code != 0 || out != "" {
+		t.Fatalf("no binary with fail_open: exit %d, stdout %q; want 0 and nothing (allow)", code, out)
+	}
+}
+
+// The plugin ships every guard on: the default off list is empty, and the manifest says so.
+func TestDefaultGuardsAllOn(t *testing.T) {
+	if d := readManifest(t).UserConfig["disabled_guards"].Default; d != "" {
+		t.Errorf("disabled_guards default %q, want empty", d)
 	}
 }
 
@@ -87,7 +100,7 @@ func TestShimRunsVersionedBinary(t *testing.T) {
 	env := map[string]string{"CLAUDE_PLUGIN_DATA": data}
 
 	code, out := runShim(t, env, "IN", "pre-tool-use")
-	want := "args=pre-tool-use\noff=" + m.UserConfig["disabled_guards"].Default + "\nallow=\nstate=" + data + "\nstdin=IN\n"
+	want := "args=pre-tool-use\noff=" + fmt.Sprint(m.UserConfig["disabled_guards"].Default) + "\nallow=\nstate=" + data + "\nstdin=IN\n"
 	if code != 3 || out != want {
 		t.Fatalf("defaults: exit %d, stdout %q; want 3 and %q", code, out, want)
 	}
@@ -152,14 +165,14 @@ func TestShimInstallRejectsBadChecksum(t *testing.T) {
 	env := map[string]string{"CLAUDE_PLUGIN_DATA": data, "CLAUDE_TOOLS_RELEASE_URL": release(t, m.Version, strings.Repeat("0", 64))}
 	code, out := runShim(t, env, "{}", "install")
 	var msg struct{ SystemMessage string }
-	if code != 0 || json.Unmarshal([]byte(out), &msg) != nil || !strings.Contains(msg.SystemMessage, "guards are off") {
+	if code != 0 || json.Unmarshal([]byte(out), &msg) != nil || !strings.Contains(msg.SystemMessage, "blocked") {
 		t.Fatalf("bad checksum: exit %d, stdout %q; want 0 and a systemMessage", code, out)
 	}
 	if _, err := os.Stat(filepath.Join(data, "bin", m.Version, "claude-tools")); err == nil {
 		t.Fatal("bad checksum: binary installed anyway")
 	}
-	if code, out := runShim(t, env, "{}", "pre-tool-use"); code != 0 || out != "" {
-		t.Fatalf("after failed install: exit %d, stdout %q; want allow", code, out)
+	if code, out := runShim(t, env, "{}", "pre-tool-use"); code != 2 || out != "" {
+		t.Fatalf("after failed install: exit %d, stdout %q; want block", code, out)
 	}
 }
 
@@ -195,8 +208,9 @@ func TestPluginHooksUseKnownCommands(t *testing.T) {
 }
 
 // The guards fail closed: a guard binary that crashes, is killed or hangs blocks the tool
-// call instead of letting it through unchecked. A missing binary still allows, because
-// run.sh exits 0 then. The other hooks (install, retry-breaker) fail open.
+// call instead of letting it through unchecked. A missing binary blocks too: run.sh exits 2
+// then, unless the fail_open option is set (see TestShimNoBinaryFailsClosed). The other
+// hooks (install, retry-breaker) have no onFailure.
 func TestPluginGuardHooksFailClosed(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(pluginDir, "hooks/hooks.json"))
 	if err != nil {
