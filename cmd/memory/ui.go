@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-// uiFS holds the UI: one page, one script, one stylesheet. Nothing is loaded from
+// uiFS holds the UI: one page, its scripts and one stylesheet. Nothing is loaded from
 // outside this binary.
 //
 //go:embed ui/*
