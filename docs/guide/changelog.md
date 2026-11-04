@@ -5,6 +5,11 @@ guardrails, memory and context-guard share one version; see
 [jj-scoll/rtk](https://github.com/jj-scoll/rtk). Each release's full notes are on
 [GitHub Releases](https://github.com/jj-scoll/broodhall/releases).
 
+## 1.5.1
+
+- memory: `memory cost` prices `claude-opus-4-0`, and a price entry no longer matches a model
+  name that continues with more digits. (#37)
+
 ## 1.5.0
 
 - memory: records the token counts of every response and adds `memory cost`, a report of

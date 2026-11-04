@@ -33,8 +33,8 @@ section), remove it once this plugin is on, or Claude reads both.
 
 ## Install the rtk binary
 
-The fork has no release binaries, so build it from source with Rust's `cargo`
-(see [rustup.rs](https://rustup.rs) if you have none):
+The fork has no release binaries, so build it from source with Rust's `cargo`, Rust 1.91 or
+newer (see [rustup.rs](https://rustup.rs) if you have none):
 
 ```sh
 cargo install --git https://github.com/jj-scoll/rtk --branch develop rtk

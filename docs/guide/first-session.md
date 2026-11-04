@@ -47,9 +47,9 @@ to see the notes as they arrive. If either fails, read `memory.log` in the plugi
 directory, `~/.claude/plugins/data/memory-broodhall/memory.log`, and see
 [Troubleshooting](troubleshooting.md#memory-does-not-start).
 
-After a few days, `memory cost --days 7` shows token cost per day and session. See
-[Token cost and cache misses](../memory/index.md#token-cost-and-cache-misses) for the full
-command.
+After a few days, the memory `cost` report shows token cost per day and session. `memory` is
+not on your `PATH`; the command to run it is under
+[Token cost and cache misses](../memory/index.md#token-cost-and-cache-misses).
 
 ### context-guard
 

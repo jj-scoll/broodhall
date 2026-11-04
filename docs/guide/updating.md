@@ -38,6 +38,7 @@ Your stored memories stay where they are, in the state directory.
 
 ## rtk
 
-The rtk plugin comes from the fork's `develop` branch, so an update picks up what is on that
-branch. It does not update the rtk binary; rebuild that as in
+The rtk plugin comes from the fork's `develop` branch. Claude Code delivers a plugin update when
+the plugin's version changes, so a change on that branch arrives once the fork bumps the
+version in its `plugin.json`. An update does not touch the rtk binary; rebuild that as in
 [Install the rtk binary](../rtk/index.md#install-the-rtk-binary).
