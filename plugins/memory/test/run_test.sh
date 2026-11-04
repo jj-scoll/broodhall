@@ -316,8 +316,13 @@ mkrelease "$tmp/t13/rel"
 mkdir -p "$tmp/t13/data/bin/$ver"
 mkstub "$tmp/t13/data/bin/$ver/memory"
 c=$tmp/t13
-out=$( (sleep 8) | STUB_SLEEP=3 timeout 6 sh "$run_sh" cost --days 3 2>"$c/stderr")
-rc=$?
+# No `timeout` on stock macOS: a background run with a stdin that never closes, killed after 6 s.
+(sleep 8) | STUB_SLEEP=3 sh "$run_sh" cost --days 3 >"$c/out" 2>"$c/stderr" &
+cpid=$!
+i=0
+while kill -0 "$cpid" 2>/dev/null && [ $i -lt 12 ]; do sleep 0.5; i=$((i + 1)); done
+if kill -0 "$cpid" 2>/dev/null; then rc=124; kill "$cpid" 2>/dev/null; else wait "$cpid"; rc=$?; fi
+out=$(cat "$c/out")
 if [ "$rc" -eq 0 ] && [ "$out" = "stub cost cost --days 3" ]; then
 	ok "cost ignores an open stdin, keeps its flags and outlives the 2 s hook limit"
 else
