@@ -129,13 +129,15 @@ start_daemon() {
 }
 
 # bg_install starts the install detached and returns at once, so a slow download never holds
-# up a session; memory starts once it lands. The lock dir keeps two sessions from installing
-# at the same time. A lock older than 15 minutes belongs to a killed installer and is taken over.
+# up a session; memory starts once it lands. The lock keeps two sessions from installing at the
+# same time. Its claim file is what makes it exclusive: set -C creates it with O_EXCL, which the
+# kernel makes exclusive. mkdir is not: uutils mkdir (Ubuntu 25.10 and later) can let two racing
+# processes both succeed. A lock older than 15 minutes belongs to a killed installer and is taken over.
 lock=$data/bin/.install-lock
 bg_install() {
 	mkdir -p "$data/bin" 2>/dev/null || { log "cannot write $data/bin; memory is off this session"; return 0; }
 	[ -n "$(find "$lock" -maxdepth 0 -mmin +15 2>/dev/null)" ] && rm -rf "$lock"
-	mkdir "$lock" 2>/dev/null || return 0
+	{ mkdir -p "$lock" && (set -C && echo $$ >"$lock/claim"); } 2>/dev/null || return 0
 	spawn sh "$0" install-locked
 }
 
