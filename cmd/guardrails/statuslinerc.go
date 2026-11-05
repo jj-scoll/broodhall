@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 )
 
@@ -57,11 +58,16 @@ func remoteControlActive(path string) bool {
 	if err != nil || !st.Mode().IsRegular() {
 		return false
 	}
-	end, after, marker, active := st.Size(), 0, false, false
+	return rcScan(f, st.Size())
+}
+
+// rcScan is remoteControlActive's scan of a transcript of size bytes.
+func rcScan(f io.ReaderAt, size int64) bool {
+	end, after, marker, active := size, 0, false, false
 	floor := max(0, end-rcScanCap)
 	var carry []byte // the first, possibly partial, line of the chunk read last
 	for chunk := int64(64 << 10); end > floor; chunk = min(chunk*2, rcChunkMax) {
-		if marker && st.Size()-end >= rcNoticeCap {
+		if marker && size-end >= rcNoticeCap {
 			return true // no notice in range: the marker alone decides
 		}
 		start := max(floor, end-chunk)
