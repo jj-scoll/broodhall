@@ -8,6 +8,7 @@
 //	memory compact-capture  PostCompact hook: spools the compaction summary for the daemon
 //	memory mcp      MCP stdio server that forwards tool calls to the daemon
 //	memory cost     token cost at list prices and why the big cache writes happened
+//	memory version  the release and commit this binary was built from
 package main
 
 import (
@@ -27,18 +28,19 @@ var commands = map[string]func(args []string) int{
 	"compact-capture": func([]string) int { return memCompactCaptureCmd(os.Stdin, os.Stderr) },
 	"mcp":             func([]string) int { return memMCP(os.Stdin, os.Stdout, memdSockPath()) },
 	"cost":            func(args []string) int { return memCostTo(args, memdSockPath(), os.Stdout, os.Stderr) },
+	"version":         func([]string) int { return memVersionTo(os.Stdout) },
 }
 
 func main() { os.Exit(run(os.Args[1:], os.Stderr)) }
 
 func run(args []string, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: memory <serve|context|lookup|compact-capture|mcp|cost>")
+		fmt.Fprintln(stderr, "usage: memory <serve|context|lookup|compact-capture|mcp|cost|version>")
 		return 2
 	}
 	cmd, ok := commands[args[0]]
 	if !ok {
-		fmt.Fprintf(stderr, "memory: unknown subcommand %q (want %s)\n", args[0], "serve|context|lookup|compact-capture|mcp|cost")
+		fmt.Fprintf(stderr, "memory: unknown subcommand %q (want %s)\n", args[0], "serve|context|lookup|compact-capture|mcp|cost|version")
 		return 2
 	}
 	return cmd(args[1:])

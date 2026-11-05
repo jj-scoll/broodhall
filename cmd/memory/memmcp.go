@@ -127,7 +127,7 @@ func mcpHandle(client *http.Client, line []byte) *mcpResponse {
 		resp.Result = map[string]any{
 			"protocolVersion": p.ProtocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "memory", "version": "0.1.0"},
+			"serverInfo":      map[string]any{"name": "memory", "version": mcpServerVersion()},
 		}
 	case "ping":
 		resp.Result = map[string]any{}
