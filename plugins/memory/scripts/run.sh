@@ -135,7 +135,7 @@ start_daemon() {
 # processes both succeed. A lock older than 15 minutes belongs to a killed installer and is taken over.
 lock=$data/bin/.install-lock
 bg_install() {
-	mkdir -p "$data/bin" 2>/dev/null || { log "cannot write $data/bin; memory is off this session"; return 0; }
+	{ mkdir -p "$data/bin" && [ -w "$data/bin" ]; } 2>/dev/null || { log "cannot write $data/bin; memory is off this session"; return 0; }
 	[ -n "$(find "$lock" -maxdepth 0 -mmin +15 2>/dev/null)" ] && rm -rf "$lock"
 	{ mkdir -p "$lock" && (set -C && echo $$ >"$lock/claim"); } 2>/dev/null || return 0
 	spawn sh "$0" install-locked

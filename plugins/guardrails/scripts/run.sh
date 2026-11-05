@@ -185,9 +185,9 @@ spawn() {
 
 # start_install makes sure an install of this version is running in the background. It returns 0
 # when one is running (started here or already in flight) and 1 when none is: a recent failure,
-# or a data dir it cannot write.
+# or a data dir it cannot write (then it sets state=unwritable).
 start_install() {
-	mkdir -p "$data/bin" 2>/dev/null || return 1
+	{ mkdir -p "$data/bin" && [ -w "$data/bin" ]; } 2>/dev/null || { state=unwritable; return 1; }
 	recent_failure && ! lock_live && return 1
 	take_lock || return 0 # lost the race to another starter, which is installing
 	spawn sh "$0" install-locked
@@ -260,7 +260,7 @@ guard=
 case ${1-} in pre-tool-use | read-dedup | large-read-guard | config-gate) guard=1 ;; esac
 
 bin=$curbin
-state=failed # installing: an install is running and may land; failed: none is
+state=failed # installing: an install is running and may land; failed: none is; unwritable: none can
 # Only guards fall back: a release can add a hook subcommand the older binary rejects with
 # exit 2, which at Stop would keep Claude from ending its turn.
 if [ -n "$guard" ] && [ ! -x "$bin" ] && [ -z "${GUARDRAILS_BIN:-${CLAUDE_TOOLS_BIN-}}" ]; then
@@ -299,6 +299,8 @@ if [ ! -x "$bin" ]; then
 		printf 'guardrails: BLOCKED: the guard binary guardrails %s is not installed (%s), so this tool call was not checked.\n' "$ver" "$curbin"
 		if [ "$state" = installing ]; then
 			printf 'Installing it in the background now: run the tool call again in a minute. To install by hand: sh "%s/scripts/run.sh" install\n' "$root"
+		elif [ "$state" = unwritable ]; then
+			printf 'It cannot be installed: this user cannot write %s/bin. Make it writable, then install with: sh "%s/scripts/run.sh" install\n' "$data" "$root"
 		else
 			printf 'The last install failed. Retry now with: sh "%s/scripts/run.sh" install (it says why it failed)\n' "$root"
 		fi

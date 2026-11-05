@@ -348,6 +348,23 @@ settle t9
 expect_open "data dir not writable"
 chmod 700 "$tmp/t9/ro"
 
+# --- 9b. an existing bin/ it cannot write: the log says so, as for a data dir it cannot create
+newcase t9b
+if [ "$(id -u)" -eq 0 ]; then
+	ok "read-only bin/ logs cannot write (skipped as root)"
+else
+	mkdir -p "$tmp/t9b/data/bin"
+	chmod 555 "$tmp/t9b/data/bin"
+	hook t9b session-start
+	chmod 755 "$tmp/t9b/data/bin"
+	expect_open "read-only bin/"
+	if grep -q "cannot write $tmp/t9b/data/bin" "$tmp/t9b/data/memory.log" 2>/dev/null; then
+		ok "read-only bin/ logs cannot write"
+	else
+		bad "read-only bin/ logs cannot write" "log: $(cat "$tmp/t9b/data/memory.log" 2>/dev/null)"
+	fi
+fi
+
 # --- 10. diagnostics go to a log or stderr, never stdout (covered above); a failure leaves a trace
 newcase t10
 hook t10 session-start
