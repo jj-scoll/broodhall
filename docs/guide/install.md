@@ -70,8 +70,8 @@ No other plugin states a minimum Claude Code version.
 
 On its first SessionStart, and again at the first SessionStart after each plugin update, the
 plugin downloads the static binary for its own version from this repo's GitHub release. The
-download is a `guardrails_<os>_<arch>.tar.gz` of about 1.7 MB that unpacks to a binary of
-about 4 MB. It is checked against the release's `checksums.txt` by sha256, then kept in the
+download is a `guardrails_<os>_<arch>.tar.gz` of about 3.5 MB that unpacks to a binary of
+about 9 MB. It is checked against the release's `checksums.txt` by sha256, then kept in the
 plugin's data directory under `bin/<version>/`, so a version is downloaded once.
 
 If the download fails, you see a one-line notice and the guards fail closed: tool calls are
@@ -83,13 +83,15 @@ start tries again. To work unguarded meanwhile, turn on the
 
 memory downloads differently, because it is large and must not hold up a session. At the
 first SessionStart after install, and again after each plugin update, the launcher starts the
-download in the background and the session goes on without memory. The download is a
+download in the background and the session goes on while it runs. The download is a
 `memory_<os>_<arch>.tar.xz` of about 33 MB. It holds the program and three signed DuckDB
 extensions, so nothing more is fetched later. It is checked against the release's
 `checksums.txt` by sha256, then kept in the plugin's data directory under `bin/<version>/`.
 
-So memory starts from the next session, not the one where you installed it. When the
-download finishes, the launcher starts the daemon. If the download fails, memory stays off
+When the download finishes, the launcher starts the daemon, and it records the rest of that
+session. The memory tools wait up to 25 seconds for the download at session start, so on a
+slow link they may be missing until the next session. The context block at session start begins with
+the next session. If the download fails, memory stays off
 and says why in `memory.log` in the plugin data directory. It does not retry for an hour.
 See [Troubleshooting](troubleshooting.md#memory-does-not-start).
 

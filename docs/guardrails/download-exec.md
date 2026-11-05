@@ -27,7 +27,7 @@
 - All of these inside `sudo`, `bash -c '...'` and `ssh host '...'`.
 
 The interpreters are `sh`, `bash`, `zsh`, `dash`, `ksh`, `python`, `perl`, `ruby`, `node`
-and `source`.
+and `source` (or `.`).
 
 ```text
 ASK: this pipes a download into sh. The code runs before anyone has read it. Download it, read it, then run it, or confirm with the user.
@@ -59,7 +59,7 @@ the text.
 This is a speed bump, not a wall. These get past it:
 
 - A script written earlier and run in a later call, a download by `git clone` or
-  `pip install`, `curl ... | xargs sh -c`, and a file name built from variables or run as
+  `pip install`, and a file name built from variables or run as
   `bash $PWD/x`, `sh -c 'bash x'` or a bare name from `PATH`.
 - Other interpreters after the pipe: `fish`, `csh`, `tcsh`, `busybox sh`, `php`, `lua`,
   `deno run -`, `bun run -`, `Rscript -`, `pwsh`. And a download given to an interpreter's

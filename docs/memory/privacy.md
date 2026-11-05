@@ -7,7 +7,8 @@ Yes, in one place. To write each note, the daemon runs `claude -p` as a child pr
 `claude` command you use, on your `PATH`, signed in as you. The request goes to Anthropic
 like any other Claude request, and the usage counts against your account.
 
-The same command writes the per-session summaries.
+The same command writes the session summaries, and for those it sends your prompts and the
+titles of the session's notes (see [What is sent](#what-is-sent)).
 
 Nothing else is sent anywhere. The daemon's own code makes no outbound network request. The
 database, the UI and the Quack server stay on your machine (see
@@ -28,7 +29,15 @@ For each queued tool call:
 
 Each of the three is masked first (below), then cut to its first 6,000 and last 2,000
 characters if it is longer. The cut happens after masking, so it cannot expose half of a
-secret. Session summaries use the same command and the same masking.
+secret.
+
+For each session summary:
+
+- your last 30 prompts in that session, each cut to its first 1,500 and last 500 characters
+  if it is longer, and
+- the titles of the session's last 100 notes, each cut to 200 characters.
+
+Both are masked first, then cut. Nothing else from the session goes into a summary request.
 
 Compaction summaries are not sent anywhere. The `memory` program masks them before it writes
 them to the `compactions/` folder in the state directory, and the daemon masks them again

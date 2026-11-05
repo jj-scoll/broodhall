@@ -5,16 +5,18 @@ repository:
 
 ```sh
 CGO_ENABLED=0 go build -o guardrails ./cmd/guardrails
-CGO_ENABLED=0 go vet ./...
-CGO_ENABLED=0 go test ./...
+CGO_ENABLED=0 go vet ./cmd/guardrails/...
+CGO_ENABLED=0 go test ./cmd/guardrails/...
 claude plugin validate --strict .
 ```
 
-CI runs `go vet ./...` and `go test ./...` with `CGO_ENABLED=0` on Linux and macOS, and runs
-`shellcheck -s sh` on the plugin's `run.sh` launcher on Linux.
+CI runs `go vet` and `go test` on `./cmd/guardrails/...` with `CGO_ENABLED=0` on Linux and
+macOS, along with the launcher test scripts. It tests memory with cgo on Linux amd64 and
+macOS arm64, runs the context-guard module tests with `claude plugin test` on Claude Code
+2.1.317, and runs `shellcheck -s sh` on all three `run.sh` launchers on Linux.
 
-`claude plugin validate --strict .` checks the marketplace and the plugin manifest at the
-repository root.
+`claude plugin validate --strict .` checks the marketplace file at the repository root.
+Validate a plugin with `claude plugin validate --strict plugins/<name>`.
 
 To try a local build in place of the downloaded one, set `GUARDRAILS_BIN` to its path (see
 [Options](../guardrails/options.md)).

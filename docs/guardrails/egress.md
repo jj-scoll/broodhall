@@ -18,7 +18,9 @@ The guard looks at commands that send data off the machine:
 - `curl` and `wget`.
 - `aws s3 cp`, `mv` and `sync` that upload a local path to an `s3://` destination.
 - MCP tools whose name has a write verb in it (`send`, `create`, `update`, `add`, `reply`,
-  `forward`, `upload`, `comment`, `post`, `edit`, `transition`, `batch`, `draft`).
+  `forward`, `upload`, `comment`, `post`, `edit`, `transition`, `batch`, `draft`). The match
+  is on any part of the name, so some read tools count as writes too, such as `list_drafts`
+  (draft) and `get_address_book` (add).
 
 It scans what the call carries: the command text (heredoc bodies included) and the local
 files it uploads, such as a `--body-file`, `curl -d @file`, `-F key=@file`, `-T`,

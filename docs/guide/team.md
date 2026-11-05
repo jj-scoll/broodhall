@@ -52,7 +52,8 @@ Until they accept it, the marketplace entry is ignored.
 - `enabledPlugins` maps `plugin@marketplace` to true or false.
 - `autoUpdate: true` makes Claude Code refresh the marketplace and update the installed
   plugins together after startup. Without it, a third-party marketplace never updates by
-  itself, and plugins drift apart (see [Version skew](#version-skew)).
+  itself, and plugins drift apart (see [Version skew](#version-skew)). `team-init` sets it
+  to true by default; `-auto-update=false` sets it to false.
 - Pick plugins with `-plugins`, for example `-plugins guardrails,memory`. The names are
   `guardrails`, `memory`, `context-guard` and `rtk`.
 

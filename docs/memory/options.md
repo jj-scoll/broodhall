@@ -22,7 +22,7 @@ starts.
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `skip_tools` | string, comma-separated | `listmcpresourcestool,slashcommand,skill,todowrite,askuserquestion` | Tool names that are never turned into notes and never sent to the model. Names match without regard to case. Your list replaces the default, it does not add to it. |
-| `skip_bash_patterns` | string, one regular expression | empty | Bash commands that match are skipped. A pattern that does not compile is ignored, with a line in the daemon log. |
+| `skip_bash_patterns` | string, one regular expression | empty | Bash and PowerShell commands that match are skipped. The command is matched with its spaces collapsed. A pattern that does not compile is ignored, with a line in the daemon log. |
 | `handoff_max_age_hours` | number above 0 | `168` (7 days) | How old a handoff can be and still show at session start. |
 
 ## Environment variables
@@ -40,9 +40,11 @@ starts.
 | `XDG_RUNTIME_DIR` | set by your system | Holds `memory.sock`. The launcher falls back to a private directory under `$TMPDIR` when it is unset. |
 | `XDG_DATA_HOME`, `XDG_CONFIG_HOME` | the XDG defaults | Used for the two default paths above. A relative value is ignored. |
 
-The launcher script has four more variables for testing a build: `MEMORY_BIN` (use this
-program and skip the download), `MEMORY_RELEASE_URL` (download from here), `MEMORY_HOOK_TIMEOUT`
-(seconds a hook may run, default 3) and `MEMORY_NO_DAEMON=1` (do not start the daemon).
+The launcher script has five more variables, mostly for testing a build: `MEMORY_BIN` (use
+this program and skip the download), `MEMORY_RELEASE_URL` (download from here),
+`MEMORY_HOOK_TIMEOUT` (seconds a hook may run, default 3), `MEMORY_NO_DAEMON=1` (do not start
+the daemon) and `MEMORY_MCP_WAIT` (seconds the MCP server waits for a first install, default
+25).
 
 ## Ports
 

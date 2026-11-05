@@ -15,7 +15,7 @@ and dark. It is read-only, and every stored string is shown as plain text.
 | View | What it shows |
 | --- | --- |
 | Overview | Estimated cost, memories written today, memory size and the latest memories. |
-| Stats | Daemon status and version, last ingest time, totals, database size, and a chart of memories per day by type or by project. |
+| Stats | Daemon status and build (a Go pseudo-version that names the commit time and commit, not the release number), last ingest time, totals, database size, and a chart of memories per day by type or by project. |
 | Memories | Full-text search with filters for project, type, date range and session. List view, or a timeline grouped by day. |
 | Sessions | Each session with its summary, prompts, a link to its memories and the handoff it wrote. |
 | Handoffs and work | Stored handoffs rendered from Markdown, whether each has been shown to a later session, and the work-state lists per project. |
@@ -52,8 +52,9 @@ SHOW ALL TABLES;
 
 Quack has no read-only mode, so the daemon adds its own check. It allows a statement only if
 it starts with `SELECT`, `WITH`, `FROM`, `DESCRIBE`, `SHOW`, `SUMMARIZE` or `EXPLAIN` (or is
-a bare `BEGIN`, `COMMIT` or `ROLLBACK`) and contains no word for a write, a schema change, a
-setting, a file read or an extension. A query that merely mentions one of those words in a
+a bare `BEGIN`, `BEGIN TRANSACTION`, `BEGIN READ ONLY`, `BEGIN TRANSACTION READ ONLY`,
+`COMMIT`, `ROLLBACK`, `ABORT` or `END`) and contains no word for a write, a schema change, a setting, a file read or an
+extension. A query that merely mentions one of those words in a
 string is refused too. Anything refused fails with `memory quack is read-only: statement
 refused`.
 

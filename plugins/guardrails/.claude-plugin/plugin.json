@@ -26,7 +26,7 @@
     "observe": {
       "type": "boolean",
       "title": "Observe mode (log only)",
-      "description": "Off by default. When on, the optional guards (git, egress, pii, raw-client-data) allow the call and record what they would have asked or blocked, instead of stopping it. These stay enforced: the core blocks, the settings-file and secret-file guards, config-gate, compact-guard, the large-read block, the session-URL block and egress asks about a secret. Run guardrails guard-report to see the counts.",
+      "description": "Off by default. When on, the optional guards (git, egress, pii, raw-client-data, sweep) allow the call and record what they would have asked or blocked, instead of stopping it. These stay enforced: the core blocks, the git asks about skipped hooks or signing, the download-and-run ask, the settings-file and secret-file guards, config-gate, compact-guard, the large-read block, the session-URL block and egress asks about a secret. Run guardrails guard-report to see the counts.",
       "default": false
     },
     "fail_open": {
@@ -62,7 +62,8 @@
     "rtk": {
       "type": "boolean",
       "title": "Rewrite commands with RTK",
-      "description": "Off by default. When on, the pre-tool-use hook runs `rtk hook claude` after its own checks and applies RTK's token-saving command rewrite. Needs RTK installed. Do not also install RTK's own Claude Code hook."
+      "description": "Off by default. When on, the pre-tool-use hook runs `rtk hook claude` after its own checks and applies RTK's token-saving command rewrite. Needs RTK installed. Do not also install RTK's own Claude Code hook.",
+      "default": false
     },
     "rtk_command": {
       "type": "string",

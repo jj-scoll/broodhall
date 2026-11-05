@@ -20,7 +20,7 @@ The call does not run. The hook exits with status 2 and the message goes back to
 | `rm` | It is recursive and forced (`-rf`, `-fr`, `-r -f`, `--recursive --force`) and a target is exactly `/`, `~`, `$HOME`, your home directory, `/home`, `/nix` or `/storage`. A trailing `/` or `/*` counts as the same target. |
 | `dd` | Any `if=` argument. |
 | Fork bomb | The `:(){ :|:& };:` form. |
-| Redirect | Output (`>`, `>>`, `&>`) written to a path under `/etc/`. |
+| Redirect | Output (`>`, `>>`, <code>&gt;&#124;</code>, `&>`, `&>>`) written to a path under `/etc/`. |
 | `chmod` | Recursive with mode `777`, `0777`, `a+rwx` or `ugo+rwx` on one of the same protected targets as `rm`. |
 | `chown` | Recursive on one of the same protected targets as `rm`. |
 | `docker` / `podman` | `run` or `create` with `--privileged` or a mount of `/dev`. |
@@ -52,6 +52,8 @@ BLOCKED: 'chmod -R 777 /' is a high-risk destructive operation. Confirm with the
 BLOCKED: 'chown -R' is a high-risk destructive operation. Confirm with the user before attempting this.
 BLOCKED: ':(){ :|:& };:' is a high-risk destructive operation. Confirm with the user before attempting this.
 ```
+
+The `chmod` and `chown` replies are always these, whatever the mode or target.
 
 A privileged container gets a longer reply that begins:
 

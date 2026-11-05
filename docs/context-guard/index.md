@@ -42,7 +42,8 @@ Requirements:
    empty.
 3. The module takes the clear with `autoclear --claim`, runs `/clear`, checks that the session
    id changed, and submits `Continue from the handoff in <file>.` as a prompt in the fresh
-   session. It then reports `ok` with `autoclear --done`.
+   session. When the old session's transcript is still on disk, the prompt also points at it,
+   to search before asking. It then reports `ok` with `autoclear --done`.
 4. If you submit a prompt while the clear is armed, that prompt is dropped, the clear runs at
    once, and the prompt is submitted after the continue prompt as "Then answer the prompt I
    typed just before the clear". Slash commands and `!` shell escapes are not carried: they
@@ -80,7 +81,8 @@ A value that is not a positive number counts as the default. A `block_tokens` be
 `warn_tokens` is raised to it, so the module never blocks before it warns.
 
 Outside the options, the module reads no environment variables. Its launcher honours the same
-two as guardrails: `GUARDRAILS_BIN` (a binary to run in place of the installed one) and
+two as guardrails: `GUARDRAILS_BIN`, or the older `CLAUDE_TOOLS_BIN` (a binary to run in
+place of the installed one), and
 `HANDOFF_STATE_DIR` (the state directory). `HANDOFF_AUTOCLEAR=0` is read by the guardrails
 hooks; see [Handoff gate](../guardrails/handoff-gate.md#when-a-link-is-missing).
 

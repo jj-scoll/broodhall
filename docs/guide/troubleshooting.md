@@ -71,11 +71,17 @@ first at `memory.log` in the plugin data directory, where the launcher writes it
 | `install into <dir> failed` | The unpacked files could not be moved into `bin/<version>/`. Check the directory's permissions and free space. |
 | `MEMORY_BIN=<path> is not executable` | `MEMORY_BIN` is set but points at no runnable file. Fix or unset it. |
 | `install of <version> failed within the last hour; not retrying` | A failed install leaves a stamp, so an offline machine does not wait on the network at every start. Delete `bin/.fail-<version>` in the plugin data directory to retry now. |
+| `memory serve: <socket>: already in use by a running daemon` | Normal. Every session start launches the daemon, and a second one stops because the first holds the socket. |
+
+To retry the install in the foreground, delete `bin/.fail-<version>` and run
+`sh "<plugin dir>/scripts/run.sh" install </dev/null`. Only `curl`'s own error shows in the
+terminal. The launcher's reason (one of the messages above) is added to `memory.log`.
 
 Other causes:
 
-- **First session.** The download runs in the background, so memory starts from the second
-  session. Wait for the download and start a new session.
+- **First session.** The download runs in the background, and the daemon starts when it
+  lands. Until then nothing is recorded, and the context block at session start begins with
+  the next session. Wait for the download and start a new session.
 - **Alpine or another musl Linux.** The program needs glibc 2.35 or newer. It will not run
   on musl.
 - **No notes appear.** The daemon writes notes by running `claude -p`. If `claude` is not on

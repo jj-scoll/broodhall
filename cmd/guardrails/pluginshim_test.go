@@ -281,7 +281,7 @@ func TestPluginGuardHooksFailClosed(t *testing.T) {
 // by default.
 func TestShimPassesRTKOptions(t *testing.T) {
 	m := readManifest(t)
-	if d, ok := m.UserConfig["rtk"]; !ok || d.Default != nil && d.Default != false {
+	if d, ok := m.UserConfig["rtk"]; !ok || d.Default != false {
 		t.Fatalf("plugin.json needs an rtk option that defaults to off, got %+v", d)
 	}
 	if _, ok := m.UserConfig["rtk_command"]; !ok {

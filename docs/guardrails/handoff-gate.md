@@ -114,7 +114,10 @@ gate fires again when the context next passes the threshold. It also deletes the
 
 The hooks keep small files named after the session id in the `claude-handoff` directory of
 the plugin's data directory: `<id>.gate`, `<id>.autoclear`, `<id>.rearm`, `<id>.claimed`,
-`<id>.compacts` and `<id>.compact-blocked`, plus one `writer.log` for all sessions. Set
+`<id>.compacts` and `<id>.compact-blocked`, plus one `writer.log` for all sessions. The other
+guards keep their per-session files in the same directory: `<id>.guard`, `<id>.events`,
+`<id>.ask.*`, `<id>.edits` and `<id>.retry`. The read-dedup ledger is
+`/tmp/claude-readcache-<id>`. Set
 `HANDOFF_STATE_DIR` to move the base directory (`claude-handoff` is added under it); the gate,
 autoclear and context-guard must all see the same one. The hooks' launcher, `run.sh`, exports
 the variable itself. When it is unset (the status line runs the binary straight from

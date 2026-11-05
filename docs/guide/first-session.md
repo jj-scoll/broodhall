@@ -21,25 +21,30 @@ and `disabled_guards` turns the optional families off. See
 
 If you do not want a guard to stop you yet, turn on the
 [`observe`](../guardrails/options.md#observe) option with `/plugin configure guardrails@broodhall`.
-The git, PII, raw-client-data and most egress guards then let the call run and record
-what they would have done. You see a `would ask` or `would block` count in the receipt line.
+The git destructive-verb asks (such as `git reset --hard`), and the PII, raw-client-data,
+sweep and most egress guards, then let the call run and record what they would have done. You see a `would ask` or `would block` count in the receipt line.
 
 After a few days, run `guardrails guard-report` to see which rules fired and how often (see
 [Run it from a terminal](../guardrails/index.md#run-it-from-a-terminal)). Then turn
-`observe` off. Some guards stay enforced in observe mode too: the core blocks, the
+`observe` off. Some guards stay enforced in observe mode too: the core blocks, the git asks
+about skipped hooks or signing (`--no-verify`, `HUSKY=0`, `--no-gpg-sign`,
+`-c core.hooksPath=/dev/null` and the rest), the download-and-run ask (`curl … | sh`), the
 settings-file and secret-file guards, config-gate, compact-guard, the large-read block, the
-session-URL block and egress asks about a secret. See [options](../guardrails/options.md).
+session-URL block and egress asks about a secret. See
+[options](../guardrails/options.md#observe).
 
 ## See it work
 
-In a throwaway repository, ask Claude to run `git reset --hard`. Claude Code stops and shows
-you the guard's reason before anything runs. That is the ASK response described on
+With `observe` off, in a throwaway repository, ask Claude to run `git reset --hard`. Claude
+Code stops and shows you the guard's reason before anything runs. That is the ASK response described on
 [Why](why.md). Nothing is discarded unless you approve.
 
 ### memory
 
-memory downloads in the background during the first session and starts from the second. In
-the second session, check that the daemon runs and serves its page:
+memory downloads in the background during the first session. When the download lands, the
+daemon starts and records the rest of that session; the context block at session start
+begins with the second. Once the download has landed, check that the daemon runs and serves
+its page:
 
 ```sh
 pgrep -f 'memory serve'

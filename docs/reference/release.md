@@ -19,7 +19,8 @@ A push to `main` that changes shipped files (`plugins/` except `test/` and `test
 3. pushes the commit and the tag `vX.Y.Z` to `main` in one atomic push, then publishes the
    draft. If `main` moved meanwhile, it rebases when only docs, tests or `.github` changed;
    if shipped files changed, it releases nothing, because the run queued for that merge does,
-4. deletes the scratch branch and any draft left over from a failed run.
+4. deletes the scratch branch. A draft left over from a failed run is published if its tag
+   reached `main`, and deleted only if the tag is not on the remote.
 
 Guardrails' hooks fail closed when the binary for the `plugin.json` version cannot be
 downloaded, which is why `main` is only updated after the assets exist. The gap between the
@@ -42,10 +43,26 @@ Only a commit's title (first line) counts, apart from the breaking-change footer
 start a line in the body and be followed by a colon and a space (the Conventional Commits
 footer). Prose in a body that mentions `#major` or `feat:` does nothing.
 
-Pull requests are merged with a merge commit. The workflow reads the commits since the last tag
-with `--no-merges`, so the "Merge pull request #N from ..." commit, and with it the PR title
-and description, never counts, while the PR's own commits do. To force a bump, put `#minor`
-or `#major` in the title of one of the PR's commits, or use a `feat:` or `type!:` title.
+The workflow reads the commits since the last tag with `git log --no-merges`, so which titles
+count depends on how the pull request was merged. Squash merging is the convention, but the
+repository also allows merge commits and rebase merges.
+
+- **Squash, one commit.** The PR lands as one commit, and GitHub gives it that commit's own
+  title, not the PR title. The commit title decides the bump.
+- **Squash, two or more commits.** The PR lands as one commit with the PR title, and a body
+  that lists each commit's message. The PR title decides the bump; the commit titles in the
+  body are prose and do not count. A breaking-change footer in any of the commits is still
+  at the start of a line in that body, so it still makes a major bump.
+- **Merge commit.** The "Merge pull request #N from ..." commit is skipped, and with it the
+  PR title. Each of the PR's own commits counts, by its title and footer, except merge
+  commits inside the branch.
+- **Rebase merge.** Each of the PR's commits lands on `main` as it is, and each counts. The PR
+  title never does.
+
+The title GitHub proposes for a squash merge can be edited before you confirm it, and the
+edited title is the one that counts. To force a bump, put `#minor` or `#major` in the title
+that lands (for a single-commit PR, that commit's title), or use a `feat:` or `type!:`
+title.
 
 ## Assets
 
