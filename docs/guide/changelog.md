@@ -10,18 +10,25 @@ guardrails, memory and context-guard share one version; see
 - guardrails: the [secret-file](../guardrails/secret-files.md) and
   [settings-file](../guardrails/settings-files.md) guards cover every Claude config
   directory: the session's `CLAUDE_CONFIG_DIR`, whatever its name, and any directory in home
-  whose name starts with `.claude`. They also protect the PII key under `XDG_STATE_HOME`, and
-  follow `cd`, `env -C`, `$CLAUDE_CONFIG_DIR` and symlinked paths. Before, only `~/.claude`
-  and `~/.claude-work` were known by name. (#58)
-- guardrails: the [hook-bypass ask](../guardrails/git.md) reads `GIT_CONFIG_PARAMETERS` the way
-  git does, so the `'core.hooksPath'='/dev/null'` form that git 2.31 and later writes asks
-  too. (#58)
+  whose name starts with `.claude`. Both follow `$CLAUDE_CONFIG_DIR` and a symlinked home or
+  `CLAUDE_CONFIG_DIR`, and the settings guard also follows `cd` and `env -C`. The secret
+  guard also protects the PII key under `XDG_STATE_HOME`. Before, only `~/.claude` and
+  `~/.claude-work` were known by name. (#58)
+- guardrails: the [skipped-hooks ask](../guardrails/git.md#skipped-hooks-and-signing-ask) reads
+  `GIT_CONFIG_PARAMETERS` the way git does, so the `'core.hooksPath'='/dev/null'` form that
+  git 2.31 and later writes asks too, and a value that only mentions `core.hooksPath` no
+  longer asks. (#58)
 - guardrails: two sessions that find a dead install lock no longer both take it over and both
   download. (#59)
-- guardrails: a data directory that cannot be written says the binary cannot be installed,
-  instead of "Installing it in the background now". (#62)
+- guardrails: when the data directory cannot be written, a guard's BLOCKED message says the
+  binary cannot be installed, instead of "Installing it in the background now" or "The last
+  install failed". (#62)
 - memory: `memory version` prints the release and commit, and the MCP server reports the
-  release version instead of `0.1.0`. (#62)
+  release version instead of `0.1.0`. A data directory it cannot write is logged as `cannot
+  write <data>/bin; memory is off this session` instead of failing silently. (#62)
+- memory: the handoff skill names the plugin's work-state tool,
+  `mcp__plugin_memory_memory__work_state_write`, and the SessionStart context no longer says
+  local files are copied into `deliverables/`. (#60)
 - Docs: the fixes from a full docs audit, including the privacy page, the hooks reference,
   observe mode and the release process. (#60)
 
