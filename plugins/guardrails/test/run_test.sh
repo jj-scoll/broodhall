@@ -517,6 +517,53 @@ sh -c 'echo $$' >"$c/data/bin/.install-lock/pid"
 hook install
 [ "$rc" = 0 ] && [ -x "$c/data/bin/$ver/guardrails" ] && ok "a lock held by a dead process is taken over" || bad "a lock held by a dead process is taken over" "rc=$rc out=$out"
 
+# Two installers find the same dead lock. Replacing it is not one step, so the slower one must not
+# move aside the lock the faster one has just made and claimed. An mv on PATH forces that order:
+# the first to move the lock waits (up to 3 s) for a second to try, and the second waits until
+# the first has moved it and claimed a new one.
+newcase dead-lock-two-takers
+mkrelease "$c/rel"
+mkslowcurl "$c/path" 1
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+realmv=$(command -v mv)
+cat >"$c/path/mv" <<EOF
+#!/bin/sh
+case \$1 in
+*/.install-lock)
+	if (set -C && : >"$c/path/mv.first") 2>/dev/null; then
+		i=0; while [ ! -e "$c/path/mv.second" ] && [ \$i -lt 30 ]; do sleep 0.1; i=\$((i + 1)); done
+		$realmv "\$@"; rc=\$?
+		: >"$c/path/mv.done"
+		exit \$rc
+	fi
+	: >"$c/path/mv.second"
+	i=0; while ! { [ -e "$c/path/mv.done" ] && [ -s "\$1/pid" ]; } && [ \$i -lt 50 ]; do sleep 0.1; i=\$((i + 1)); done
+	;;
+esac
+exec $realmv "\$@"
+EOF
+chmod +x "$c/path/mv"
+mkdir -p "$c/data/bin/.install-lock"
+sh -c 'echo $$' >"$c/data/bin/.install-lock/pid"
+PATH=$c/path:$PATH sh "$run_sh" install </dev/null >"$c/o1" 2>&1 &
+p1=$!
+PATH=$c/path:$PATH sh "$run_sh" install </dev/null >"$c/o2" 2>&1 &
+p2=$!
+wait "$p1" "$p2"
+n=$(grep -c 'tar.gz' "$c/path/curl.log" 2>/dev/null)
+[ "${n:-0}" = 1 ] && ok "two takers of a dead lock: one takes it over, one download" || bad "two takers of a dead lock: one takes it over, one download" "downloads: ${n:-0} mv.second: $([ -e "$c/path/mv.second" ] && echo yes || echo no)"
+[ ! -s "$c/o1" ] && [ ! -s "$c/o2" ] && [ -x "$c/data/bin/$ver/guardrails" ] && ok "two takers of a dead lock: both succeed silently" || bad "two takers of a dead lock: both succeed silently" "o1=$(cat "$c/o1") o2=$(cat "$c/o2")"
+
+# A taker that died holding the takeover token does not keep the dead lock forever.
+newcase dead-lock-old-token
+mkrelease "$c/rel"
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+mkdir -p "$c/data/bin/.install-lock"
+sh -c 'echo $$' >"$c/data/bin/.install-lock/pid"
+touch -t 202001010000 "$c/data/bin/.install-lock/takeover"
+hook install
+[ "$rc" = 0 ] && [ -z "$out" ] && [ -x "$c/data/bin/$ver/guardrails" ] && ok "a dead lock with an abandoned takeover token is taken over" || bad "a dead lock with an abandoned takeover token is taken over" "rc=$rc out=$out"
+
 # Let any detached installer finish before the sandbox is removed.
 w=0
 while [ -n "$(find "$tmp" -name .install-lock 2>/dev/null)" ] && [ "$w" -lt 100 ]; do sleep 0.1; w=$((w + 1)); done

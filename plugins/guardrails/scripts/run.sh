@@ -97,9 +97,11 @@ log=$data/install.log
 wait_s=${GUARDRAILS_INSTALL_WAIT:-25}
 
 lock_live() {
+	p=$(cat "$lock/pid" 2>/dev/null) # take_lock checks it again before it takes the lock over
 	[ -d "$lock" ] || return 1
+	# Another process is taking it over (see take_lock): wait for that one as for an installer.
+	[ -e "$lock/takeover" ] && [ -z "$(find "$lock/takeover" -mmin +1 2>/dev/null)" ] && return 0
 	[ -z "$(find "$lock" -maxdepth 0 -mmin +15 2>/dev/null)" ] || return 1
-	p=$(cat "$lock/pid" 2>/dev/null)
 	# No pid yet: its owner is between mkdir and writing it, or died there. Give it a minute.
 	if [ -z "$p" ]; then
 		[ -z "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]
@@ -110,12 +112,22 @@ lock_live() {
 # take_lock makes the lock ours. The pid file is the claim: set -C creates it with O_EXCL, which
 # the kernel makes exclusive. mkdir is not: uutils mkdir (Ubuntu 25.10 and later) can let two
 # racing processes both succeed. A dead or expired lock is moved aside and removed first.
+# Two takers can both find it dead, and the slower one would then move aside the lock the faster
+# one had just made and claimed. So a taker first creates $lock/takeover (set -C again: one wins),
+# and moves the lock aside only if its pid file still holds the pid lock_live judged. The token
+# goes with the lock it was made in; one older than a minute was left by a taker that died.
 claim_lock() { (set -C && echo $$ >"$lock/pid") 2>/dev/null; }
 take_lock() {
 	mkdir -p "$lock" 2>/dev/null || return 1
 	claim_lock && return 0
 	lock_live && return 1
-	mv "$lock" "$lock.stale.$$" 2>/dev/null && rm -rf "$lock.stale.$$"
+	if (set -C && : >"$lock/takeover") 2>/dev/null || [ -n "$(find "$lock/takeover" -mmin +1 2>/dev/null)" ]; then
+		if [ -f "$lock/pid" ] && [ "$(cat "$lock/pid" 2>/dev/null)" = "$p" ]; then
+			mv "$lock" "$lock.stale.$$" 2>/dev/null && rm -rf "$lock.stale.$$"
+		else
+			rm -f "$lock/takeover"
+		fi
+	fi
 	mkdir -p "$lock" 2>/dev/null && claim_lock
 }
 recent_failure() { [ -n "$(find "$stamp" -mmin -5 2>/dev/null)" ]; }
@@ -191,7 +203,9 @@ start_install() {
 	recent_failure && ! lock_live && return 1
 	take_lock || return 0 # lost the race to another starter, which is installing
 	spawn sh "$0" install-locked
-	echo $! >"$lock/pid" 2>/dev/null # the installer holds it now, however soon this guard exits
+	# The installer holds it now, however soon this guard exits. Unless it has already finished
+	# and another process has the lock: then the pid file is not ours to write.
+	[ "$(cat "$lock/pid" 2>/dev/null)" = $$ ] && echo $! >"$lock/pid" 2>/dev/null
 	return 0
 }
 
