@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 const slBridge = `{"type":"bridge-session","sessionId":"sess-1","bridgeSessionId":"cse_TEST","lastSequenceNum":7}`
@@ -101,8 +101,37 @@ func TestStatuslineRemoteControlBadPath(t *testing.T) {
 	})
 }
 
+// countingReaderAt counts the bytes read through it.
+type countingReaderAt struct {
+	r io.ReaderAt
+	n int64
+}
+
+func (c *countingReaderAt) ReadAt(p []byte, off int64) (int, error) {
+	n, err := c.r.ReadAt(p, off)
+	c.n += int64(n)
+	return n, err
+}
+
+// rcScanFile runs the scan on path and returns its answer and the bytes it read.
+func rcScanFile(t *testing.T, path string) (bool, int64) {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &countingReaderAt{r: f}
+	return rcScan(c, st.Size()), c.n
+}
+
 // A transcript of tens of megabytes costs a bounded tail read, whether the marker is near the
-// end, far from it, or absent.
+// end, far from it, or absent. The bound is checked in bytes read, not time: a slow CI runner
+// took 181 ms over the same 4 MB a fast one reads in a few.
 func TestRemoteControlActiveHugeTranscript(t *testing.T) {
 	big := filepath.Join(t.TempDir(), "big.jsonl")
 	f, err := os.Create(big)
@@ -118,36 +147,44 @@ func TestRemoteControlActiveHugeTranscript(t *testing.T) {
 		f.WriteString(slFiller(i) + "\n")
 	}
 	f.Close()
-	start := time.Now()
-	if !remoteControlActive(big) {
+	if on, n := rcScanFile(t, big); !on {
 		t.Error("marker near the end of an 80 MB transcript not found")
-	}
-	if d := time.Since(start); d > 50*time.Millisecond {
-		t.Errorf("tail scan took %v on an 80 MB file", d)
+	} else if n > rcScanCap {
+		t.Errorf("tail scan read %d bytes of an 80 MB file, want at most %d", n, rcScanCap)
 	}
 	g, _ := os.OpenFile(big, os.O_APPEND|os.O_WRONLY, 0o644)
 	for i := 0; i < 300; i++ {
 		g.WriteString(slFiller(i) + "\n")
 	}
 	g.Close()
-	start = time.Now()
-	if remoteControlActive(big) {
+	if on, n := rcScanFile(t, big); on {
 		t.Error("stale marker in an 80 MB transcript still reported")
+	} else if n > rcScanCap {
+		t.Errorf("stale scan read %d bytes of an 80 MB file, want at most %d", n, rcScanCap)
 	}
-	if d := time.Since(start); d > 50*time.Millisecond {
-		t.Errorf("stale scan took %v on an 80 MB file", d)
+	// No marker, and lines so long that rcMaxLinesAfter of them span more than rcScanCap: only
+	// the cap stops the scan.
+	long := `{"type":"api-request-blob","blob":"` + strings.Repeat("x", 100<<10) + `"}`
+	if on, n := rcScanFile(t, slTranscript(t, slRepeat(long, 200)...)); on || n > rcScanCap {
+		t.Errorf("20 MB of 100 KB lines, no marker: on=%v, read %d bytes, want false and at most %d", on, n, rcScanCap)
 	}
+}
+
+func slRepeat(s string, n int) []string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = s
+	}
+	return out
 }
 
 // Entries bigger than the scan cap must not hang or grow memory without bound.
 func TestRemoteControlActiveHugeLines(t *testing.T) {
 	p := slTranscript(t, slBridge, `{"type":"api-request-blob","blob":"`+strings.Repeat("y", 20<<20)+`"}`)
-	start := time.Now()
-	if remoteControlActive(p) {
+	if on, n := rcScanFile(t, p); on {
 		t.Error("marker behind a 20 MB line reported as live")
-	}
-	if d := time.Since(start); d > 200*time.Millisecond {
-		t.Errorf("took %v", d)
+	} else if n > rcScanCap {
+		t.Errorf("read %d bytes of a 20 MB line, want at most %d", n, rcScanCap)
 	}
 }
 
