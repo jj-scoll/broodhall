@@ -53,7 +53,7 @@ Track to-dos and multi-step work with the work_state_write tool, in preference t
 - A to-do item is an entry like {"task": "<name>", "status": "todo"|"doing"|"done"|"dropped"}; any other key sets state on the list (newest value wins, null removes the key, "status": "done" closes the list)
 - Open lists are summarized below; work_state_read gives the detail (includeClosed=true adds finished items)
 - Lasting facts go in the list "facts" (this project) or "user-facts" (every project), one key per fact, null to delete; both appear at the start of every session
-- Produced something the user can open (PR, deck, page, report)? Put its URL or absolute path in a "work_product" field on that item; local files are copied into deliverables/<project>/ under the memory state dir`
+- Produced something the user can open (PR, deck, page, report)? Put its URL or absolute path in a "work_product" field on that item; the memory UI shows it with the item`
 
 // contextJSON is the SessionStart hook output. HTML escaping is off, as in JavaScript's
 // JSON.stringify, so the byte count matches what the hook consumer measures.

@@ -89,6 +89,17 @@ func TestMemdContextEmptyDB(t *testing.T) {
 	}
 }
 
+// The header tells Claude what a work_product field does. Nothing copies files into a
+// deliverables folder (the UI only shows the field), so the header must not promise a copy.
+func TestMemdContextWorkProductPromisesNoCopy(t *testing.T) {
+	if !strings.Contains(ctxWorkHeader, `"work_product"`) {
+		t.Fatalf("header no longer mentions work_product:\n%s", ctxWorkHeader)
+	}
+	if strings.Contains(ctxWorkHeader, "deliverables") || strings.Contains(ctxWorkHeader, "copied") {
+		t.Errorf("header promises a deliverables copy that no code performs:\n%s", ctxWorkHeader)
+	}
+}
+
 func TestMemdContextSelectionCounts(t *testing.T) {
 	db := ctxDB(t)
 	base := time.Date(2026, 3, 9, 8, 0, 0, 0, time.UTC)

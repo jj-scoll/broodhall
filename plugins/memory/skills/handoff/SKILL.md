@@ -52,7 +52,7 @@ Use two places, because the startup display is short and the full note can be lo
 
 **1. Write the full note to a file.** Create `HANDOFF.md` at the root of the project (or another path if the user prefers) with the complete content from the section above. Use the Write tool.
 
-**2. Save a digest in memory.** Call the memory MCP tool `work_state_write`, which Claude Code exposes as `mcp__memory__work_state_write`, with:
+**2. Save a digest in memory.** Call the memory MCP tool `work_state_write`, which Claude Code exposes as `mcp__plugin_memory_memory__work_state_write` when memory is installed as a plugin, with:
 
 - `list`: `"handoff"`
 - `fields`:
