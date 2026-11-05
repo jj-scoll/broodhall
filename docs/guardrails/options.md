@@ -1,13 +1,13 @@
 # Options
 
 Ten plugin options, two files under `~/.config/guardrails/`, and two environment variables
-that are not plugin options (`HANDOFF_AUTOCLEAR` and `GUARDRAILS_BIN`). The older
-`claude-tools` names still work; see [Older names](#older-names).
+that are not plugin options and have a section here (`HANDOFF_AUTOCLEAR` and
+`GUARDRAILS_BIN`). The older `claude-tools` names still work; see [Older names](#older-names).
 
-Other variables are covered where they apply: `HANDOFF_STATE_DIR` in
-[Handoff gate](handoff-gate.md#state), `GUARDRAILS_INSTALL_WAIT` in
-[Updating](../guide/updating.md#between-the-update-and-the-download).
-`GUARDRAILS_RELEASE_URL` sets where the launcher downloads releases from, for a mirror; it
+Three more variables that are not plugin options are covered elsewhere or here:
+`HANDOFF_STATE_DIR` in [Handoff gate](handoff-gate.md#state), `GUARDRAILS_INSTALL_WAIT` in
+[Updating](../guide/updating.md#between-the-update-and-the-download), and
+`GUARDRAILS_RELEASE_URL`, which sets where the launcher downloads releases from, for a mirror; it
 defaults to this repository's GitHub releases.
 
 Set the plugin options with `/plugin configure guardrails@broodhall`, or from `/config`.
@@ -69,7 +69,7 @@ Use it to see what the guards would do before you let them stop anything. It is 
 for all guards, not one per guard.
 
 What it covers is the families that `disabled_guards` can name, except where a mistake
-cannot be taken back: `git`, `pii`, `raw-client-data`, `sweep` and the `egress` asks. An ask from one of
+cannot be taken back: the `git` destructive-verb asks, `pii`, `raw-client-data`, `sweep` and the `egress` asks. An ask from one of
 them does not ask, and a block from one of them does not block. The call runs.
 
 What it does not cover stays enforced:

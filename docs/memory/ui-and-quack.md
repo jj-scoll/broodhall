@@ -52,8 +52,8 @@ SHOW ALL TABLES;
 
 Quack has no read-only mode, so the daemon adds its own check. It allows a statement only if
 it starts with `SELECT`, `WITH`, `FROM`, `DESCRIBE`, `SHOW`, `SUMMARIZE` or `EXPLAIN` (or is
-a bare `BEGIN`, `BEGIN TRANSACTION`, `BEGIN READ ONLY`, `COMMIT`, `ROLLBACK`, `ABORT` or
-`END`) and contains no word for a write, a schema change, a setting, a file read or an
+a bare `BEGIN`, `BEGIN TRANSACTION`, `BEGIN READ ONLY`, `BEGIN TRANSACTION READ ONLY`,
+`COMMIT`, `ROLLBACK`, `ABORT` or `END`) and contains no word for a write, a schema change, a setting, a file read or an
 extension. A query that merely mentions one of those words in a
 string is refused too. Anything refused fails with `memory quack is read-only: statement
 refused`.

@@ -73,8 +73,9 @@ first at `memory.log` in the plugin data directory, where the launcher writes it
 | `install of <version> failed within the last hour; not retrying` | A failed install leaves a stamp, so an offline machine does not wait on the network at every start. Delete `bin/.fail-<version>` in the plugin data directory to retry now. |
 | `memory serve: <socket>: already in use by a running daemon` | Normal. Every session start launches the daemon, and a second one stops because the first holds the socket. |
 
-To install in the foreground and see the error as it happens, delete `bin/.fail-<version>`
-and run `sh "<plugin dir>/scripts/run.sh" install </dev/null`.
+To retry the install in the foreground, delete `bin/.fail-<version>` and run
+`sh "<plugin dir>/scripts/run.sh" install </dev/null`. Only `curl`'s own error shows in the
+terminal. The launcher's reason (one of the messages above) is added to `memory.log`.
 
 Other causes:
 

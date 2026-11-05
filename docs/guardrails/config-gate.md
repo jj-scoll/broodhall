@@ -72,6 +72,9 @@ parse.
 ## Turning it off
 
 You cannot. It has no family name in `disabled_guards`. If the binary is not installed yet,
-the launcher blocks the change, like the other guards, unless
+the launcher starts the install and waits up to 25 seconds (`GUARDRAILS_INSTALL_WAIT`, see
+[Updating](../guide/updating.md#between-the-update-and-the-download)) for it to land. If it
+lands, the gate checks the change. If not, or if the last install failed in the past 5 minutes, the
+launcher blocks the change, like the other guards, unless
 [`fail_open`](options.md#fail_open) is on. After an update, while only the new version's
 binary is missing, it runs the previous version's binary instead.

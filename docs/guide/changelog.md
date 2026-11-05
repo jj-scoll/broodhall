@@ -5,6 +5,11 @@ guardrails, memory and context-guard share one version; see
 [jj-scoll/rtk](https://github.com/jj-scoll/rtk). Each release's full notes are on
 [GitHub Releases](https://github.com/jj-scoll/broodhall/releases).
 
+## 1.10.4
+
+- memory: two sessions that install the binary at the same time download it once, also
+  where `mkdir` is uutils (Ubuntu 25.10 and later). (#57)
+
 ## 1.10.3
 
 - guardrails: two sessions that install the binary at the same time download it once, also

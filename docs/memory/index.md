@@ -176,7 +176,7 @@ The plugin ships a skill named `handoff`. When you stop or switch sessions, Clau
 context, with the path of the full file. A handoff older than 7 days is not shown unless you
 change `handoff_max_age_hours` in [Options](options.md). A resumed session neither shows nor
 uses it up. After a compaction, a handoff not yet shown appears only if it was written in the
-last 30 minutes.
+last 30 minutes, or within `handoff_max_age_hours` when that is shorter.
 
 ## It fails open
 
