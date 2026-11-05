@@ -117,6 +117,76 @@ func TestSecretPathsUnderBothDirNames(t *testing.T) {
 	}
 }
 
+// The credentials file is protected in every Claude config dir (the session's
+// CLAUDE_CONFIG_DIR, whatever its name, and each ~/.claude* dir), and the PII key where
+// redact keeps it under XDG_STATE_HOME.
+func TestSecretPathsFollowConfigDirs(t *testing.T) {
+	env := secretEnv(t)
+	h := env.Home
+	for _, p := range []string{".claude", ".claude-work", ".claude-personal", "claude", "other", "src/app/.claude-x"} {
+		os.MkdirAll(filepath.Join(h, p), 0o700)
+		os.WriteFile(filepath.Join(h, p, ".credentials.json"), []byte("{}\n"), 0o600)
+	}
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(h, "claude"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(h, "xdgstate"))
+	for _, c := range []struct{ cmd, want string }{
+		{"cat ~/.claude/.credentials.json", "context:secret-file:mask"},
+		{"cat ~/.claude-work/.credentials.json", "context:secret-file:mask"},
+		{"cat ~/.claude-personal/.credentials.json", "context:secret-file:mask"},
+		{"grep -r token ~/.claude-personal", "context:secret-file:mask"},
+		{"cat ~/claude/.credentials.json", "context:secret-file:mask"},
+		{"base64 " + h + "/claude/.credentials.json", "ask:secret-file:base64"},
+		{"cat ~/xdgstate/guardrails/pii-key", "context:secret-file:mask"},
+		{"cat ~/xdgstate/claude-tools/pii-key", "context:secret-file:mask"},
+		{"cat ~/.local/state/guardrails/pii-key", "context:secret-file:mask"},
+		// The variable as written: the hook has the same CLAUDE_CONFIG_DIR as the shell.
+		{"cat $CLAUDE_CONFIG_DIR/.credentials.json", "context:secret-file:mask"},
+		{"cat ${CLAUDE_CONFIG_DIR}/.credentials.json", "context:secret-file:mask"},
+		{"base64 $CLAUDE_CONFIG_DIR/.credentials.json", "ask:secret-file:base64"},
+		{"bash -c 'cat $CLAUDE_CONFIG_DIR/.credentials.json'", "ask:secret-file:text"},
+		{"cat $CLAUDE_CONFIG_DIR_OLD/.credentials.json", "allow"},
+		{"cd ~ && cat .claude-personal/.credentials.json", "context:secret-file:mask"},
+		// A ~/.claude* dir that does not exist yet: nothing to read, but planting one asks.
+		{"echo x > ~/.claude-new/.credentials.json", "ask:secret-file:echo"},
+		{"mkdir -p ~/.claude-new && cp /tmp/c ~/.claude-new/.credentials.json", "ask:secret-file:cp"},
+		// Not a Claude config dir: not right in home, or not named .claude*.
+		{"cat ~/other/.credentials.json", "allow"},
+		{"cat ~/src/app/.claude-x/.credentials.json", "allow"},
+	} {
+		if got := decide(env, c.cmd).Kind(); got != c.want {
+			t.Errorf("%q: got %s, want %s", c.cmd, got, c.want)
+		}
+	}
+	if d, ok := secretFileToolDecision("Write", map[string]any{"file_path": filepath.Join(h, ".claude-new/.credentials.json")}, env.Cwd, h, ""); !ok || !d.Ask {
+		t.Errorf("Write into a new ~/.claude* dir: %+v %v, want ask", d, ok)
+	}
+	for _, p := range []string{"claude/.credentials.json", ".claude-personal/.credentials.json", "xdgstate/guardrails/pii-key"} {
+		if d, ok := secretFileToolDecision("Read", map[string]any{"file_path": filepath.Join(h, p)}, env.Cwd, h, ""); !ok || d.Exit != 2 {
+			t.Errorf("Read %s: %+v %v, want blocked", p, d, ok)
+		}
+	}
+}
+
+// secret-paths is read from XDG_CONFIG_HOME when it is set, and the list there is protected.
+func TestSecretPathsUnderXDGConfig(t *testing.T) {
+	env := secretEnv(t)
+	h := env.Home
+	env.XDGConfig = filepath.Join(h, "xdgcfg")
+	os.MkdirAll(filepath.Join(env.XDGConfig, "guardrails"), 0o700)
+	os.WriteFile(filepath.Join(env.XDGConfig, "guardrails/secret-paths"), []byte("~/vault/*.key\n"), 0o600)
+	os.MkdirAll(filepath.Join(h, "vault"), 0o700)
+	os.WriteFile(filepath.Join(h, "vault/a.key"), []byte("x\n"), 0o600)
+	for _, c := range []struct{ cmd, want string }{
+		{"cat ~/vault/a.key", "context:secret-file:mask"},
+		{"cat ~/xdgcfg/guardrails/secret-paths", "context:secret-file:mask"},
+		{"echo x >> ~/xdgcfg/guardrails/secret-paths", "ask:secret-file:echo"},
+	} {
+		if got := decide(env, c.cmd).Kind(); got != c.want {
+			t.Errorf("%q: got %s, want %s", c.cmd, got, c.want)
+		}
+	}
+}
+
 func TestSecretArgAsks(t *testing.T) {
 	env := secretEnv(t)
 	for _, cmd := range []string{

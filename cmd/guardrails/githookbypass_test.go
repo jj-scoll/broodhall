@@ -48,6 +48,13 @@ func TestGitHookBypass(t *testing.T) {
 		{"hooksPath under home", `git config core.hooksPath ~/hooks`, ask},
 		{"-c attached to the key", `git -ccore.hooksPath=/dev/null commit -m x`, ask},
 		{"GIT_CONFIG_PARAMETERS", `GIT_CONFIG_PARAMETERS="'core.hooksPath=/dev/null'" git commit -m x`, ask},
+		// git's parse_config_env_list (config.c) also reads 'key'='value', the form git writes.
+		{"GIT_CONFIG_PARAMETERS key and value quoted", `GIT_CONFIG_PARAMETERS="'core.hooksPath'='/dev/null'" git commit -m x`, ask},
+		{"GIT_CONFIG_PARAMETERS second entry", `GIT_CONFIG_PARAMETERS="'user.name'='x' 'core.hooksPath'='/dev/null'" git commit -m x`, ask},
+		{"GIT_CONFIG_PARAMETERS mixed forms", `GIT_CONFIG_PARAMETERS="'user.name=x' 'core.hooksPath'='/dev/null'" git push`, ask},
+		{"GIT_CONFIG_PARAMETERS escaped quote", `GIT_CONFIG_PARAMETERS="'user.name'='it'\''s' 'core.hooksPath'='/dev/null'" git commit -m x`, ask},
+		{"export GIT_CONFIG_PARAMETERS", `export GIT_CONFIG_PARAMETERS="'core.hooksPath'='/dev/null'"; git commit -m x`, ask},
+		{"GIT_CONFIG_PARAMETERS gpgsign", `GIT_CONFIG_PARAMETERS="'commit.gpgsign'='false'" git commit -m x`, ask},
 		{"GIT_CONFIG_COUNT", `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x`, ask},
 		{"env GIT_CONFIG_COUNT", `env GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x GIT_CONFIG_KEY_1=core.hooksPath GIT_CONFIG_VALUE_1=/dev/null git push`, ask},
 		{"export GIT_CONFIG_COUNT", `export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null; git commit -m x`, ask},
@@ -100,6 +107,9 @@ func TestGitHookBypass(t *testing.T) {
 		{"-c hooksPath .githooks", `git -c core.hooksPath=.githooks commit -m x`, "allow"},
 		{"hooksPath absolute in the repo", `git config core.hooksPath /work/.githooks`, "allow"},
 		{"GIT_CONFIG_COUNT harmless key", `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x git commit -m x`, "allow"},
+		{"GIT_CONFIG_PARAMETERS hooksPath in the repo", `GIT_CONFIG_PARAMETERS="'core.hooksPath'='.githooks'" git commit -m x`, "allow"},
+		{"GIT_CONFIG_PARAMETERS value holds the key", `GIT_CONFIG_PARAMETERS="'user.name'='core.hooksPath=/dev/null'" git commit -m x`, "allow"},
+		{"GIT_CONFIG_PARAMETERS implicit true", `GIT_CONFIG_PARAMETERS="'commit.gpgsign'=" git commit -m x`, "allow"},
 		// signing config only matters where a commit or tag is made
 		{"gpgsign=false on log", `git -c commit.gpgsign=false log`, "allow"},
 		{"gpgsign=false on status", `git -c commit.gpgsign=false status`, "allow"},

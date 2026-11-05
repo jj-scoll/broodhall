@@ -77,6 +77,9 @@ repository passes, because it is the normal husky and githooks setup: `git confi
 core.hooksPath .husky`, `.githooks`. `git config --unset core.hooksPath` passes too, since it
 puts the default hooks back.
 
+`GIT_CONFIG_PARAMETERS` is read the way git reads it. Both quoting forms count:
+`'core.hooksPath=/dev/null'` and `'core.hooksPath'='/dev/null'`, the form newer git writes.
+
 The short `-n` counts only where git means `--no-verify` by it: `git commit` and `git am`. For
 `git push` it is `--dry-run`, for `git merge`, `rebase` and `pull` it is `--no-stat`, and for
 `git revert` and `git cherry-pick` it is `--no-commit`. None of those ask.

@@ -10,8 +10,25 @@
 
 ## What it catches
 
-The target is `settings.json` or `settings.local.json` in a `.claude` directory or a
-second Claude config directory, the user's own or a project's.
+The target is `settings.json` or `settings.local.json` in one of these:
+
+- a project's `.claude` directory;
+- the session's `CLAUDE_CONFIG_DIR`, whatever its name;
+- a directory right in your home whose name starts with `.claude`, such as `~/.claude`,
+  `~/.claude-work` or `~/.claude-personal`.
+
+The last two are the Claude config directories, the same ones whose credentials the
+[Secret files](secret-files.md) guard protects. A command may name the session's as
+`$CLAUDE_CONFIG_DIR`. A config directory with another name that this session does not use
+is not covered.
+
+A relative path counts from where the command started. Once a `cd`, `pushd`, `popd` or zsh
+`chdir` shows up anywhere in the command (also `builtin cd`, `command cd`, `\cd` or `if cd`),
+or `env -C`, `env --chdir` or `CDPATH` does, the guard can't be sure where it runs. From there on, a relative `.claude*` path is
+also read as one in your home. `.claude-plugin` is left out of that, since every plugin repo
+has one. When a segment starts with `cd` or `pushd` and a plain path, such as `cd /x` or
+`cd ~/.claude-work`, relative paths after it are also read from there. A write inside a
+`( ... )` subshell or `bash -c '...'` is not seen.
 
 - **Edit, Write, MultiEdit and NotebookEdit** on one of those files. Symlinks are resolved,
   so a link that points at one counts.

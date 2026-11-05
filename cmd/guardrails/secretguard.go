@@ -1,6 +1,7 @@
 package main
 
-// Secret-file guard (pre-tool-use). The protected files are secretPathsDefault plus the
+// Secret-file guard (pre-tool-use). The protected files are secretPathsDefault, the Claude
+// credentials in each config directory (claudeConfigDirs), the PII key, plus the
 // lines of ~/.config/guardrails/secret-paths and ~/.config/claude-tools/secret-paths (a path or
 // glob per line, ~ allowed, # comments). Each list adds to the defaults and is protected
 // itself. Claude sees the
@@ -30,9 +31,13 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
+// secretPathsDefault is the fixed part of the list. secretPaths adds the Claude credentials in
+// each config directory and the PII key under XDG_STATE_HOME. ~/.config/mark.toml is the
+// config of mark (github.com/kovetskiy/mark, Markdown to Confluence), which holds an
+// Atlassian API token in plain text. No broodhall code reads it; it stays as a well-known
+// tool's credentials file, like gh's hosts.yml.
 var secretPathsDefault = []string{
 	"~/.config/mark.toml",
-	"~/.claude/.credentials.json", "~/.claude-work/.credentials.json",
 	"~/.aws/credentials", "~/.aws/sso/cache/*.json", "~/.aws/cli/cache/*.json",
 	"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed25519", "~/.ssh/id_ecdsa_sk", "~/.ssh/id_ed25519_sk",
 	"~/.netrc", "~/.pgpass", "~/.docker/config.json", "~/.config/gh/hosts.yml",
@@ -55,6 +60,12 @@ var (
 // secretPaths is every protected path pattern, absolute and cleaned.
 func secretPaths(home, xdg string) []string {
 	ps := append([]string{}, secretPathsDefault...)
+	for _, d := range claudeConfigDirs(home) {
+		ps = append(ps, filepath.Join(d, ".credentials.json"))
+	}
+	if st := os.Getenv("XDG_STATE_HOME"); st != "" { // where redact keeps the key (stateBase)
+		ps = append(ps, userPaths(st, "pii-key")...)
+	}
 	if base := configBase(xdg, home); base != "" {
 		for _, list := range userPaths(base, "secret-paths") {
 			ps = append(ps, list)
@@ -92,16 +103,11 @@ func newSecretGuard(home, xdg, cwd string) *secretGuard {
 	return g
 }
 
-// files is what a path word may name: ~ and $HOME expanded, made absolute, globs expanded
+// files is what a path word may name: ~, $HOME and $CLAUDE_CONFIG_DIR expanded, made absolute, globs expanded
 // (dot files only for a dotted pattern, as the shell does). Nil when it holds other
 // expansions.
 func (g *secretGuard) files(w string) []string {
-	for _, v := range []string{"${HOME}", "$HOME"} {
-		if strings.HasPrefix(w, v) {
-			w = g.home + w[len(v):]
-		}
-	}
-	w = expandHome(w, g.home)
+	w = expandHome(expandPathVars(w, g.home), g.home)
 	if w == "" || strings.ContainsAny(w, "$`") {
 		return nil
 	}
@@ -130,6 +136,8 @@ func (g *secretGuard) protected(word string) (file, under bool) {
 			for _, p := range g.paths {
 				ok, _ := filepath.Match(p, c)
 				file = file || ok
+				// A ~/.claude* dir that does not exist yet is not in g.paths.
+				file = file || filepath.Base(c) == ".credentials.json" && isClaudeConfigDir(filepath.Dir(c), g.home)
 				under = under || strings.HasPrefix(p, strings.TrimSuffix(c, "/")+"/")
 			}
 		}
@@ -345,13 +353,18 @@ func (g *secretGuard) scan(cmd string) secretScan {
 	return s
 }
 
-// unaccounted reports whether cmd spells a protected path (as written, from ~ or $HOME;
+// unaccounted reports whether cmd spells a protected path (as written, from ~, $HOME or
+// $CLAUDE_CONFIG_DIR;
 // a glob up to its first wildcard) outside the covered byte ranges.
 func (g *secretGuard) unaccounted(cmd string, covered [][2]int) bool {
+	cfg := claudeConfigEnv(g.home)
 	for _, p := range g.paths {
 		forms := []string{p}
 		if rest, ok := strings.CutPrefix(p, g.home+"/"); ok && g.home != "" {
 			forms = append(forms, "~/"+rest, "$HOME/"+rest, "${HOME}/"+rest)
+		}
+		if rest, ok := strings.CutPrefix(p, cfg+"/"); ok && cfg != "" {
+			forms = append(forms, "$CLAUDE_CONFIG_DIR/"+rest, "${CLAUDE_CONFIG_DIR}/"+rest)
 		}
 		for _, n := range forms {
 			exact := true

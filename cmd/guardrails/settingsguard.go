@@ -1,20 +1,22 @@
 package main
 
 // Settings-file guard (pre-tool-use). Claude Code settings files hold the hooks and
-// permission rules that every other guard depends on, and ~/.claude/settings.json is shared
-// with ~/.claude-work. A model write to one asks: settings.json or settings.local.json in a
-// .claude or .claude-work directory (user or project). Claude Code 2.1.312 stages some model
-// edits for review, but not one an allow rule covers (probed: Edit with --allowedTools=Edit
-// wrote straight to disk), so this asks first. config-gate (configgate.go) is the second
+// permission rules that every other guard depends on. A model write to one asks:
+// settings.json or settings.local.json in a project's .claude directory or a Claude config
+// directory (isClaudeConfigDir). Claude Code 2.1.312 stages some model edits for review, but
+// not one an allow rule covers (probed: Edit with --allowedTools=Edit wrote straight to
+// disk), so this asks first. config-gate (configgate.go) is the second
 // line: it judges what a change does when Claude Code reloads it.
 //
 // Bash writes are found by fileWriteOp, the pii-rules guard's detector, so the same speed
 // bump caveats apply: a script written earlier or a path built from variables gets past it.
 
 import (
+	"os"
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -27,15 +29,83 @@ func settingsAsk(op string) decision {
 	return decision{Ask: true, Rule: "settings:" + op, Msg: settingsAskMsg}
 }
 
-func isClaudeDir(p string) bool {
-	b := filepath.Base(p)
-	return b == ".claude" || b == ".claude-work"
+// claudeConfigEnv is the session's CLAUDE_CONFIG_DIR, absolute and cleaned, or "".
+func claudeConfigEnv(home string) string {
+	cfg := expandHome(os.Getenv("CLAUDE_CONFIG_DIR"), home)
+	if !filepath.IsAbs(cfg) {
+		return ""
+	}
+	return filepath.Clean(cfg)
+}
+
+// isClaudeConfigDir reports whether the absolute path p is a Claude config directory: the
+// session's CLAUDE_CONFIG_DIR, whatever its name, or a directory right in home whose name
+// starts with .claude (~/.claude, ~/.claude-work, ~/.claude-personal). Claude Code keeps no
+// list of config directories, and ~/.claude-<name> is the usual name for another account's.
+// The settings-file guard asks before a write to the settings in one, and the secret-file
+// guard protects the credentials in each (claudeConfigDirs).
+//
+// Both sides are compared with symlinks resolved: on macOS /var is /private/var, so a path
+// and the variable that names it can each go through a link. p is resolved only when its
+// name could match, which keeps the stat calls off most words of a command.
+func isClaudeConfigDir(p, home string) bool {
+	if cfg := claudeConfigEnv(home); cfg != "" {
+		rcfg := resolveForCompare(cfg, "/")
+		if b := filepath.Base(p); p == cfg || (b == filepath.Base(cfg) || b == filepath.Base(rcfg)) && resolveForCompare(p, "/") == rcfg {
+			return true
+		}
+	}
+	if home == "" || !strings.HasPrefix(filepath.Base(p), ".claude") {
+		return false
+	}
+	d := filepath.Dir(p)
+	return d == filepath.Clean(home) || resolveForCompare(d, "/") == resolveForCompare(home, "/")
+}
+
+// expandPathVars replaces a leading $HOME or $CLAUDE_CONFIG_DIR (also in braces) in a path
+// word. The hook runs with the session's environment, so these are the values the shell uses.
+func expandPathVars(w, home string) string {
+	cfg := claudeConfigEnv(home)
+	for _, kv := range [][2]string{{"${HOME}", home}, {"$HOME", home}, {"${CLAUDE_CONFIG_DIR}", cfg}, {"$CLAUDE_CONFIG_DIR", cfg}} {
+		if rest, ok := strings.CutPrefix(w, kv[0]); ok && kv[1] != "" && (rest == "" || rest[0] == '/') {
+			return kv[1] + rest
+		}
+	}
+	return w
+}
+
+// claudeConfigDirs lists the Claude config directories (isClaudeConfigDir) that can hold a
+// file now: ~/.claude, CLAUDE_CONFIG_DIR, and the ~/.claude* directories that exist.
+func claudeConfigDirs(home string) []string {
+	var ds []string
+	if home != "" {
+		ds = append(ds, filepath.Join(home, ".claude"))
+		ents, _ := os.ReadDir(home)
+		for _, e := range ents {
+			p := filepath.Join(home, e.Name())
+			if strings.HasPrefix(e.Name(), ".claude") && e.Name() != ".claude" {
+				if fi, err := os.Stat(p); err == nil && fi.IsDir() {
+					ds = append(ds, p)
+				}
+			}
+		}
+	}
+	if cfg := claudeConfigEnv(home); cfg != "" {
+		ds = append(ds, cfg)
+	}
+	return ds
+}
+
+// isClaudeDir reports whether p holds settings Claude Code loads: a project's .claude
+// directory or a Claude config directory.
+func isClaudeDir(p, home string) bool {
+	return filepath.Base(p) == ".claude" || isClaudeConfigDir(p, home)
 }
 
 // isSettingsPath reports whether the absolute path p is, or is a glob that can match, a
 // settings file in a Claude config directory.
-func isSettingsPath(p string) bool {
-	if !isClaudeDir(filepath.Dir(p)) {
+func isSettingsPath(p, home string) bool {
+	if !isClaudeDir(filepath.Dir(p), home) {
 		return false
 	}
 	base := filepath.Base(p)
@@ -203,37 +273,107 @@ func setupWriteCall(cmd string) bool {
 	return false
 }
 
+// redirOnlyRE is a redirect operator with its target in the next word (`> /dev/null`).
+var redirOnlyRE = regexp.MustCompile(`^(?:\d*|&)(?:>>?|<<?|<>|>&|<&)$`)
+
+// cdWordRE finds a cd, pushd, popd or zsh chdir word (also `\cd`, `builtin cd`, `command
+// cd`), an `env -C` or `env --chdir`, or CDPATH anywhere in a segment. After one, where the
+// command runs can't be known for sure.
+var cdWordRE = regexp.MustCompile("(?:^|[\\s(){}!`\"'])(?:\\\\?(?:cd|pushd|popd|chdir)(?:$|[\\s(){}`\"'])|env(?:\\s.*)?\\s(?:-[A-Za-z0-9]*C|--chdir))|CDPATH")
+
+// cdTarget returns where a segment that starts with cd or pushd goes, when that is a plain
+// path: the first word that is not an option or a redirect, or ~ for a bare cd. It returns
+// "" for anything else (popd, cd -, pushd +1, a cd that is not first).
+func cdTarget(seg string) string {
+	f := strings.Fields(strings.TrimLeft(seg, " \t({"))
+	if len(f) == 0 || f[0] != "cd" && f[0] != "pushd" {
+		return ""
+	}
+	for i := 1; i < len(f); i++ {
+		switch w := f[i]; {
+		case strings.ContainsAny(w, "<>"):
+			if redirOnlyRE.MatchString(w) {
+				i++
+			}
+		case w == "-", strings.HasPrefix(w, "+"): // cd -, pushd +1
+			return ""
+		case strings.HasPrefix(w, "-"): // -L, -P, -e, -@, --
+		default:
+			return strings.Trim(w, `"')}`)
+		}
+	}
+	if f[0] == "cd" {
+		return "~"
+	}
+	return ""
+}
+
 // settingsGuard is the Bash half of the guard.
 func settingsGuard(env *guardEnv, cmd string) decision {
 	if setupWriteCall(cmd) {
 		return settingsAsk("guardrails setup -write")
 	}
-	if !strings.Contains(cmd, ".claude") && !strings.Contains(cmd, "settings") {
+	quick := []string{".claude", "settings"}
+	if cfg := claudeConfigEnv(env.Home); cfg != "" {
+		quick = append(quick, "CLAUDE_CONFIG_DIR", filepath.Base(cfg), filepath.Base(resolveForCompare(cfg, "/")))
+	}
+	if !slices.ContainsFunc(quick, func(q string) bool { return strings.Contains(cmd, q) }) {
 		return decision{}
 	}
+	cwd, lost := env.Cwd, false
 	expand := func(tok string) string {
-		for _, v := range []string{"$HOME", "${HOME}"} {
-			tok = strings.ReplaceAll(tok, v, env.Home)
-		}
-		tok = expandHome(tok, env.Home)
+		tok = expandHome(expandPathVars(tok, env.Home), env.Home)
 		if !filepath.IsAbs(tok) {
-			tok = filepath.Join(env.Cwd, tok)
+			tok = filepath.Join(cwd, tok)
 		}
 		return filepath.Clean(tok)
 	}
-	// dirRef: the command (or the cwd) is in a config dir, so a bare settings.json is one.
-	dirRef := isClaudeDir(env.Cwd)
-	for _, t := range tokSplitRE.Split(cmd, -1) {
-		dirRef = dirRef || t != "" && isClaudeDir(expand(t))
+	// is tests the path tok names. Once a cd word or CDPATH shows up (lost), a relative
+	// .claude* path is also tested as ~/.claude*, so the check fails closed. .claude-plugin
+	// is left out: every plugin repo has one.
+	is := func(tok string, test func(p, home string) bool) bool {
+		if tok == "" {
+			return false
+		}
+		if test(expand(tok), env.Home) {
+			return true
+		}
+		rel := filepath.Clean(tok)
+		first, _, _ := strings.Cut(rel, "/")
+		return lost && env.Home != "" && strings.HasPrefix(first, ".claude") && first != ".claude-plugin" &&
+			test(filepath.Join(env.Home, rel), env.Home)
 	}
+	// From the first segment with a cd, pushd, popd or CDPATH on, the location is lost: a cd
+	// may sit anywhere (`if cd`, `builtin cd`) and may fail. cdTarget adds the plain target
+	// of a cd that starts a segment, so cwd follows it (a subshell's cd is kept after it
+	// ends: that can only ask more). dirRef: the command names a config dir or runs in
+	// one, so a bare settings.json is in one. tokSplitRE splits at braces, so ${HOME}
+	// becomes $HOME first.
+	cmd = strings.NewReplacer(">|", ">", "${HOME}", "$HOME", "${CLAUDE_CONFIG_DIR}", "$CLAUDE_CONFIG_DIR").Replace(cmd)
+	segs := segSplitRE.Split(cmd, -1)
+	cwds, losts := make([]string, len(segs)), make([]bool, len(segs))
+	dirRef := false
+	for i, seg := range segs {
+		lost = lost || cdWordRE.MatchString(seg)
+		cwds[i], losts[i] = cwd, lost
+		dirRef = dirRef || isClaudeDir(cwd, env.Home)
+		for _, t := range tokSplitRE.Split(seg, -1) {
+			dirRef = dirRef || is(t, isClaudeDir)
+		}
+		if dir := cdTarget(seg); dir != "" && !strings.ContainsAny(expandHome(expandPathVars(dir, env.Home), env.Home), "$`") {
+			cwd = expand(dir)
+		}
+	}
+	dirRef = dirRef || isClaudeDir(cwd, env.Home)
 	isFile := func(tok string) bool {
-		return tok != "" && (isSettingsPath(expand(tok)) || dirRef && settingsNameRE.MatchString(tok))
+		return is(tok, isSettingsPath) || tok != "" && dirRef && settingsNameRE.MatchString(tok)
 	}
-	isDir := func(tok string) bool { return tok != "" && isClaudeDir(expand(tok)) }
+	isDir := func(tok string) bool { return is(tok, isClaudeDir) }
 	// Per segment, so a pass below can't hide a write later in the command. rmdir removes
 	// only empty directories, and find writes only with -delete or a writing -exec
 	// (guard-replay: `rmdir .claude/worktrees .claude`, `find ~/.claude -exec ls -l {} \;`).
-	for _, seg := range segSplitRE.Split(strings.ReplaceAll(cmd, ">|", ">"), -1) {
+	for i, seg := range segs {
+		cwd, lost = cwds[i], losts[i]
 		switch op := fileWriteOp(seg, isFile, isDir); {
 		case op == "", op == "rmdir", op == "find" && !findWrites(seg):
 		default:
@@ -278,7 +418,7 @@ func settingsFileToolDecision(tool string, input map[string]any, cwd, home strin
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(cwd, p)
 		}
-		if isSettingsPath(filepath.Clean(p)) || isSettingsPath(resolveForCompare(p, cwd)) {
+		if isSettingsPath(filepath.Clean(p), home) || isSettingsPath(resolveForCompare(p, cwd), home) {
 			return settingsAsk(tool), true
 		}
 	}
