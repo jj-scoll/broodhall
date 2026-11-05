@@ -17,6 +17,7 @@ the third column. A dash means the field is absent from the entry.
 | `PreToolUse` | `Read` | `read-dedup` | `block` |
 | `PreToolUse` | `Read` | `large-read-guard` | `block` |
 | `PostToolUse` | `Bash` | `retry-breaker` | — |
+| `PostToolUse` | <code>Write&#124;Edit&#124;MultiEdit&#124;NotebookEdit</code> | `record-edit` | — |
 | `PostToolUse` | <code>Bash&#124;Edit&#124;Write&#124;MultiEdit&#124;NotebookEdit&#124;mcp__.*</code> | `ask-outcome` | — |
 | `PostToolUseFailure` | `Bash` | `retry-breaker` | — |
 | `PostToolUseFailure` | <code>Bash&#124;Edit&#124;Write&#124;MultiEdit&#124;NotebookEdit&#124;mcp__.*</code> | `ask-outcome` | — |
@@ -52,28 +53,35 @@ The module hooks two events and calls `sh "$plugin_root/scripts/run.sh"` through
 | `turn.complete` | After a main-session turn, starts the watch for the clear that guardrails' `autoclear` arms. |
 | `prompt.submit` | Carries a prompt over a clear, adds the warning note, or drops the prompt past the block level. |
 
-The launcher accepts `state` and `autoclear <args>` and prints nothing and exits 1 when it
-finds no guardrails binary. It needs Claude Code 2.1.317 or newer. See
+The launcher accepts `state` and `autoclear <args>`, and exits 2 for any other argument. It
+prints nothing and exits 1 when it finds no state directory, or, for `autoclear`, no
+guardrails binary. With `HANDOFF_STATE_DIR` set, `state` works with no binary at all. It
+needs Claude Code 2.1.317 or newer. See
 [Context guard](../context-guard/index.md).
 
 ## memory
 
-The memory plugin registers two hooks in its own `hooks/hooks.json`, and an MCP server in
+The memory plugin registers three hooks in its own `hooks/hooks.json`, and an MCP server in
 `.mcp.json`. Each command runs the plugin's `scripts/run.sh` launcher with the argument in
 the third column.
 
 | Event | Matcher | Argument | Timeout |
 | --- | --- | --- | --- |
 | `SessionStart` | — | `session-start` | 15 s |
+| `PostCompact` | — | `compact-capture` | 5 s |
 | `PreToolUse` | <code>Edit&#124;Write&#124;NotebookEdit</code> | `lookup` | 5 s |
 
 `session-start` starts the daemon (`memory serve`) and prints the context block with
 `memory context`. If the binary is not installed yet, it starts a background install and
-prints nothing. `lookup` runs `memory lookup`. The MCP server `memory` runs
+prints nothing. `compact-capture` runs `memory compact-capture`, which saves the compaction
+summary. If the program is missing or fails, the launcher saves the raw payload to
+`compactions/` in the state directory for the daemon to pick up (see
+[Privacy](../memory/privacy.md#what-is-sent)). `lookup` runs `memory lookup`. The MCP server
+`memory` runs
 `run.sh mcp`, which hands over to `memory mcp`. With no binary for this version, `run.sh mcp`
 starts the install and serves from the newest older binary, or waits up to 25 seconds for it,
 so Claude Code does not cache a failed connection.
 
-Neither hook has `onFailure: block`. The launcher always exits 0, prints nothing on any
+None of the hooks has `onFailure: block`. The launcher always exits 0, prints nothing on any
 failure, and kills the program after `MEMORY_HOOK_TIMEOUT` seconds (3 by default), so every
 memory hook fails open.

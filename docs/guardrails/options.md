@@ -4,6 +4,12 @@ Ten plugin options, two files under `~/.config/guardrails/`, and two environment
 that are not plugin options (`HANDOFF_AUTOCLEAR` and `GUARDRAILS_BIN`). The older
 `claude-tools` names still work; see [Older names](#older-names).
 
+Other variables are covered where they apply: `HANDOFF_STATE_DIR` in
+[Handoff gate](handoff-gate.md#state), `GUARDRAILS_INSTALL_WAIT` in
+[Updating](../guide/updating.md#between-the-update-and-the-download).
+`GUARDRAILS_RELEASE_URL` sets where the launcher downloads releases from, for a mirror; it
+defaults to this repository's GitHub releases.
+
 Set the plugin options with `/plugin configure guardrails@broodhall`, or from `/config`.
 
 ## `disabled_guards`
@@ -57,7 +63,7 @@ Outside the plugin the same list is read from `GUARDRAILS_PII_ALLOW`.
 | --- | --- |
 | Title | Observe mode (log only) |
 | Default | off |
-| Description | Off by default. When on, the optional guards (git, egress, pii, raw-client-data, sweep) allow the call and record what they would have asked or blocked, instead of stopping it. These stay enforced: the core blocks, the settings-file and secret-file guards, config-gate, compact-guard, the large-read block, the session-URL block and egress asks about a secret. Run guardrails guard-report to see the counts. |
+| Description | Off by default. When on, the optional guards (git, egress, pii, raw-client-data, sweep) allow the call and record what they would have asked or blocked, instead of stopping it. These stay enforced: the core blocks, the git asks about skipped hooks or signing, the download-and-run ask, the settings-file and secret-file guards, config-gate, compact-guard, the large-read block, the session-URL block and egress asks about a secret. Run guardrails guard-report to see the counts. |
 
 Use it to see what the guards would do before you let them stop anything. It is one switch
 for all guards, not one per guard.
@@ -69,6 +75,11 @@ them does not ask, and a block from one of them does not block. The call runs.
 What it does not cover stays enforced:
 
 - The [core blocks](bash-core.md) and the `git push --force` block.
+- The [Git](git.md) asks about a command that skips hooks or signing (`--no-verify`,
+  `core.hooksPath`, `HUSKY=0`, `--no-gpg-sign` and the rest). They are in the `git` family,
+  so `disabled_guards` turns them off, but observe mode does not; the destructive-verb asks
+  in the same family are observed.
+- The [Download and run](download-exec.md) ask.
 - [Settings files](settings-files.md) and [Secret files](secret-files.md).
 - The [config gate](config-gate.md), which stops edits that would weaken the guards, and the
   compact guard, which blocks a second manual compact.

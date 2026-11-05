@@ -40,8 +40,8 @@ Uninstalling memory does not touch two things.
   tool calls to Claude to write notes (see [Privacy and redaction](../memory/privacy.md)).
   Disabling the plugin does not stop it either.
 - **Your stored memories.** They live outside the plugin, in `~/.local/share/memory/` (or
-  `$MEMORY_DIR`). Delete that directory to remove them. The optional settings file in
-  `~/.config/memory/` is also yours to delete.
+  `$MEMORY_DIR`, or `$XDG_DATA_HOME/memory` when that is set). Delete that directory to
+  remove them. The optional settings file in `~/.config/memory/` is also yours to delete.
 
 Stop the daemon first, then delete the directory.
 

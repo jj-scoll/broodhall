@@ -32,7 +32,7 @@ The guard blocks these:
   pushes is caught too.
 
 ```text
-BLOCKED: this command carries a claude.ai session link or Claude-Session trailer (in the command text or body) and would write or send it. Remove it and run again. …
+BLOCKED: this command carries a claude.ai session link or Claude-Session trailer (in the command text or body) and would send it off this machine. Remove it and run again. …
 ```
 
 Both replies end with one more sentence that refers to the author's own `CLAUDE.md` rules;

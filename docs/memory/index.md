@@ -12,15 +12,17 @@ claude plugin marketplace add jj-scoll/broodhall
 claude plugin install memory@broodhall
 ```
 
-The first session after install downloads the program in the background, so memory starts
-with the next session. See [Install](../guide/install.md) for requirements.
+The first session after install downloads the program in the background. When the download
+lands, the daemon starts and records the rest of that session. The context block at session
+start begins with the next session. See [Install](../guide/install.md) for requirements.
 
 ## Read this first: what leaves your machine
 
 Your transcripts are stored locally, and the database is never uploaded. But the notes are
 written by a model, and that model is Claude. The daemon runs your own `claude` command
 (`claude -p`, with the Haiku model `claude-haiku-5-5`) once per tool call and sends it the
-tool's name, input and output. So that text goes to Anthropic, through your Claude account,
+tool's name, input and output. For the session summaries it also sends your prompts and the
+titles of the session's notes. So that text goes to Anthropic, through your Claude account,
 and counts against your usage. Secrets are masked before it is sent. Details and limits are
 on [Privacy and redaction](privacy.md).
 
@@ -35,7 +37,8 @@ on [Privacy and redaction](privacy.md).
    tool call. Secrets are masked as the lines are read.
 3. **Observations.** Each tool call is queued, and a worker asks Claude to write one
    structured note about it: a type, a title, the facts, and the files read or changed. A
-   second worker writes a summary of each session. If `claude` is missing or signed out, the
+   second worker writes a short summary of the session after each burst of turns, a minute
+   after the first turn of the burst ends. If `claude` is missing or signed out, the
    calls stay queued and nothing is lost.
 4. **SessionStart context.** When a session starts, the hook prints a block of context for
    the project: recent activity, open work items and, once, any handoff. It is capped at
@@ -81,6 +84,11 @@ on [Privacy and redaction](privacy.md).
 The three `smart_` tools run inside the MCP process, stay inside the project directory, and
 refuse credential files.
 
+Two `work_state_write` lists are special. `facts` keeps lasting facts about the project, and
+`user-facts` keeps facts for every project. Both appear at the start of every session. Write
+one key per fact, and null to delete it. An item can also carry a `work_product` field, the
+URL or path of something it produced, which the [UI](ui-and-quack.md) shows with the item.
+
 ## Token cost and cache misses
 
 The daemon also records the token counts of every Claude response in the transcripts: model,
@@ -111,8 +119,11 @@ directory from where the plugin is installed. With `CLAUDE_CONFIG_DIR` set, use 
 Rules apply in that order, except that idle ranks above a model switch, since the entry had
 expired either way. Transcript times are when a block was written, not when the request
 started, so gaps near 5 minutes or 1 hour can be off. Subagent and observer turns are left
-out unless you pass `--include-sidechain`. Other flags: `--days N` (0 for all time),
-`--min-cache N` (tokens that count as large, default 20000), `--top N`.
+out unless you pass `--include-sidechain`. Other flags: `--days N` (default 7, 0 for all
+time), `--min-cache N` (tokens that count as large, default 20000), `--top N` (default 10).
+
+`memory cost` asks the running daemon for the report, so start a session first. With no
+daemon it prints ``memory cost: ... (is `memory serve` running?)`` and exits 1.
 
 Prices are a dated table in `cmd/memory/memdcost.go`. Models not in it count as $0 and are
 named in the report.
@@ -164,7 +175,8 @@ The plugin ships a skill named `handoff`. When you stop or switch sessions, Clau
 `handoff`. The next session in that project shows the digest once, at the top of the
 context, with the path of the full file. A handoff older than 7 days is not shown unless you
 change `handoff_max_age_hours` in [Options](options.md). A resumed session neither shows nor
-uses it up.
+uses it up. After a compaction, a handoff not yet shown appears only if it was written in the
+last 30 minutes.
 
 ## It fails open
 

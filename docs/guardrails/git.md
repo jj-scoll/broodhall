@@ -91,7 +91,8 @@ The short `-n` counts only where git means `--no-verify` by it: `git commit` and
 - `git restore --staged .`, which only unstages.
 - `git clean -n`, `git clean -fdn` and `git clean --dry-run -f`, which delete nothing.
 - `git branch -d merged-feature`, `git branch -a`, `git branch --show-current`.
-- `git stash pop`, `git stash list`, `git stash show -p`, `git stash apply`.
+- `git stash pop`, `git stash list`, `git stash show -p`, `git stash apply`, and `git stash push`,
+  which the ask itself suggests as the reversible step.
 - `git log -n 5`, `git push -n`, `git merge -n`, `git revert -n HEAD`, `git clean -n`.
 - `git commit -S`, `git config core.hooksPath` and `--get` (reads), `git config --unset
   core.hooksPath`, `git config commit.gpgsign true`, `HUSKY=1`, `SKIP=` with no value, and

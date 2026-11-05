@@ -38,8 +38,10 @@ you the guard's reason before anything runs. That is the ASK response described 
 
 ### memory
 
-memory downloads in the background during the first session and starts from the second. In
-the second session, check that the daemon runs and serves its page:
+memory downloads in the background during the first session. When the download lands, the
+daemon starts and records the rest of that session; the context block at session start
+begins with the second. Once the download has landed, check that the daemon runs and serves
+its page:
 
 ```sh
 pgrep -f 'memory serve'

@@ -19,7 +19,8 @@ A push to `main` that changes shipped files (`plugins/` except `test/` and `test
 3. pushes the commit and the tag `vX.Y.Z` to `main` in one atomic push, then publishes the
    draft. If `main` moved meanwhile, it rebases when only docs, tests or `.github` changed;
    if shipped files changed, it releases nothing, because the run queued for that merge does,
-4. deletes the scratch branch and any draft left over from a failed run.
+4. deletes the scratch branch. A draft left over from a failed run is published if its tag
+   reached `main`, and deleted only if the tag is not on the remote.
 
 Guardrails' hooks fail closed when the binary for the `plugin.json` version cannot be
 downloaded, which is why `main` is only updated after the assets exist. The gap between the
@@ -42,10 +43,14 @@ Only a commit's title (first line) counts, apart from the breaking-change footer
 start a line in the body and be followed by a colon and a space (the Conventional Commits
 footer). Prose in a body that mentions `#major` or `feat:` does nothing.
 
-Pull requests are merged with a merge commit. The workflow reads the commits since the last tag
-with `--no-merges`, so the "Merge pull request #N from ..." commit, and with it the PR title
-and description, never counts, while the PR's own commits do. To force a bump, put `#minor`
-or `#major` in the title of one of the PR's commits, or use a `feat:` or `type!:` title.
+Pull requests are squash-merged, so each lands on `main` as one commit whose title is the PR
+title (GitHub uses the commit's own title for a PR with a single commit). That title decides
+the bump. To force one, put `#minor` or `#major` in the PR title, or use a `feat:` or
+`type!:` title.
+
+The workflow reads the commits since the last tag with `--no-merges`. If a PR is merged with
+a merge commit instead, the "Merge pull request #N from ..." commit, and with it the PR
+title, never counts, while the PR's own commits do.
 
 ## Assets
 

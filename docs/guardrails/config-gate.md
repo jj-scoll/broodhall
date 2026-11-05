@@ -44,7 +44,8 @@ create, update or similar.
 
 ## How it decides
 
-At session start the hook saves a snapshot of the user and project settings files, in
+When a new session starts (not on resume, `/clear` or compaction) the hook saves a snapshot
+of the user and project settings files, in
 `$XDG_STATE_HOME/guardrails/config-gate/` (`~/.local/state/...` when unset). Later changes
 are compared with the snapshot. A change that applies becomes the new snapshot; a blocked one
 does not. Claude Code stages some edits as `<file>.proposed-<id>` for review; those are
@@ -71,4 +72,6 @@ parse.
 ## Turning it off
 
 You cannot. It has no family name in `disabled_guards`. If the binary is not installed yet,
-the launcher lets the change through, like every other hook.
+the launcher blocks the change, like the other guards, unless
+[`fail_open`](options.md#fail_open) is on. After an update, while only the new version's
+binary is missing, it runs the previous version's binary instead.
