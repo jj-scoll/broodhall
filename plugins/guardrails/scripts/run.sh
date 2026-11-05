@@ -111,23 +111,27 @@ lock_live() {
 }
 # take_lock makes the lock ours. The pid file is the claim: set -C creates it with O_EXCL, which
 # the kernel makes exclusive. mkdir is not: uutils mkdir (Ubuntu 25.10 and later) can let two
-# racing processes both succeed. A dead or expired lock is moved aside and removed first.
-# Two takers can both find it dead, and the slower one would then move aside the lock the faster
-# one had just made and claimed. So a taker first creates $lock/takeover (set -C again: one wins),
-# and moves the lock aside only if its pid file still holds the pid lock_live judged. The token
-# goes with the lock it was made in; one older than a minute was left by a taker that died.
+# racing processes both succeed. A dead or expired lock is taken over where it is: its pid file is
+# removed and claimed again, so the lock dir never goes away and a waiting guard never sees it
+# gone midway. Two takers can both find it dead, and the slower one would then remove the pid the
+# faster one had just claimed. So a taker first creates $lock/takeover (set -C again: one wins),
+# and removes the pid file only if it still holds the pid lock_live judged; an empty one only once
+# it is a minute old, as its owner may be between creating it and writing it. lock_live counts
+# the lock held while the token is there; one older than a minute was left by a taker that died.
 claim_lock() { (set -C && echo $$ >"$lock/pid") 2>/dev/null; }
 take_lock() {
 	mkdir -p "$lock" 2>/dev/null || return 1
 	claim_lock && return 0
 	lock_live && return 1
 	if (set -C && : >"$lock/takeover") 2>/dev/null || [ -n "$(find "$lock/takeover" -mmin +1 2>/dev/null)" ]; then
-		if [ -f "$lock/pid" ] && [ "$(cat "$lock/pid" 2>/dev/null)" = "$p" ]; then
-			mv "$lock" "$lock.stale.$$" 2>/dev/null && rm -rf "$lock.stale.$$"
-		else
-			rm -f "$lock/takeover"
-		fi
+		[ -f "$lock/pid" ] && [ "$(cat "$lock/pid" 2>/dev/null)" = "$p" ] &&
+			{ [ -n "$p" ] || [ -n "$(find "$lock/pid" -mmin +1 2>/dev/null)" ]; } && rm -f "$lock/pid"
+		claim_lock
+		r=$?
+		rm -f "$lock/takeover"
+		return $r
 	fi
+	# No token: the lock went away (released) since lock_live looked, or another taker has it.
 	mkdir -p "$lock" 2>/dev/null && claim_lock
 }
 recent_failure() { [ -n "$(find "$stamp" -mmin -5 2>/dev/null)" ]; }

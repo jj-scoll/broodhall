@@ -518,31 +518,33 @@ hook install
 [ "$rc" = 0 ] && [ -x "$c/data/bin/$ver/guardrails" ] && ok "a lock held by a dead process is taken over" || bad "a lock held by a dead process is taken over" "rc=$rc out=$out"
 
 # Two installers find the same dead lock. Replacing it is not one step, so the slower one must not
-# move aside the lock the faster one has just made and claimed. An mv on PATH forces that order:
-# the first to move the lock waits (up to 3 s) for a second to try, and the second waits until
-# the first has moved it and claimed a new one.
+# undo the lock the faster one has just claimed. Shims on PATH force that order on whichever step
+# replaces the dead lock (mv of the lock dir, or rm of its pid file): the first taker to get there
+# waits (up to 3 s) for a second, and the second waits until the first has claimed the lock.
 newcase dead-lock-two-takers
 mkrelease "$c/rel"
 mkslowcurl "$c/path" 1
 export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
-realmv=$(command -v mv)
-cat >"$c/path/mv" <<EOF
+for cmd in mv rm; do
+	cat >"$c/path/$cmd" <<EOF
 #!/bin/sh
-case \$1 in
-*/.install-lock)
+for a; do last=\$a; done
+case $cmd:\$1:\$last in
+mv:*/.install-lock:* | rm:*:*/.install-lock/pid)
 	if (set -C && : >"$c/path/mv.first") 2>/dev/null; then
 		i=0; while [ ! -e "$c/path/mv.second" ] && [ \$i -lt 30 ]; do sleep 0.1; i=\$((i + 1)); done
-		$realmv "\$@"; rc=\$?
+		$(command -v $cmd) "\$@"; rc=\$?
 		: >"$c/path/mv.done"
 		exit \$rc
 	fi
 	: >"$c/path/mv.second"
-	i=0; while ! { [ -e "$c/path/mv.done" ] && [ -s "\$1/pid" ]; } && [ \$i -lt 50 ]; do sleep 0.1; i=\$((i + 1)); done
+	i=0; while ! { [ -e "$c/path/mv.done" ] && [ -s "$c/data/bin/.install-lock/pid" ]; } && [ \$i -lt 50 ]; do sleep 0.1; i=\$((i + 1)); done
 	;;
 esac
-exec $realmv "\$@"
+exec $(command -v $cmd) "\$@"
 EOF
-chmod +x "$c/path/mv"
+	chmod +x "$c/path/$cmd"
+done
 mkdir -p "$c/data/bin/.install-lock"
 sh -c 'echo $$' >"$c/data/bin/.install-lock/pid"
 PATH=$c/path:$PATH sh "$run_sh" install </dev/null >"$c/o1" 2>&1 &
@@ -553,6 +555,48 @@ wait "$p1" "$p2"
 n=$(grep -c 'tar.gz' "$c/path/curl.log" 2>/dev/null)
 [ "${n:-0}" = 1 ] && ok "two takers of a dead lock: one takes it over, one download" || bad "two takers of a dead lock: one takes it over, one download" "downloads: ${n:-0} mv.second: $([ -e "$c/path/mv.second" ] && echo yes || echo no)"
 [ ! -s "$c/o1" ] && [ ! -s "$c/o2" ] && [ -x "$c/data/bin/$ver/guardrails" ] && ok "two takers of a dead lock: both succeed silently" || bad "two takers of a dead lock: both succeed silently" "o1=$(cat "$c/o1") o2=$(cat "$c/o2")"
+
+# A guard that arrives while an install is taking over a dead lock waits for that install
+# through the whole takeover; it must not find the lock gone midway and block. Shims on PATH: the
+# guard's sleep marks that it is waiting, and the taker's first mv or rm of the lock waits for
+# that mark, runs, then holds for 2 s, past the guard's next look at the lock.
+newcase takeover-guard-waits
+mkrelease "$c/rel"
+mkslowcurl "$c/path" 0
+export CLAUDE_TOOLS_RELEASE_URL=file://$c/rel
+realsleep=$(command -v sleep)
+cat >"$c/path/sleep" <<EOF
+#!/bin/sh
+: >"$c/path/waiting"
+exec $realsleep "\$@"
+EOF
+chmod +x "$c/path/sleep"
+for cmd in mv rm; do
+	cat >"$c/path/$cmd" <<EOF
+#!/bin/sh
+case "\$*" in
+*/.install-lock*)
+	if (set -C && : >"$c/path/held") 2>/dev/null; then
+		i=0; while [ ! -e "$c/path/waiting" ] && [ \$i -lt 50 ]; do $realsleep 0.1; i=\$((i + 1)); done
+		[ -e "$c/path/waiting" ] && : >"$c/path/forced"
+		$(command -v $cmd) "\$@"; rc=\$?
+		$realsleep 2
+		exit \$rc
+	fi
+	;;
+esac
+exec $(command -v $cmd) "\$@"
+EOF
+	chmod +x "$c/path/$cmd"
+done
+mkdir -p "$c/data/bin/.install-lock"
+sh -c 'echo $$' >"$c/data/bin/.install-lock/pid"
+PATH=$c/path:$PATH sh "$run_sh" install </dev/null >"$c/o1" 2>&1 &
+p1=$!
+i=0; while [ ! -e "$c/data/bin/.install-lock/takeover" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+PATH=$c/path:$PATH hook pre-tool-use
+wait "$p1"
+if ran_stub pre-tool-use && [ -e "$c/path/forced" ]; then ok "a guard waits through another process's takeover of a dead lock"; else bad "a guard waits through another process's takeover of a dead lock" "rc=$rc err=$err held=$([ -e "$c/path/held" ] && echo yes || echo no) forced=$([ -e "$c/path/forced" ] && echo yes || echo no)"; fi
 
 # A taker that died holding the takeover token does not keep the dead lock forever.
 newcase dead-lock-old-token
