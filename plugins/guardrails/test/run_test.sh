@@ -409,6 +409,33 @@ kill "$holder" 2>/dev/null
 expect_blocked "install in flight past the wait: pre-tool-use blocks"
 case $err in *"Installing it in the background"*) ok "install in flight: the message says it is installing" ;; *) bad "install in flight: the message says it is installing" "$err" ;; esac
 
+# A data dir it cannot create, or a bin/ it cannot write: nothing can install, so the message
+# says so and names the dir, not a background install or a failed one. Root ignores the modes.
+for variant in uncreatable readonly-bin; do
+	newcase "unwritable-$variant"
+	if [ "$(id -u)" -eq 0 ]; then
+		ok "unwritable data dir ($variant): the message says it cannot write (skipped as root)"
+		continue
+	fi
+	if [ "$variant" = uncreatable ]; then
+		ro=$c/ro
+		mkdir -p "$ro"
+		export CLAUDE_PLUGIN_DATA=$ro/data
+	else
+		ro=$c/data/bin
+		mkdir -p "$ro"
+	fi
+	chmod 555 "$ro"
+	hook pre-tool-use
+	chmod 755 "$ro"
+	expect_blocked "unwritable data dir ($variant): pre-tool-use blocks"
+	case $err in
+	*background* | *"last install failed"*) bad "unwritable data dir ($variant): the message says it cannot write" "$err" ;;
+	*"cannot write $CLAUDE_PLUGIN_DATA/bin"*) ok "unwritable data dir ($variant): the message says it cannot write" ;;
+	*) bad "unwritable data dir ($variant): the message says it cannot write" "$err" ;;
+	esac
+done
+
 # fail_open still allows silently, and still starts the install.
 newcase bump-failopen
 mkrelease "$c/rel"

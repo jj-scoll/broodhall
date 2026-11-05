@@ -124,7 +124,7 @@ jobs:
       - run: CGO_ENABLED=1 MEMORY_EXT_DIR="$PWD/build/ext" go test ./cmd/memory/...
       - name: Build
         run: |
-          CGO_ENABLED=1 go build -trimpath -ldflags "-s -w" -o build/memory ./cmd/memory
+          CGO_ENABLED=1 go build -trimpath -ldflags "-s -w -X main.stampRev=$(git rev-parse HEAD) -X main.stampVersion=$TAG" -o build/memory ./cmd/memory
           file build/memory
           mkdir -p dist
           tar -cf "dist/memory_${{ matrix.os }}_${{ matrix.arch }}.tar" -C build memory ext

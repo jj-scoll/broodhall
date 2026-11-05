@@ -129,7 +129,8 @@ or compacting. With no binary at the expected
 path (never downloaded, a failed download, a checksum mismatch), the launcher exits 2 and
 writes this to stderr, which Claude Code shows in place of the tool call (the path and
 version differ). The second line reads `The last install failed. Retry now with: ...` when the
-background install failed. A missing binary of one version while another version's binary is
+background install failed, and `It cannot be installed: this user cannot write <dir>/bin. ...`
+when the plugin data directory is not writable, so no install can run. A missing binary of one version while another version's binary is
 installed does not block; see [Updating](../guide/updating.md#between-the-update-and-the-download).
 
 ```text
