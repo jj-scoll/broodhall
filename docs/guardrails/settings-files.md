@@ -22,9 +22,9 @@ The last two are the Claude config directories, the same ones whose credentials 
 `$CLAUDE_CONFIG_DIR`. A config directory with another name that this session does not use
 is not covered.
 
-A relative path counts from where the command started. Once a `cd`, `pushd` or `popd` shows
-up anywhere in the command (also `builtin cd`, `command cd`, `\cd` or `if cd`), or `CDPATH`
-does, the guard can't be sure where it runs. From there on, a relative `.claude*` path is
+A relative path counts from where the command started. Once a `cd`, `pushd`, `popd` or zsh
+`chdir` shows up anywhere in the command (also `builtin cd`, `command cd`, `\cd` or `if cd`),
+or `env -C`, `env --chdir` or `CDPATH` does, the guard can't be sure where it runs. From there on, a relative `.claude*` path is
 also read as one in your home. `.claude-plugin` is left out of that, since every plugin repo
 has one. When a segment starts with `cd` or `pushd` and a plain path, such as `cd /x` or
 `cd ~/.claude-work`, relative paths after it are also read from there. A write inside a

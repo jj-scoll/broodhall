@@ -44,12 +44,22 @@ func claudeConfigEnv(home string) string {
 // list of config directories, and ~/.claude-<name> is the usual name for another account's.
 // The settings-file guard asks before a write to the settings in one, and the secret-file
 // guard protects the credentials in each (claudeConfigDirs).
+//
+// Both sides are compared with symlinks resolved: on macOS /var is /private/var, so a path
+// and the variable that names it can each go through a link. p is resolved only when its
+// name could match, which keeps the stat calls off most words of a command.
 func isClaudeConfigDir(p, home string) bool {
-	if cfg := claudeConfigEnv(home); cfg != "" && (p == cfg || p == resolveForCompare(cfg, "/")) {
-		return true
+	if cfg := claudeConfigEnv(home); cfg != "" {
+		rcfg := resolveForCompare(cfg, "/")
+		if b := filepath.Base(p); p == cfg || (b == filepath.Base(cfg) || b == filepath.Base(rcfg)) && resolveForCompare(p, "/") == rcfg {
+			return true
+		}
+	}
+	if home == "" || !strings.HasPrefix(filepath.Base(p), ".claude") {
+		return false
 	}
 	d := filepath.Dir(p)
-	return home != "" && (d == filepath.Clean(home) || d == resolveForCompare(home, "/")) && strings.HasPrefix(filepath.Base(p), ".claude")
+	return d == filepath.Clean(home) || resolveForCompare(d, "/") == resolveForCompare(home, "/")
 }
 
 // expandPathVars replaces a leading $HOME or $CLAUDE_CONFIG_DIR (also in braces) in a path
@@ -266,9 +276,10 @@ func setupWriteCall(cmd string) bool {
 // redirOnlyRE is a redirect operator with its target in the next word (`> /dev/null`).
 var redirOnlyRE = regexp.MustCompile(`^(?:\d*|&)(?:>>?|<<?|<>|>&|<&)$`)
 
-// cdWordRE finds a cd, pushd or popd word (also `\cd`, `builtin cd`, `command cd`) or CDPATH
-// anywhere in a segment. After one, where the command runs can't be known for sure.
-var cdWordRE = regexp.MustCompile("(?:^|[\\s(){}!`\"'])\\\\?(?:cd|pushd|popd)(?:$|[\\s(){}`\"'])|CDPATH")
+// cdWordRE finds a cd, pushd, popd or zsh chdir word (also `\cd`, `builtin cd`, `command
+// cd`), an `env -C` or `env --chdir`, or CDPATH anywhere in a segment. After one, where the
+// command runs can't be known for sure.
+var cdWordRE = regexp.MustCompile("(?:^|[\\s(){}!`\"'])(?:\\\\?(?:cd|pushd|popd|chdir)(?:$|[\\s(){}`\"'])|env(?:\\s.*)?\\s(?:-[A-Za-z0-9]*C|--chdir))|CDPATH")
 
 // cdTarget returns where a segment that starts with cd or pushd goes, when that is a plain
 // path: the first word that is not an option or a redirect, or ~ for a bare cd. It returns

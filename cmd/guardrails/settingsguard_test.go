@@ -109,6 +109,11 @@ func TestSettingsGuardFollowsConfigDirs(t *testing.T) {
 		"CDPATH=~ cd .claude-work && echo 1 > settings.json",
 		"export CDPATH=~; cd .claude-work && echo 1 > settings.json",
 		"export CDPATH=$HOME; cd .claude-work >/dev/null && echo 1 > settings.json",
+		// env -C / --chdir and zsh's chdir move too (verify-58 N1, N2).
+		"env -C ~ tee .claude-work/settings.json",
+		"env --chdir=$HOME tee .claude-work/settings.json",
+		"env --chdir ~ tee -a .claude-work/settings.json",
+		"chdir ~ && echo 1 > .claude-work/settings.json",
 		// Main asked these by name too: the cd may not land where it says.
 		"cd ~/src && echo '{}' > .claude-work/settings.json",
 		"cd ~/src 2>/dev/null && echo '{}' > .claude-work/settings.json",
@@ -145,7 +150,11 @@ func TestSettingsGuardFollowsConfigDirs(t *testing.T) {
 // The same rule when home or CLAUDE_CONFIG_DIR is a symlink: the real path counts, and a
 // command naming the real config dir is not skipped.
 func TestSettingsGuardSymlinkedDirs(t *testing.T) {
-	real := t.TempDir()
+	// real sits under a symlinked parent, as macOS's /var -> /private/var holds t.TempDir.
+	top := t.TempDir()
+	os.MkdirAll(filepath.Join(top, "private", "real"), 0o755)
+	os.Symlink(filepath.Join(top, "private"), filepath.Join(top, "var"))
+	real := filepath.Join(top, "var", "real")
 	home := filepath.Join(t.TempDir(), "homelink")
 	os.Symlink(real, home)
 	os.MkdirAll(filepath.Join(real, ".claude-work"), 0o755)
