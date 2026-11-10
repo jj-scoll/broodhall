@@ -57,6 +57,52 @@ func TestRedactRestoresPsqlFormats(t *testing.T) {
 	}
 }
 
+// psql --csv -f script.sql prints every result set and \echo/\pset line into one stream
+// (captured from psql 18). Issue #64: this panicked in the aligned renderer.
+const psqlScriptCSV = "Pager usage is off.\n" +
+	"== tables: location, size, estimated rows\n" +
+	"schema,tbl,size,est,email\n" +
+	"public,users,8 kB,3,x@y.org\n" +
+	"== foreign keys pointing INTO these tables\n" +
+	"conrelid,confrelid,conname\n" +
+	"== user triggers on these tables\n" +
+	"tgrelid,tgname\n" +
+	"users,trg\n"
+
+func TestRedactPsqlScriptMixedOutput(t *testing.T) {
+	got := redactWith(t, psqlScriptCSV, "--in=csv", "--to=aligned", "--footer")
+	// Widths count the real 14-character tag; tagsOut shortens it after rendering.
+	want := "Pager usage is off.\n" +
+		" == tables: location |  size |  estimated rows\n" +
+		"---------------------+-------+-----------------\n" +
+		"(0 rows)\n" +
+		" schema | tbl   | size | est | email\n" +
+		"--------+-------+------+-----+----------------\n" +
+		" public | users | 8 kB | 3   | [email:T]\n" +
+		"(1 row)\n" +
+		"== foreign keys pointing INTO these tables\n" +
+		" conrelid | confrelid | conname\n" +
+		"----------+-----------+---------\n" +
+		"(0 rows)\n" +
+		"== user triggers on these tables\n" +
+		" tgrelid | tgname\n" +
+		"---------+--------\n" +
+		" users   | trg\n" +
+		"(1 row)\n"
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestRedactPsqlLaterResultMaskedByItsOwnHeader(t *testing.T) {
+	// psql --csv -c 'select id ...; select first_name, last_name ...': the second header
+	// must name the second result's columns, not be read as a row of the first.
+	got := redactWith(t, "id\n1\nfirst_name,last_name\nAnn,Lee\n", "--in=csv")
+	if want := "id\n1\nfirst_name,last_name\n[person_name:T],[person_name:T]\n"; got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
 func TestRedactRestoresDuckdbFormats(t *testing.T) {
 	// duckdb -json prints one document per statement.
 	jsonIn := `[{"id":1,"email":null,"s":"a|b"},` + "\n" + `{"id":22,"email":"x@y.org","s":"y"}]` + "\n" + `[{"first_name":"Ann"}]` + "\n"

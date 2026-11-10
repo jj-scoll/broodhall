@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"io"
 	"strings"
 	"unicode/utf8"
 )
@@ -52,6 +53,7 @@ func agentCap(o redactOpts, t resultTable) (resultTable, string) {
 type resultTable struct {
 	cols []string
 	rows [][]string
+	text string // set instead of cols/rows: a line between results, printed as is
 }
 
 // docTable turns one duckdb -json document (an array of row objects) into a table.
@@ -103,6 +105,10 @@ func cellText(v any) string {
 func renderTables(o redactOpts, tables []resultTable) []byte {
 	var b bytes.Buffer
 	for i, t := range tables {
+		if t.text != "" {
+			b.WriteString(t.text + "\n")
+			continue
+		}
 		if i > 0 && (o.to == "line" || o.to == "markdown") {
 			b.WriteByte('\n')
 		}
@@ -209,17 +215,44 @@ func (x *redactor) redactOutput(o redactOpts, in []byte) []byte {
 	}
 	switch o.in {
 	case "csv":
+		// psql --csv prints every result set (header, then rows) and any \echo or \pset line
+		// into one stream. A record whose field count differs from the current header starts
+		// a new table (#64). Adjacent results of the same width still read as one table.
 		r := csv.NewReader(bytes.NewReader(in))
 		r.FieldsPerRecord, r.LazyQuotes = -1, true
-		rows, err := r.ReadAll()
-		if err != nil || len(rows) == 0 {
+		var tables []resultTable
+		var heads []string // each table's header line as printed
+		for {
+			start := r.InputOffset()
+			rec, err := r.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return []byte(x.maskValues(string(in)))
+			}
+			if n := len(tables); n > 0 && len(rec) == len(tables[n-1].cols) {
+				tables[n-1].rows = append(tables[n-1].rows, rec)
+				continue
+			}
+			tables = append(tables, resultTable{cols: rec})
+			heads = append(heads, strings.TrimRight(string(in[start:r.InputOffset()]), "\r\n"))
+		}
+		if len(tables) == 0 {
 			return []byte(x.maskValues(string(in)))
 		}
-		t := x.maskTable(resultTable{cols: rows[0], rows: rows[1:]})
+		for i, t := range tables {
+			if len(tables) > 1 && len(t.cols) == 1 && len(t.rows) == 0 {
+				// One field and no rows between other results: \echo or \pset text.
+				tables[i] = resultTable{text: x.maskValues(heads[i])}
+				continue
+			}
+			tables[i] = x.maskTable(t)
+		}
 		if o.to == "" {
 			o.to = "csv"
 		}
-		return renderTables(o, []resultTable{t})
+		return renderTables(o, tables)
 	case "json", "jsonl", "auto", "":
 		if t := bytes.TrimSpace(in); o.in == "auto" || o.in == "" {
 			if t[0] != '{' && t[0] != '[' {
@@ -257,6 +290,7 @@ func (x *redactor) maskTable(t resultTable) resultTable {
 	cats := make([]string, len(t.cols))
 	for i, h := range t.cols {
 		cats[i] = x.rules.category(h)
+		t.cols[i] = x.maskValues(h) // an \echo line with commas reads as a header
 	}
 	for _, row := range t.rows {
 		for i, v := range row {

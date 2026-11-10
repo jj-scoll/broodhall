@@ -443,7 +443,16 @@ func runRedact(x *redactor, args []string, stdin io.Reader, stdout, stderr io.Wr
 	}
 	mask := func(b []byte) []byte {
 		if pii {
-			b = x.redactOutput(o, b)
+			func() {
+				// A formatting bug must not lose the command's output (#64): mask it as text.
+				defer func() {
+					if p := recover(); p != nil {
+						fmt.Fprintf(stderr, "redact: could not format the output (%v), so it is masked as plain text\n", p)
+						b = []byte(x.maskValues(string(b)))
+					}
+				}()
+				b = x.redactOutput(o, b)
+			}()
 		}
 		if secrets {
 			b = []byte(x.maskSecrets(string(b)))
