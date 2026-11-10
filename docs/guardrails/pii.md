@@ -22,8 +22,10 @@ turn it off.
 
 With the guard on, these commands are rewritten to run under `guardrails redact --pii`:
 
-- `psql`, forced to `--csv` so the redactor sees column names, then printed in the format you
-  asked for (`-t`, `-A`, `-F` are restored).
+- `psql`, forced to `--html` so the redactor sees each result as its own table with its column
+  names, then printed in the format you asked for (`-t`, `-A`, `-F`, `--csv` are restored). This
+  holds for scripts (`-f`) too: each result is masked by its own columns, and `\echo` lines and
+  command tags pass through as text. Expanded (`\x`) results come back as normal rows.
 - `duckdb`, every call that runs SQL, forced to `-json` and restored to the output mode you asked
   for. With no mode flag it prints markdown and keeps duckdb's agent-mode row and cell limits.
 - `aws rds-data execute-statement` (with `--include-result-metadata` added) and
@@ -32,7 +34,7 @@ With the guard on, these commands are rewritten to run under `guardrails redact 
 For `psql -h db -c "select email from users"`, Claude's call becomes:
 
 ```text
-guardrails redact --pii --private --in=csv --to=aligned --footer -- psql --csv -h db -c "select email from users"
+guardrails redact --pii --private --in=html --to=aligned --footer -- psql --html -h db -c "select email from users"
 ```
 
 (The reply carries the full path of the binary in place of `guardrails`.) The redactor
@@ -74,8 +76,9 @@ Addresses you own stay readable: your global `git config user.email`, and the fu
 in `GUARDRAILS_PII_ALLOW` (the `allowed_email_domains` option). An `@domain` entry is
 honored by [Egress](egress.md) but not here: the mask only skips exact addresses.
 
-Gaps: SQL run inside `bash -c`, a script, `ssh` or `ssm`; a second result set in one
-`psql -c`, which gets value masking only; and output written to a file and read later.
+Gaps: SQL run inside `bash -c`, a script, `ssh` or `ssm`; `psql -H`, `-o` or `-P format=...`, and a
+`\pset format` or `\pset tuples_only` inside a psql script, which get value masking only; and
+output written to a file and read later.
 
 ### duckdb dot-commands: BLOCK
 

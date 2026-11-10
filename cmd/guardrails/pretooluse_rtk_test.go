@@ -48,7 +48,7 @@ func TestPreToolUseWrapsSQLWithoutRTK(t *testing.T) {
 		t.Fatalf("bad reply %q: %v", out, err)
 	}
 	ui := r.HookSpecificOutput.UpdatedInput
-	if ui["command"] != `CT redact --pii --private --in=csv --to=unaligned --no-header -- psql --csv -c "select email from users"` {
+	if ui["command"] != `CT redact --pii --private --in=html --to=unaligned --no-header -- psql --html -c "select email from users"` {
 		t.Errorf("command = %v", ui["command"])
 	}
 	if ui["description"] != "d" || ui["timeout"] != float64(5000) {

@@ -438,7 +438,7 @@ func runRedact(x *redactor, args []string, stdin io.Reader, stdout, stderr io.Wr
 		}
 	}
 	if !pii && !secrets {
-		fmt.Fprintln(stderr, "usage: guardrails redact --pii|--secrets [--in=csv|json|jsonl|text|auto] [--to=csv|unaligned|aligned|line|markdown|json] [--sep=S] [--no-header] [--footer] [--cap] [--private] [-- command args...]")
+		fmt.Fprintln(stderr, "usage: guardrails redact --pii|--secrets [--in=csv|html|json|jsonl|text|auto] [--to=csv|unaligned|aligned|line|markdown|json] [--sep=S] [--no-header] [--footer] [--cap] [--private] [-- command args...]")
 		return 2
 	}
 	mask := func(b []byte) []byte {

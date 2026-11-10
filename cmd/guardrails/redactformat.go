@@ -1,6 +1,6 @@
 package main
 
-// Output formats for redact --pii. pre-tool-use forces a headed format (psql --csv, duckdb
+// Output formats for redact --pii. pre-tool-use forces a headed format (psql --html, duckdb
 // -json) so columns can be masked by name, and --to restores what the command asked for, so
 // later pipes (cut -d'|', while read) still work.
 
@@ -9,12 +9,13 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 )
 
 type redactOpts struct {
-	in, to   string // in: csv|json|jsonl|text|auto; to: ""(as input)|csv|unaligned|aligned|line|markdown|json
+	in, to   string // in: csv|html|json|jsonl|text|auto; to: ""(as input)|csv|unaligned|aligned|line|markdown|json
 	noHeader bool   // psql -t, duckdb -noheader
 	footer   bool   // psql's "(N rows)" line
 	sep      string // unaligned field separator; "" = "|"
@@ -53,7 +54,7 @@ func agentCap(o redactOpts, t resultTable) (resultTable, string) {
 type resultTable struct {
 	cols []string
 	rows [][]string
-	text string // set instead of cols/rows: a line between results, printed as is
+	text []string // set instead of cols/rows: lines between results, printed as is
 }
 
 // docTable turns one duckdb -json document (an array of row objects) into a table.
@@ -105,8 +106,10 @@ func cellText(v any) string {
 func renderTables(o redactOpts, tables []resultTable) []byte {
 	var b bytes.Buffer
 	for i, t := range tables {
-		if t.text != "" {
-			b.WriteString(t.text + "\n")
+		if t.text != nil {
+			for _, l := range t.text {
+				b.WriteString(l + "\n")
+			}
 			continue
 		}
 		if i > 0 && (o.to == "line" || o.to == "markdown") {
@@ -244,13 +247,28 @@ func (x *redactor) redactOutput(o redactOpts, in []byte) []byte {
 		for i, t := range tables {
 			if len(tables) > 1 && len(t.cols) == 1 && len(t.rows) == 0 {
 				// One field and no rows between other results: \echo or \pset text.
-				tables[i] = resultTable{text: x.maskValues(heads[i])}
+				tables[i] = resultTable{text: []string{x.maskValues(heads[i])}}
 				continue
 			}
 			tables[i] = x.maskTable(t)
 		}
 		if o.to == "" {
 			o.to = "csv"
+		}
+		return renderTables(o, tables)
+	case "html":
+		tables := psqlHTML(string(in))
+		for i, t := range tables {
+			if t.text == nil {
+				tables[i] = x.maskTable(t)
+				continue
+			}
+			for j, l := range t.text {
+				t.text[j] = x.maskValues(l)
+			}
+		}
+		if o.to == "" {
+			o.to = "aligned"
 		}
 		return renderTables(o, tables)
 	case "json", "jsonl", "auto", "":
@@ -284,6 +302,144 @@ func (x *redactor) redactOutput(o redactOpts, in []byte) []byte {
 	}
 	return []byte(x.maskValues(string(in)))
 }
+
+// psqlHTML splits psql --html output into one table per result and the lines between them
+// (\echo and \pset text, command tags). psql escapes every value, so no value can pass for
+// markup and results of the same width stay apart, unlike in --csv (#66).
+func psqlHTML(in string) []resultTable {
+	var out []resultTable
+	text := func(l string) { out = append(out, resultTable{text: []string{l}}) }
+	afterTable := false
+	for in != "" {
+		line, rest, _ := strings.Cut(in, "\n")
+		wasTable := afterTable
+		afterTable = false
+		if body, after, ok := strings.Cut(rest, "</table>\n"); ok && strings.HasPrefix(line, "<table") {
+			out = append(out, htmlTable(body)...)
+			in, afterTable = after, true
+			continue
+		}
+		if p, after, ok := strings.Cut(strings.TrimPrefix(in, "<p>"), "</p>\n"); ok && strings.HasPrefix(line, "<p>") {
+			// A command tag (<p>INSERT 0 1</p>) or a table's footers, one per <br />.
+			for _, l := range strings.Split(strings.TrimSuffix(p, "<br />\n"), "<br />\n") {
+				if l = htmlText(l); !(wasTable && psqlFooterRE.MatchString(l)) {
+					text(l) // the row count is printed again by renderTable
+				}
+			}
+			in = after
+			continue
+		}
+		text(line)
+		in = rest
+	}
+	return out
+}
+
+var psqlFooterRE = regexp.MustCompile(`^\(\d+ rows?\)$`)
+
+// htmlTable reads one psql <table>: a caption, then a <th> header row and <td> rows, or in
+// expanded mode (\x) one <th>name</th><td>value</td> row per column, records split by a
+// colspan row. Expanded records come back as normal rows, so each value is masked by its
+// column name. Any other shape becomes text lines, masked by value only.
+func htmlTable(body string) []resultTable {
+	var out []resultTable
+	if _, c, ok := strings.Cut(body, "<caption>"); ok {
+		if c, _, ok = strings.Cut(c, "</caption>"); ok {
+			out = append(out, resultTable{text: []string{htmlText(c)}})
+		}
+	}
+	type cell struct {
+		th, span bool
+		v        string
+	}
+	var rows [][]cell
+	for _, tr := range strings.Split(body, "<tr")[1:] {
+		var row []cell
+		for {
+			i := strings.Index(tr, "<td")
+			if j := strings.Index(tr, "<th"); j >= 0 && (i < 0 || j < i) {
+				i = j
+			}
+			if i < 0 {
+				break
+			}
+			tag := tr[i+1 : i+3]
+			open, rest, _ := strings.Cut(tr[i:], ">")
+			v, after, ok := strings.Cut(rest, "</"+tag+">")
+			if !ok {
+				break
+			}
+			row = append(row, cell{tag == "th", strings.Contains(open, "colspan"), htmlText(v)})
+			tr = after
+		}
+		rows = append(rows, row)
+	}
+	var t resultTable
+	shaped := len(rows) > 0
+	if shaped && len(rows[0]) > 0 && rows[0][0].th { // a header row
+		for _, c := range rows[0] {
+			shaped = shaped && c.th
+			t.cols = append(t.cols, c.v)
+		}
+		for _, r := range rows[1:] {
+			var vs []string
+			for _, c := range r {
+				shaped = shaped && !c.th
+				vs = append(vs, c.v)
+			}
+			shaped = shaped && len(vs) == len(t.cols)
+			t.rows = append(t.rows, vs)
+		}
+	} else if shaped { // expanded
+		var rec []string
+		first := true
+		for _, r := range rows {
+			switch {
+			case len(r) == 1 && r[0].span:
+				if rec != nil {
+					t.rows, first, rec = append(t.rows, rec), false, nil
+				}
+			case len(r) == 2 && r[0].th && !r[1].th:
+				if first {
+					t.cols = append(t.cols, r[0].v)
+				}
+				shaped = shaped && len(rec) < len(t.cols) && t.cols[len(rec)] == r[0].v
+				rec = append(rec, r[1].v)
+			default:
+				shaped = false
+			}
+		}
+		if rec != nil {
+			t.rows = append(t.rows, rec)
+		}
+		shaped = shaped && len(t.rows) > 0 && len(t.rows[len(t.rows)-1]) == len(t.cols)
+	}
+	if shaped {
+		return append(out, t)
+	}
+	var lines []string
+	for _, r := range rows {
+		var vs []string
+		for _, c := range r {
+			vs = append(vs, c.v)
+		}
+		lines = append(lines, strings.Join(vs, " | "))
+	}
+	if lines == nil {
+		return out
+	}
+	return append(out, resultTable{text: lines})
+}
+
+// htmlText undoes psql's html escaping. A NULL, empty or all-space cell prints as "&nbsp; ".
+func htmlText(s string) string {
+	if s == "&nbsp; " {
+		return ""
+	}
+	return htmlUnescape.Replace(s)
+}
+
+var htmlUnescape = strings.NewReplacer("<br />\n", "\n", "&nbsp;", " ", "&lt;", "<", "&gt;", ">", "&quot;", `"`, "&amp;", "&")
 
 // maskTable masks PII columns by header name and email/phone shapes in the other cells.
 func (x *redactor) maskTable(t resultTable) resultTable {

@@ -103,6 +103,81 @@ func TestRedactPsqlLaterResultMaskedByItsOwnHeader(t *testing.T) {
 	}
 }
 
+// psql --html -f script.sql (captured from psql 18.6): \echo text, two 1-column results, an
+// empty result, a command tag and a value that reads like a footer. In CSV the 1-column
+// results ran together, so Ann was masked under the \echo line's "header" (#66).
+const psqlScriptHTML = "names\n" +
+	"<table border=\"1\">\n  <tr>\n    <th align=\"center\">first_name</th>\n  </tr>\n" +
+	"  <tr valign=\"top\">\n    <td align=\"left\">Ann</td>\n  </tr>\n</table>\n<p>(1 row)<br />\n</p>\n" +
+	"<table border=\"1\">\n  <tr>\n    <th align=\"center\">id</th>\n  </tr>\n" +
+	"  <tr valign=\"top\">\n    <td align=\"right\">1</td>\n  </tr>\n</table>\n<p>(1 row)<br />\n</p>\n" +
+	"<table border=\"1\">\n  <tr>\n    <th align=\"center\">last_name</th>\n  </tr>\n</table>\n<p>(0 rows)<br />\n</p>\n" +
+	"<p>INSERT 0 1</p>\n" +
+	"<table border=\"1\">\n  <tr>\n    <th align=\"center\">tricky</th>\n  </tr>\n" +
+	"  <tr valign=\"top\">\n    <td align=\"left\">(1 row)</td>\n  </tr>\n</table>\n<p>(1 row)<br />\n</p>\n"
+
+func TestRedactPsqlHTMLOneTablePerResult(t *testing.T) {
+	got := redactWith(t, psqlScriptHTML, "--in=html", "--to=aligned", "--footer")
+	// Widths count the real 20-character tag; tagsOut shortens it after rendering.
+	want := "names\n" +
+		" first_name\n" +
+		"----------------------\n" +
+		" [person_name:T]\n" +
+		"(1 row)\n" +
+		" id\n" +
+		"----\n" +
+		" 1\n" +
+		"(1 row)\n" +
+		" last_name\n" +
+		"-----------\n" +
+		"(0 rows)\n" +
+		"INSERT 0 1\n" +
+		" tricky\n" +
+		"---------\n" +
+		" (1 row)\n" +
+		"(1 row)\n"
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestRedactPsqlHTMLEscapesTitleAndExpanded(t *testing.T) {
+	// Captured from psql 18.6: escaped values, NULL and '', \echo '', a \pset title and
+	// \x on. The expanded record comes back as a normal row, masked by its column name.
+	in := "<table border=\"1\">\n  <tr>\n" +
+		"    <th align=\"center\">note</th>\n    <th align=\"center\">html</th>\n    <th align=\"center\">n</th>\n" +
+		"    <th align=\"center\">e</th>\n    <th align=\"center\">lit</th>\n    <th align=\"center\">lead</th>\n" +
+		"    <th align=\"center\">mid</th>\n    <th align=\"center\">quo</th>\n  </tr>\n" +
+		"  <tr valign=\"top\">\n    <td align=\"left\">two<br />\nlines</td>\n" +
+		"    <td align=\"left\">&lt;b&gt;&amp;x</td>\n    <td align=\"left\">&nbsp; </td>\n" +
+		"    <td align=\"left\">&nbsp; </td>\n    <td align=\"left\">&amp;lt;</td>\n" +
+		"    <td align=\"left\">&nbsp;&nbsp;x</td>\n    <td align=\"left\">a  b</td>\n" +
+		"    <td align=\"left\">&quot;q&quot;</td>\n  </tr>\n</table>\n<p>(1 row)<br />\n</p>\n" +
+		"\n" +
+		"Title is \"My title\".\n" +
+		"<table border=\"1\">\n  <caption>My title</caption>\n  <tr>\n    <th align=\"center\">a</th>\n  </tr>\n" +
+		"  <tr valign=\"top\">\n    <td align=\"right\">1</td>\n  </tr>\n</table>\n<p>(1 row)<br />\n</p>\n" +
+		"Title is unset.\n" +
+		"Expanded display is on.\n" +
+		"<table border=\"1\">\n\n  <tr><td colspan=\"2\" align=\"center\">Record 1</td></tr>\n" +
+		"  <tr valign=\"top\">\n    <th>first_name</th>\n    <td align=\"left\">Ann</td>\n  </tr>\n" +
+		"  <tr valign=\"top\">\n    <th>id</th>\n    <td align=\"right\">2</td>\n  </tr>\n</table>\n\n"
+	got := redactWith(t, in, "--in=html", "--to=csv")
+	want := "note,html,n,e,lit,lead,mid,quo\n" +
+		"\"two\nlines\",<b>&x,,,&lt;,\"  x\",a  b,\"\"\"q\"\"\"\n" +
+		"\n" +
+		"Title is \"My title\".\n" +
+		"My title\n" +
+		"a\n1\n" +
+		"Title is unset.\n" +
+		"Expanded display is on.\n" +
+		"first_name,id\n[person_name:T],2\n" +
+		"\n"
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
 func TestRedactRestoresDuckdbFormats(t *testing.T) {
 	// duckdb -json prints one document per statement.
 	jsonIn := `[{"id":1,"email":null,"s":"a|b"},` + "\n" + `{"id":22,"email":"x@y.org","s":"y"}]` + "\n" + `[{"first_name":"Ann"}]` + "\n"
