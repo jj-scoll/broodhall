@@ -2,13 +2,14 @@ package main
 
 // piiRewrite: the PreToolUse rewrite that runs SQL clients under `guardrails redact --pii`
 // so client PII is masked before Claude, the transcript or a memory tool see the output. psql
-// is forced to --csv and duckdb to -json, so the redactor knows the column names; --to then
+// is forced to --html (one table per result, every value escaped) and duckdb to -json, so the
+// redactor knows each result's column names; --to then
 // restores the format the command asked for. Every duckdb call that runs SQL is wrapped: its
 // SQL may come from a file (-f, < q.sql) or a .duckdb holding client tables, which the
 // command text doesn't show. aws rds-data execute-statement gains --include-result-metadata;
 // athena get-query-results is masked by its ColumnInfo. Gaps: SQL run inside `bash -c`,
-// scripts, ssh or ssm, a second result set in one psql -c (value masking only), and output
-// written to a file and read later.
+// scripts, ssh or ssm, a \pset format or tuples_only inside a psql script (value masking
+// only), and output written to a file and read later.
 
 import (
 	"path"
@@ -132,8 +133,10 @@ var (
 	psqlFormatPset = regexp.MustCompile(`^(?:format|tuples_only|csv_fieldsep|expanded|x)\b`)
 )
 
-// psqlPlan forces --csv and returns the redact flags that restore -t/-A/-F. When the output
-// format can't be pinned down (-P format=...), it masks values only.
+// psqlPlan forces --html and returns the redact flags that restore -t/-A/-F/--csv. --csv
+// can't be kept: results of the same width run together in it (#66). When the output format
+// can't be pinned down (-P format=..., -H) or the results go to a file (-o), it masks values
+// only.
 func psqlPlan(c sqlCall) ([]string, []shellEdit) {
 	var tuples, unaligned, csvAlready bool
 	sep := ""
@@ -154,6 +157,11 @@ func psqlPlan(c sqlCall) ([]string, []shellEdit) {
 			drops = append(drops, drop{i, i, ""})
 		case w == "--csv":
 			csvAlready = true
+			drops = append(drops, drop{i, i, ""})
+		case w == "-H" || w == "--html":
+			return textOnly, nil
+		case w == "-o" || w == "--output" || strings.HasPrefix(w, "--output="):
+			return textOnly, nil // results go to the file, which keeps the asked format
 		case (w == "-F" || w == "--field-separator") && i+1 < len(c.words):
 			sep = c.raw(i + 1)
 			drops = append(drops, drop{i, i + 1, ""})
@@ -186,6 +194,8 @@ func psqlPlan(c sqlCall) ([]string, []shellEdit) {
 					tuples, changed = true, true
 				case l == 'A':
 					unaligned, changed = true, true
+				case l == 'H' || l == 'o':
+					return textOnly, nil
 				case strings.IndexByte(psqlNoArgLetters, l) >= 0:
 					d.keep += string(l)
 				case strings.IndexByte(psqlArgLetters, l) >= 0:
@@ -219,11 +229,12 @@ func psqlPlan(c sqlCall) ([]string, []shellEdit) {
 			}
 		}
 	}
-	flags := []string{"--in=csv"}
+	flags := []string{"--in=html"}
 	switch {
 	case csvAlready && tuples:
 		flags = append(flags, "--to=csv", "--no-header")
 	case csvAlready:
+		flags = append(flags, "--to=csv")
 	case unaligned:
 		flags = append(flags, "--to=unaligned")
 	default:
@@ -242,8 +253,8 @@ func psqlPlan(c sqlCall) ([]string, []shellEdit) {
 	var es []shellEdit
 	for k, d := range drops {
 		text := d.keep
-		if k == 0 && !csvAlready {
-			text = strings.TrimSpace("--csv " + d.keep) // before the kept letters: -c takes the next word
+		if k == 0 {
+			text = strings.TrimSpace("--html " + d.keep) // before the kept letters: -c takes the next word
 		}
 		if text != "" {
 			es = append(es, c.set(d.i, d.j, text))
@@ -251,8 +262,8 @@ func psqlPlan(c sqlCall) ([]string, []shellEdit) {
 			es = append(es, c.del(d.i, d.j))
 		}
 	}
-	if len(drops) == 0 && !csvAlready {
-		es = append(es, shellEdit{c.end(0), c.end(0), " --csv"})
+	if len(drops) == 0 {
+		es = append(es, shellEdit{c.end(0), c.end(0), " --html"})
 	}
 	return flags, es
 }
