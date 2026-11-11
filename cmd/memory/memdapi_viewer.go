@@ -134,8 +134,9 @@ func (a *uiAPI) timeseries(w http.ResponseWriter, r *http.Request) error {
 		where = append(where, cond)
 	}
 	if p := q.Get("project"); p != "" {
-		where = append(where, `project = ?`)
-		args = append(args, p)
+		pm, pa := projectMatch("project", projectKeys(a.db, p))
+		where = append(where, pm)
+		args = append(args, pa...)
 	}
 	if ts := q.Get("type"); ts != "" {
 		parts := strings.Split(ts, ",")
@@ -266,12 +267,18 @@ func (a *uiAPI) handoffs(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	where, args := `lower(list_name) = ?`, []any{wsHandoffList}
+	order := `project, id`
+	filtered := false
 	if p := r.URL.Query().Get("project"); p != "" {
-		where += ` AND project = ?`
-		args = append(args, p)
+		// A project and its aliased old keys read as one list, in id order, so a consumed row
+		// written under the new key closes a handoff written under the old one.
+		pc, pa := projAnd(a.db, "project", p)
+		where += pc
+		args = append(args, pa...)
+		order, filtered = `id`, true
 	}
 	rows, err := a.db.QueryContext(r.Context(), `SELECT id, project, fields, created_at FROM work_state
-		WHERE `+where+` ORDER BY project, id`, args...)
+		WHERE `+where+` ORDER BY `+order, args...)
 	if err != nil {
 		return err
 	}
@@ -286,7 +293,7 @@ func (a *uiAPI) handoffs(w http.ResponseWriter, r *http.Request) error {
 		if err := rows.Scan(&id, &project, &raw, &at); err != nil {
 			return err
 		}
-		if project != cur {
+		if !filtered && project != cur {
 			cur, open = project, nil
 		}
 		var f map[string]any

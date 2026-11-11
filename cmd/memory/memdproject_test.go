@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -110,8 +111,8 @@ func TestProjectKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := projectKey(tt.cwd); got != tt.want {
-				t.Errorf("projectKey(%q) = %q, want %q", tt.cwd, got, tt.want)
+			if got := legacyProjectKey(tt.cwd); got != tt.want {
+				t.Errorf("legacyProjectKey(%q) = %q, want %q", tt.cwd, got, tt.want)
 			}
 		})
 	}
@@ -128,7 +129,7 @@ func TestProjectKeyCacheAndTimeout(t *testing.T) {
 	calls := 0
 	memdGitRunner = func(string) (string, error) { calls++; return "", errors.New("not a repo") }
 	for i := 0; i < 3; i++ {
-		if got := projectKey(dir); got != "cachedproj" {
+		if got := projectKey(dir); !strings.HasPrefix(got, "cachedproj-") {
 			t.Fatalf("projectKey = %q", got)
 		}
 	}
@@ -154,5 +155,25 @@ func TestProjectKeyCacheAndTimeout(t *testing.T) {
 	projectKey(slow)
 	if calls != 1 {
 		t.Errorf("after recovery git ran %d times, want 1", calls)
+	}
+
+	// a timed-out origin lookup is not cached either
+	slowOrigin := filepath.Join(t.TempDir(), "slow-origin")
+	if err := os.MkdirAll(slowOrigin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	origOrigin := memdGitOrigin
+	t.Cleanup(func() { memdGitOrigin = origOrigin })
+	memdGitRunner = func(string) (string, error) { return slowOrigin, nil }
+	calls = 0
+	memdGitOrigin = func(string) (string, error) { calls++; return "", context.DeadlineExceeded }
+	projectKey(slowOrigin)
+	projectKey(slowOrigin)
+	if calls != 2 {
+		t.Errorf("timed-out origin was cached: ran %d times, want 2", calls)
+	}
+	memdGitOrigin = func(string) (string, error) { return "git@github.com:o/r.git\n", nil }
+	if got := projectKey(slowOrigin); got != "github.com/o/r" {
+		t.Errorf("after recovery projectKey = %q", got)
 	}
 }

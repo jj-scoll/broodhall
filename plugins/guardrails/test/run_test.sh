@@ -9,12 +9,17 @@
 # and `install` itself never fails the session. An unverified binary is never executed.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
-root=$(cd "$here/.." && pwd)
-run_sh=$root/scripts/run.sh
-ver=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json")
+src=$(cd "$here/.." && pwd)
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+# The launcher runs from a copy of the plugin that has no checksums.txt: the file in the
+# checkout pins the real release archives, and these cases install fake ones. The cases about
+# the pin write their own.
+root=$tmp/plugin
+mkdir -p "$root" && cp -R "$src/scripts" "$src/.claude-plugin" "$root/"
+run_sh=$root/scripts/run.sh
+ver=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json")
 pass=0 fail=0
 
 ok() { pass=$((pass + 1)); printf 'ok   %s\n' "$1"; }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -137,6 +138,103 @@ func TestPluginVersionsShared(t *testing.T) {
 			first = plug.Version
 		} else if plug.Version != first {
 			t.Errorf("%s: version %q differs from %q; all plugins share one version", p, plug.Version, first)
+		}
+	}
+}
+
+// pinProblems says what is wrong with <dir>/checksums.txt, the sha256 list a release commits
+// for the archives its launcher (scripts/run.sh) downloads. The launcher refuses to install
+// when the file is not for the plugin.json version or lacks its archive, so a tree that fails
+// here would lock its users out. A tree without the file is fine: the launcher then reads the
+// release's own checksums.txt.
+func pinProblems(dir, plugin, version string) []string {
+	b, err := os.ReadFile(filepath.Join(dir, "checksums.txt"))
+	if os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return []string{err.Error()}
+	}
+	ext := map[string]string{"guardrails": "tar.gz", "memory": "tar.xz"}[plugin]
+	want := map[string]bool{}
+	for _, p := range []string{"linux_amd64", "linux_arm64", "darwin_amd64", "darwin_arm64"} {
+		want[plugin+"_"+p+"."+ext] = true
+	}
+	line := regexp.MustCompile(`^[0-9a-f]{64}  (\S+)$`)
+	var probs []string
+	versioned := false
+	for _, l := range strings.Split(strings.TrimRight(string(b), "\n"), "\n") {
+		if l == "# version "+version {
+			versioned = true
+		}
+		if strings.HasPrefix(l, "#") {
+			continue
+		}
+		m := line.FindStringSubmatch(l)
+		if m == nil || !want[m[1]] {
+			probs = append(probs, "unexpected line "+strconv.Quote(l))
+			continue
+		}
+		delete(want, m[1])
+	}
+	if !versioned {
+		probs = append(probs, "no line \"# version "+version+"\" (the plugin.json version)")
+	}
+	for name := range want {
+		probs = append(probs, "no line for "+name)
+	}
+	return probs
+}
+
+func TestPinProblems(t *testing.T) {
+	sum := strings.Repeat("ab", 32)
+	good := "# version 1.2.3\n# a comment\n"
+	for _, p := range []string{"linux_amd64", "linux_arm64", "darwin_amd64", "darwin_arm64"} {
+		good += sum + "  memory_" + p + ".tar.xz\n"
+	}
+	tests := []struct {
+		name, content string
+		want          int // problems
+	}{
+		{"good", good, 0},
+		{"another version", strings.Replace(good, "1.2.3", "1.2.2", 1), 1},
+		{"an archive missing", strings.Replace(good, sum+"  memory_linux_arm64.tar.xz\n", "", 1), 1},
+		{"another plugin's archive", good + sum + "  guardrails_linux_amd64.tar.gz\n", 1},
+		{"a short sum", strings.Replace(good, sum+"  memory_linux_arm64", "abcd  memory_linux_arm64", 1), 2},
+		{"an archive twice", good + sum + "  memory_linux_amd64.tar.xz\n", 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "checksums.txt"), []byte(tt.content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if got := pinProblems(dir, "memory", "1.2.3"); len(got) != tt.want {
+				t.Errorf("got %d problems, want %d: %q", len(got), tt.want, got)
+			}
+		})
+	}
+	if got := pinProblems(t.TempDir(), "memory", "1.2.3"); got != nil {
+		t.Errorf("no checksums.txt: got %q, want no problems", got)
+	}
+}
+
+// Each downloading plugin's checksums.txt, when the tree has one, is for exactly the version
+// in its plugin.json. The release writes both in one push; a hand bump must delete the file.
+func TestPinnedChecksumsMatchPluginVersion(t *testing.T) {
+	for _, plugin := range []string{"guardrails", "memory"} {
+		dir := filepath.Join(pluginDir, "..", plugin)
+		b, err := os.ReadFile(filepath.Join(dir, ".claude-plugin/plugin.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var plug struct {
+			Version string `json:"version"`
+		}
+		if err := json.Unmarshal(b, &plug); err != nil {
+			t.Fatalf("%s: %v", plugin, err)
+		}
+		for _, p := range pinProblems(dir, plugin, plug.Version) {
+			t.Errorf("plugins/%s/checksums.txt: %s", plugin, p)
 		}
 	}
 }

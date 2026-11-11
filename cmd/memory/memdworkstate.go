@@ -104,8 +104,9 @@ func workStateFold(db *sql.DB, project string) (map[string][]map[string]any, err
 // workStateFoldRows is the shared replay behind workStateFold and the read tool. Closed items and
 // closed lists stay in the result, flagged, with the time of their last row.
 func workStateFoldRows(db *sql.DB, project string) (map[string]*wsList, error) {
+	pm, pa := projectMatch("project", projectKeys(db, project))
 	rows, err := db.Query(`SELECT list_name, fields, created_at FROM work_state
-		WHERE project = ? OR list_name = ? ORDER BY id`, project, wsUserFactsList)
+		WHERE `+pm+` OR list_name = ? ORDER BY id`, append(pa, wsUserFactsList)...)
 	if err != nil {
 		return nil, fmt.Errorf("work_state: query: %w", err)
 	}
@@ -289,6 +290,7 @@ func memWorkStateWrite(db *sql.DB, args map[string]any) (string, error) {
 	if cwd == "" {
 		return wsNoCwd, nil
 	}
+	ensureProjectAlias(db, cwd)
 	project := projectKey(cwd)
 	userScope := list == wsUserFactsList
 	row := project
@@ -333,6 +335,7 @@ func memWorkStateReadAt(db *sql.DB, args map[string]any, now time.Time) (string,
 	if cwd == "" {
 		return wsNoCwd, nil
 	}
+	ensureProjectAlias(db, cwd)
 	project := projectKey(cwd)
 	lists, err := workStateFoldRows(db, project)
 	if err != nil {

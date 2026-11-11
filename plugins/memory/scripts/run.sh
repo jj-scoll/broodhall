@@ -5,7 +5,9 @@
 # memory. Diagnostics go to $data/memory.log. A binary whose checksum does not match is never
 # installed and never run.
 #
-#   run.sh session-start   binary installed: start the daemon, print the context block;
+#   run.sh session-start   binary installed: replace an older running daemon (`memory handover`),
+#                          start the daemon, remove old versions' dirs (`memory gc`, detached),
+#                          print the context block;
 #                          not installed: start a background install and print nothing
 #   run.sh install         install the binary if needed (in the foreground)
 #   run.sh mcp             exec the MCP stdio server; with no binary for this version it serves from the
@@ -85,21 +87,36 @@ install_bin() (
 	[ "$os" = darwin ] || command -v xz >/dev/null 2>&1 || fail "xz not found (install xz-utils)"
 	asset=memory_${os}_$arch.tar.xz
 	base=${MEMORY_RELEASE_URL:-https://github.com/jj-scoll/broodhall/releases/download}
+	# Where the expected sha256 comes from. A release commit puts checksums.txt in the plugin
+	# directory ("# version X.Y.Z", then a line per archive), so it arrives with the git checkout
+	# and someone who can only replace the release's files cannot change it. When that file is
+	# there it is the only source: it must be for this version and list the archive, or nothing
+	# is installed. Only a plugin directory with no such file (a release cut by hand, or one from
+	# before this check) reads the release's own checksums.txt, which proves less: that the
+	# archive arrived whole, not who published it.
+	pins=$root/checksums.txt
+	if [ -f "$pins" ]; then
+		sums=$pins from="the plugin's checksums.txt"
+		grep -qxF "# version $ver" "$pins" || fail "$from is not for version $ver"
+	else
+		sums='' from="the release's checksums.txt"
+	fi
 	if ! { mkdir -p "$data/bin" && tmp=$(mktemp -d "$data/bin/.download.XXXXXX"); }; then fail "cannot write $data"; fi
 	trap 'rm -rf "$tmp"' EXIT
 	# The install runs in the background (see bg_install), so a slow link only needs to finish
 	# within 10 minutes.
-	if ! { curl -fsSL --connect-timeout 5 --max-time 600 -o "$tmp/$asset" "$base/v$ver/$asset" &&
-		curl -fsSL --connect-timeout 5 --max-time 30 -o "$tmp/checksums.txt" "$base/v$ver/checksums.txt"; }; then
+	if ! { curl -fsSL --connect-timeout 5 --max-time 600 -o "$tmp/$asset" "$base/v$ver/$asset" && {
+		[ -n "$sums" ] || curl -fsSL --connect-timeout 5 --max-time 30 -o "$tmp/checksums.txt" "$base/v$ver/checksums.txt"
+	}; }; then
 		fail "download of $asset failed"
 	fi
 	if command -v sha256sum >/dev/null 2>&1; then sum=sha256sum; else sum='shasum -a 256'; fi
 	# Compare the hashes directly: macOS shasum -c exits 0 on empty input, so piping a missing
 	# checksums.txt line into it would pass an unlisted asset.
-	want=$(grep "  $asset\$" "$tmp/checksums.txt" | cut -d' ' -f1)
+	want=$(grep "  $asset\$" "${sums:-$tmp/checksums.txt}" | cut -d' ' -f1)
 	got=$($sum "$tmp/$asset" | cut -d' ' -f1)
-	[ "${#want}" -eq 64 ] || fail "checksums.txt has no entry for $asset"
-	[ "$got" = "$want" ] || fail "checksum mismatch for $asset"
+	[ "${#want}" -eq 64 ] || fail "$from has no entry for $asset"
+	[ "$got" = "$want" ] || fail "checksum mismatch for $asset against $from"
 	# The extensions go in first and the binary last, so an installed binary always has them.
 	tar -xJf "$tmp/$asset" -C "$tmp" memory ext >/dev/null 2>&1 || fail "unpack of $asset failed (it must hold memory and ext/)"
 	for e in fts httpfs quack; do
@@ -121,11 +138,35 @@ spawn() {
 	fi
 }
 
-# start_daemon launches `memory serve` detached. A second instance exits at once because the
-# first holds the socket.
+# handover lets this version's binary ask a running older daemon to finish and exit (over the
+# daemon's own socket, so it reaches exactly that one; never a process-name match). It leaves a
+# newer or equal daemon alone. Exit 3 from the binary means an older daemon stays running (one
+# that predates the shutdown request, or one that did not stop in time) and its stdout is the
+# one-line note. Bounded and fail-open: whatever happens, the caller goes on to start the daemon.
+handover() {
+	hl=$limit
+	limit=${MEMORY_HANDOVER_TIMEOUT:-10}
+	run_bounded handover
+	hrc=$?
+	limit=$hl
+	if [ "$hrc" -eq 3 ]; then
+		note=$(cat "$outf" 2>/dev/null)
+		log "$note"
+		echo "memory: $note" >&2
+	fi
+	return 0
+}
+
+# start_daemon replaces an older daemon if there is one, launches `memory serve` detached (a
+# second instance exits at once because the first holds the socket), and then, detached, has
+# the binary remove old versions' dirs once this version's daemon answers. A local MEMORY_BIN
+# build leaves bin/ alone.
 start_daemon() {
 	[ -n "${MEMORY_NO_DAEMON-}" ] && return 0
+	handover
 	spawn "$bin" serve
+	[ -z "${MEMORY_BIN-}" ] && spawn "$bin" gc "$data/bin" "$ver"
+	return 0
 }
 
 # bg_install starts the install detached and returns at once, so a slow download never holds

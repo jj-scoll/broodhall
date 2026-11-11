@@ -32,7 +32,7 @@ It asks when the scan finds:
 
 | Finding | Asks when |
 | --- | --- |
-| A secret | the text or file holds a token or key in a known shape |
+| A secret | the text or file holds a token or key in a known shape: the guard's own patterns (GitHub, AWS, Slack, npm, Anthropic, OpenAI, Google, private keys and others) and the [gitleaks](https://github.com/gitleaks/gitleaks) default rules (about 220 more provider formats, such as GitLab, Stripe, SendGrid and PyPI tokens), except its `generic-api-key` rule |
 | An outside email address | the address is not yours (see below) |
 | A phone number | the text holds a North American style number such as `555-123-4567` |
 | A payload it cannot read | stdin fed by a pipe, a directory, a file over 4 MiB, a device or pipe file, or a file that does not exist yet and is not written from a heredoc, `echo` or `printf` in the same command |

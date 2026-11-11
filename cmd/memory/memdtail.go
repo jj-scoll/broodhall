@@ -230,6 +230,13 @@ func (t *memdTailer) scanFile(path, root, account string) (int, error) {
 
 // commit writes one file's batch and its offset in a single transaction.
 func (t *memdTailer) commit(path string, f *memdTailFile, events []memdEvent, inode, newOffset, size int64) (inserted int, err error) {
+	seenCwd := map[string]bool{}
+	for _, e := range events {
+		if e.Cwd != "" && !seenCwd[e.Cwd] {
+			seenCwd[e.Cwd] = true
+			ensureAlias(t.db, e.Cwd, func(f func() error) error { return f() }) // commit already holds memdWriteMu
+		}
+	}
 	tx, err := t.db.Begin()
 	if err != nil {
 		return 0, err

@@ -7,12 +7,17 @@
 # writes nothing to stdout, and an unverified binary is never executed.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
-root=$(cd "$here/.." && pwd)
-run_sh=$root/scripts/run.sh
-ver=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json")
+src=$(cd "$here/.." && pwd)
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+# The launcher runs from a copy of the plugin that has no checksums.txt: the file in the
+# checkout pins the real release archives, and these cases install fake ones. The cases about
+# the pin write their own.
+root=$tmp/plugin
+mkdir -p "$root" && cp -R "$src/scripts" "$src/.claude-plugin" "$src/hooks" "$root/"
+run_sh=$root/scripts/run.sh
+ver=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json")
 pass=0 fail=0
 
 ok() { pass=$((pass + 1)); printf 'ok   %s\n' "$1"; }
@@ -28,6 +33,14 @@ mkstub() {
 	cat >"$1" <<'EOF'
 #!/bin/sh
 [ -n "${STUB_MARK-}" ] && echo "$* dir=${MEMORY_DIR-} ext=${MEMORY_EXT_DIR-}" >>"$STUB_MARK"
+if [ "$1" = handover ]; then
+	case "${STUB_HANDOVER-}" in
+	crash) echo "boom" >&2; exit 5 ;;
+	hang) echo $$ >"$STUB_PIDFILE.handover"; exec sleep 30 ;;
+	legacy) echo "an older memory daemon is still running; run pkill"; exit 3 ;;
+	esac
+	exit 0
+fi
 case "${STUB_MODE-ok}" in
 ok)
 	case "$1" in
@@ -68,7 +81,7 @@ newcase() {
 	c=$tmp/$1
 	mkdir -p "$c/data" "$c/path"
 	: >"$c/mark"
-	unset MEMORY_BIN STUB_MODE MEMORY_DIR MEMORY_EXT_DIR XDG_DATA_HOME NO_EXT
+	unset MEMORY_BIN STUB_MODE STUB_HANDOVER MEMORY_HANDOVER_TIMEOUT MEMORY_NO_DAEMON MEMORY_DIR MEMORY_EXT_DIR XDG_DATA_HOME NO_EXT
 	export CLAUDE_PLUGIN_ROOT=$root CLAUDE_PLUGIN_DATA=$c/data HOME=$c/home
 	export STUB_MARK=$c/mark STUB_PIDFILE=$c/pid MEMORY_HOOK_TIMEOUT=2
 	export MEMORY_RELEASE_URL=file://$c/no-such-release
@@ -229,6 +242,87 @@ hook t3b session-start
 expect_open "checksums.txt lacks the asset"
 settle t3b
 if [ -s "$tmp/t3b/mark" ]; then bad "unlisted asset never executes" "stub ran"; else ok "unlisted asset never executes"; fi
+
+# --- 3c. checksums.txt in the plugin (from the git checkout) is the only source of the expected
+# hash when it is there; the release's own checksums.txt is then never read.
+# pinned <case> <version> [sum [name]]: after newcase and mkrelease, gives the case its own
+# plugin copy whose checksums.txt is for <version> and lists the archive under <name> with
+# <sum>. The defaults are the archive's real sum and name.
+pinned() {
+	c=$tmp/$1
+	cp -R "$root" "$c/plugin"
+	export CLAUDE_PLUGIN_ROOT=$c/plugin MEMORY_RELEASE_URL=file://$c/rel
+	{
+		echo "# version $2"
+		echo "${3:-$($sum "$c/rel/v$ver/$asset" | cut -d' ' -f1)}  ${4:-$asset}"
+	} >"$c/plugin/checksums.txt"
+}
+# refused <case> <name> <log text>: nothing installed, nothing run, and the log says why
+refused() {
+	if [ ! -e "$tmp/$1/data/bin/$ver/memory" ] && [ ! -s "$tmp/$1/mark" ] && grep -q "$3" "$tmp/$1/data/memory.log" 2>/dev/null; then
+		ok "$2"
+	else
+		bad "$2" "binary: $(ls "$tmp/$1/data/bin/$ver" 2>&1) mark: $(cat "$tmp/$1/mark") log: $(cat "$tmp/$1/data/memory.log" 2>/dev/null)"
+	fi
+}
+newcase t3c
+mkrelease "$tmp/t3c/rel"
+pinned t3c "$ver"
+rm "$tmp/t3c/rel/v$ver/checksums.txt"
+hook t3c install
+expect_open "a matching pin (install)"
+if [ -x "$tmp/t3c/data/bin/$ver/memory" ]; then ok "a matching pin installs without the release's checksums.txt"; else bad "a matching pin installs without the release's checksums.txt" "log: $(cat "$tmp/t3c/data/memory.log" 2>/dev/null)"; fi
+
+# The archive and the release's checksums.txt were replaced together: the pin refuses it.
+newcase t3d
+mkrelease "$tmp/t3d/rel"
+pinned t3d "$ver" "$(printf '%064d' 1)"
+hook t3d install
+expect_open "an archive that differs from the pin (install)"
+refused t3d "an archive that differs from the pin is refused, whatever the release's checksums.txt says" "checksum mismatch for $asset against the plugin's checksums.txt"
+
+# A pin for another version is refused, not skipped in favour of the release's file.
+newcase t3e
+mkrelease "$tmp/t3e/rel"
+pinned t3e 0.0.0
+hook t3e install
+expect_open "a pin for another version (install)"
+refused t3e "a pin for another version installs nothing and says so" "the plugin's checksums.txt is not for version $ver"
+
+# A pin with no line for the archive is refused, though the release's file lists it.
+newcase t3f
+mkrelease "$tmp/t3f/rel"
+pinned t3f "$ver" "" some_other_asset.tar.gz
+hook t3f install
+expect_open "a pin without the archive (install)"
+refused t3f "a pin without the archive installs nothing and names it" "the plugin's checksums.txt has no entry for $asset"
+
+# With shasum only (no sha256sum on PATH) the pin accepts and refuses the same way. Where the
+# machine has no shasum, a stand-in that calls sha256sum takes its place, so the launcher's
+# shasum command line still runs.
+real256=$(command -v sha256sum || true)
+mkdir -p "$tmp/shasum-path"
+while IFS= read -r d; do # one PATH entry per line, so entries with spaces stay whole
+	[ -n "$d" ] || continue
+	for f in "$d"/*; do
+		n=${f##*/}
+		[ "$n" = sha256sum ] || [ -e "$tmp/shasum-path/$n" ] || ln -s "$f" "$tmp/shasum-path/$n" 2>/dev/null
+	done
+done < <(printf '%s\n' "$PATH" | tr : '\n')
+if [ ! -e "$tmp/shasum-path/shasum" ]; then
+	printf '#!/bin/sh\n[ "$1" = -a ] && [ "$2" = 256 ] || exit 64\nshift 2\nexec %s "$@"\n' "$real256" >"$tmp/shasum-path/shasum"
+	chmod +x "$tmp/shasum-path/shasum"
+fi
+newcase t3g
+mkrelease "$tmp/t3g/rel"
+pinned t3g "$ver"
+PATH=$tmp/shasum-path hook t3g install
+if [ -x "$tmp/t3g/data/bin/$ver/memory" ]; then ok "shasum: a matching pin installs"; else bad "shasum: a matching pin installs" "log: $(cat "$tmp/t3g/data/memory.log" 2>/dev/null)"; fi
+newcase t3h
+mkrelease "$tmp/t3h/rel"
+pinned t3h "$ver" "$(printf '%064d' 1)"
+PATH=$tmp/shasum-path hook t3h install
+refused t3h "shasum: a mismatched pin is refused" "checksum mismatch for $asset"
 
 # --- 4. unsupported platform: stub uname, and curl must not be called
 newcase t4
@@ -606,6 +700,76 @@ n=$(grep -c "$asset" "$c/path/curl.log" 2>/dev/null)
 if [ "${n:-0}" = 1 ]; then ok "non-exclusive mkdir: two concurrent session-starts download once"; else bad "non-exclusive mkdir: two concurrent session-starts download once" "downloads: ${n:-0} [curl.log: $(cat "$c/path/curl.log" 2>/dev/null)]"; fi
 if [ ! -s "$c/o1" ] && [ ! -s "$c/o2" ] && [ -x "$c/data/bin/$ver/memory" ]; then ok "non-exclusive mkdir: the install lands and both session-starts stay silent"; else bad "non-exclusive mkdir: the install lands and both session-starts stay silent" "o1=$(cat "$c/o1") o2=$(cat "$c/o2") log=$(cat "$c/data/memory.log" 2>/dev/null)"; fi
 sleep 2 # let a second installer, if one ran, finish before the sandbox is removed
+
+# --- 17. daemon handover and old-version cleanup. `memory handover` runs before `memory serve`
+# (the new binary asks an older daemon to stop); `memory gc` runs after it. Both fail open:
+# a crashing, hanging or refusing handover never stops the daemon start or the context.
+mark_lines() { tr '\n' '|' <"$1" | sed 's/ dir=[^|]*//g'; } # one-line view of a mark file
+waitmark() { # <mark file> <pattern> : wait up to 5 s for a line
+	local i=0
+	while ! grep -q "$2" "$1" 2>/dev/null && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+}
+newcase t17a
+mkstub "$tmp/t17a/memory"
+export MEMORY_BIN=$tmp/t17a/memory
+hook t17a session-start
+lines=$(mark_lines "$tmp/t17a/mark")
+case $lines in
+handover\|*serve*) ok "session-start runs handover first, then starts serve" ;;
+*) bad "session-start runs handover first, then starts serve" "mark: $lines" ;;
+esac
+if grep -q '^gc ' "$tmp/t17a/mark"; then bad "a local MEMORY_BIN build never garbage-collects bin/" "$lines"; else ok "a local MEMORY_BIN build never garbage-collects bin/"; fi
+
+newcase t17b
+mkstub "$tmp/t17b/memory"
+export MEMORY_BIN=$tmp/t17b/memory STUB_HANDOVER=crash
+hook t17b session-start
+if [ "$rc" -eq 0 ] && printf %s "$out" | grep -q 'stub memory' && grep -q '^serve ' "$tmp/t17b/mark"; then
+	ok "a crashing handover still starts the daemon and prints the context"
+else
+	bad "a crashing handover still starts the daemon and prints the context" "rc=$rc out=$out mark=$(mark_lines "$tmp/t17b/mark")"
+fi
+
+newcase t17c
+mkstub "$tmp/t17c/memory"
+export MEMORY_BIN=$tmp/t17c/memory STUB_HANDOVER=hang MEMORY_HANDOVER_TIMEOUT=1
+hook t17c session-start
+if [ "$rc" -eq 0 ] && [ "$secs" -le 6 ] && printf %s "$out" | grep -q 'stub memory' && grep -q '^serve ' "$tmp/t17c/mark"; then
+	ok "a hung handover is killed at its timeout and the daemon still starts (${secs}s)"
+else
+	bad "a hung handover is killed at its timeout and the daemon still starts" "rc=$rc secs=$secs out=$out mark=$(mark_lines "$tmp/t17c/mark")"
+fi
+[ -s "$tmp/t17c/pid.handover" ] && kill "$(cat "$tmp/t17c/pid.handover")" 2>/dev/null
+
+newcase t17d
+mkstub "$tmp/t17d/memory"
+export MEMORY_BIN=$tmp/t17d/memory STUB_HANDOVER=legacy
+hook t17d session-start
+if [ "$rc" -eq 0 ] && printf %s "$out" | grep -q 'stub memory' && ! printf %s "$out" | grep -q pkill &&
+	grep -q 'still running; run pkill' "$tmp/t17d/stderr" && grep -q 'still running; run pkill' "$tmp/t17d/data/memory.log"; then
+	ok "an old daemon that stays running gets one line on stderr and in the log, stdout stays the context"
+else
+	bad "an old daemon that stays running gets one line on stderr and in the log, stdout stays the context" "rc=$rc out=$out stderr=$(cat "$tmp/t17d/stderr") log=$(cat "$tmp/t17d/data/memory.log" 2>/dev/null)"
+fi
+
+newcase t17e
+mkstub "$tmp/t17e/memory"
+export MEMORY_BIN=$tmp/t17e/memory MEMORY_NO_DAEMON=1
+hook t17e session-start
+if grep -q -e '^handover' -e '^serve' -e '^gc' "$tmp/t17e/mark"; then bad "MEMORY_NO_DAEMON skips handover, serve and gc" "$(mark_lines "$tmp/t17e/mark")"; else ok "MEMORY_NO_DAEMON skips handover, serve and gc"; fi
+
+# The installed binary (no MEMORY_BIN): after serve, a detached `memory gc <bin dir> <version>`.
+newcase t17f
+mkrelease "$tmp/t17f/rel"
+export MEMORY_RELEASE_URL=file://$tmp/t17f/rel
+hook t17f session-start
+settle t17f
+waitmark "$tmp/t17f/mark" '^gc '; waitmark "$tmp/t17f/mark" '^serve '
+if grep -q "^gc $tmp/t17f/data/bin $ver " "$tmp/t17f/mark" && [ "$(head -n1 "$tmp/t17f/mark" | cut -d' ' -f1)" = handover ] && grep -q '^serve ' "$tmp/t17f/mark"; then
+	ok "an installed binary runs handover first, then serve and gc on its bin dir"
+else
+	bad "an installed binary runs handover first, then serve and gc on its bin dir" "mark: $(mark_lines "$tmp/t17f/mark")"
+fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

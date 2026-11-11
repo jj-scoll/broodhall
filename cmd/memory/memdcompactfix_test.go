@@ -173,10 +173,10 @@ func TestCompactionProjectPrefersClaudeProjectDir(t *testing.T) {
 	if _, err := drainCompactions(context.Background(), db, spool); err != nil {
 		t.Fatal(err)
 	}
-	if got := countRows(t, db, `SELECT count(*) FROM summaries WHERE session_id = 's-pd' AND project = 'realproj'`); got != 1 {
+	if got := countRows(t, db, `SELECT count(*) FROM summaries WHERE session_id = 's-pd' AND project = '`+projectKey(projDir)+`'`); got != 1 {
 		t.Fatalf("CLAUDE_PROJECT_DIR ignored: project rows = %d", got)
 	}
-	if got := countRows(t, db, `SELECT count(*) FROM summaries WHERE session_id = 's-nopd' AND project = 'movedto'`); got != 1 {
+	if got := countRows(t, db, `SELECT count(*) FROM summaries WHERE session_id = 's-nopd' AND project = '`+projectKey(otherDir)+`'`); got != 1 {
 		t.Fatalf("cwd fallback broken: project rows = %d", got)
 	}
 }

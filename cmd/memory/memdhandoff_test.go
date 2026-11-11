@@ -296,9 +296,9 @@ func TestMemContextPassesSource(t *testing.T) {
 	defer func() { memdProjectKey = old }()
 
 	for _, tt := range []struct{ input, want string }{
-		{`{"cwd":"/work/p","source":"compact"}`, "project=p&source=compact"},
-		{`{"cwd":"/work/p"}`, "project=p"},
-		{`{"cwd":"/work/p","source":"compact","session_id":"sess a/1"}`, "project=p&source=compact&session_id=sess+a%2F1"},
+		{`{"cwd":"/work/p","source":"compact"}`, "project=p&cwd=%2Fwork%2Fp&source=compact"},
+		{`{"cwd":"/work/p"}`, "project=p&cwd=%2Fwork%2Fp"},
+		{`{"cwd":"/work/p","source":"compact","session_id":"sess a/1"}`, "project=p&cwd=%2Fwork%2Fp&source=compact&session_id=sess+a%2F1"},
 	} {
 		r, w, err := os.Pipe()
 		if err != nil {

@@ -1,7 +1,8 @@
 package main
 
 // Secret-file guard (pre-tool-use). The protected files are secretPathsDefault, the Claude
-// credentials in each config directory (claudeConfigDirs), the PII key, plus the
+// credentials in each config directory (claudeConfigDirs), the PII key, project files by name
+// (.env, *.tfvars, *.pem, ... in any directory), plus the
 // lines of ~/.config/guardrails/secret-paths and ~/.config/claude-tools/secret-paths (a path or
 // glob per line, ~ allowed, # comments). Each list adds to the defaults and is protected
 // itself. Claude sees the
@@ -42,6 +43,24 @@ var secretPathsDefault = []string{
 	"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed25519", "~/.ssh/id_ecdsa_sk", "~/.ssh/id_ed25519_sk",
 	"~/.netrc", "~/.pgpass", "~/.docker/config.json", "~/.config/gh/hosts.yml",
 	"~/.local/state/guardrails/pii-key", "~/.local/state/claude-tools/pii-key",
+	"~/.kube/config", "~/.pypirc", "~/.git-credentials",
+	"~/.config/gcloud/application_default_credentials.json", "~/.config/gcloud/credentials.db",
+}
+
+// secretNamesDefault are file names protected in any directory (filepath.Match on the base
+// name), and secretNamesSkip the templates among them that hold no secret. Only the defaults
+// use names: the lines of a secret-paths file stay absolute paths.
+var (
+	secretNamesDefault = []string{".env", ".env.*", ".npmrc", ".pypirc", ".git-credentials", "*.tfvars", "*.pem"}
+	secretNamesSkip    = []string{".env.example", ".env.sample", ".env.template"}
+)
+
+// secretNamed reports whether a file's base name is one of secretNamesDefault.
+func secretNamed(base string) bool {
+	if slices.Contains(secretNamesSkip, base) {
+		return false
+	}
+	return slices.ContainsFunc(secretNamesDefault, func(p string) bool { ok, _ := filepath.Match(p, base); return ok })
 }
 
 const secretMaskNote = "pre-tool-use masked this read of a protected secret file (`guardrails redact --secrets`): " +
@@ -89,6 +108,7 @@ func secretPaths(home, xdg string) []string {
 
 type secretGuard struct {
 	home, cwd string
+	self      string   // the guardrails binary whose wrapper counts as masked ("" for none)
 	paths     []string // as written, then with symlinks resolved
 }
 
@@ -137,12 +157,25 @@ func (g *secretGuard) protected(word string) (file, under bool) {
 				ok, _ := filepath.Match(p, c)
 				file = file || ok
 				// A ~/.claude* dir that does not exist yet is not in g.paths.
+				file = file || secretNamed(filepath.Base(c))
 				file = file || filepath.Base(c) == ".credentials.json" && isClaudeConfigDir(filepath.Dir(c), g.home)
 				under = under || strings.HasPrefix(p, strings.TrimSuffix(c, "/")+"/")
 			}
 		}
 	}
 	return file, under
+}
+
+// ownWrapper reports whether words are the command secretRewrite emits: this very binary,
+// `redact --secrets --`, then a reader whose flags the mask accepts. Another binary, another
+// flag or a non-reader is judged as if the wrapper were not there. A pipeline stage after the
+// wrapper, or a command chained to it, is a statement of its own and is scanned on its own.
+func (g *secretGuard) ownWrapper(words []string) bool {
+	if g.self == "" || len(words) < 5 || words[0] != g.self || words[1] != "redact" || words[2] != "--secrets" || words[3] != "--" {
+		return false
+	}
+	name := path.Base(words[4])
+	return secretReaders[name] && readerOK(name, words[5:])
 }
 
 // readerOK reports whether a reader's flags keep each output line whole, key included.
@@ -328,6 +361,8 @@ func (g *secretGuard) scan(cmd string) secretScan {
 		switch {
 		case out:
 			askOnce(name)
+		case g.ownWrapper(words):
+			cover(st) // already masked: not wrapped again, not asked
 		case name == "cd" || name == "pushd":
 			if fs := g.files(words[len(words)-1]); len(words) > 1 && len(fs) == 1 {
 				g.cwd = fs[0]
@@ -404,7 +439,9 @@ func secretFileRule(env *guardEnv, cmd string) decision {
 		return secretAsk("secret-arg:"+strings.ToLower(strings.ReplaceAll(m[0].Pattern, " ", "-")),
 			"the command holds a secret-shaped value ("+m[0].Pattern+" "+m[0].Redacted+"). Prefer a file or variable the tool reads itself.")
 	}
-	s := newSecretGuard(env.Home, env.XDGConfig, env.Cwd).scan(cmd)
+	g := newSecretGuard(env.Home, env.XDGConfig, env.Cwd)
+	g.self = env.Self
+	s := g.scan(cmd)
 	switch {
 	case s.ask != "":
 		return secretAsk("secret-file:"+s.ask, "it reads or writes a protected secret file in a way the mask cannot cover. "+
@@ -418,7 +455,9 @@ func secretFileRule(env *guardEnv, cmd string) decision {
 
 // secretRewrite runs every masked reader in cmd under `self redact --secrets --`.
 func secretRewrite(env *guardEnv, cmd, self string) (string, bool) {
-	s := newSecretGuard(env.Home, env.XDGConfig, env.Cwd).scan(cmd)
+	g := newSecretGuard(env.Home, env.XDGConfig, env.Cwd)
+	g.self = self
+	s := g.scan(cmd)
 	if s.ask != "" || len(s.wrap) == 0 {
 		return "", false
 	}

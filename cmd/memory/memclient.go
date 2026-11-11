@@ -47,6 +47,11 @@ func memGet(sock, path string, budget time.Duration) ([]byte, error) {
 // memGetStatus is memGet without the status check: it returns the status and body of any
 // response, and an error only when the daemon could not be reached or read.
 func memGetStatus(sock, path string, budget time.Duration) (int, []byte, error) {
+	return memRequest(http.MethodGet, sock, path, budget)
+}
+
+// memRequest is memGetStatus for any method (the handover posts to /shutdown).
+func memRequest(method, sock, path string, budget time.Duration) (int, []byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 	cl := &http.Client{Transport: &http.Transport{
@@ -55,7 +60,7 @@ func memGetStatus(sock, path string, budget time.Duration) (int, []byte, error) 
 		},
 		DisableKeepAlives: true,
 	}}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://memory"+path, nil)
+	req, err := http.NewRequestWithContext(ctx, method, "http://memory"+path, nil)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -238,7 +243,7 @@ func memContext(args []string) int {
 	ch := make(chan res, 1)
 	sock, pk, dir := memdSockPath(), memdProjectKey, memdProjectDir(in.Cwd)
 	go func() {
-		q := "/context?project=" + url.QueryEscape(pk(dir))
+		q := "/context?project=" + url.QueryEscape(pk(dir)) + "&cwd=" + url.QueryEscape(dir)
 		if in.Source != "" {
 			q += "&source=" + url.QueryEscape(in.Source)
 		}

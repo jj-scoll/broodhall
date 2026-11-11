@@ -187,6 +187,48 @@ memory. That is the opposite of [guardrails](../guardrails/index.md), which bloc
 fails. The reason is the job: a guard that fails open protects nothing, but a memory that
 fails closed would stop your work for no gain.
 
+## How a project is named
+
+Every session, note, summary and work-state list is filed under a project key. The key
+comes from the directory a session runs in:
+
+| Directory | Key |
+| --- | --- |
+| A git repo with an `origin` remote | The remote as `host/path`: `github.com/jj-scoll/broodhall`. The scheme, credentials, port, trailing slash and `.git` are dropped, so the ssh and https forms of one repo, and every clone of it, share a key. |
+| A linked git worktree | The same key as the main checkout, because worktrees share its remote. |
+| A submodule | Its own `origin`, since it is its own repository. |
+| No `origin` (or only a local-path one), or not a git repo | `<directory name>-<8 hex digits>`, the hash being of the project root path. Two directories both called `ui` get different keys; a clone elsewhere does too. |
+
+Hosts are lower-cased. For `github.com`, `gitlab.com` and `bitbucket.org` the whole path is
+lower-cased too, because those forges treat `Owner/Repo` and `owner/repo` as one repo. On any
+other host the path keeps its case, since a self-hosted forge may tell them apart.
+
+Earlier versions keyed a project by the directory name alone (`broodhall`, or
+`parent/worktree` for a worktree). Those rows are not rewritten. Instead the table
+`project_aliases(old_key, new_key)` makes a read for the new key also read rows filed under
+the old one: search, timeline, `get_observations`, the SessionStart context, work state,
+handoffs, the file lookup and the UI. New rows are written under the new key. The daemon
+adds an alias the first time it sees a directory whose old key already has rows, when
+a session starts there, when a tool is called from it, or when its transcript is read.
+
+An old key that several repos shared (`ui`, `new`) is aliased to a repo only when every
+session recorded under it ran inside that repo's directory, or when no session recorded a
+directory at all (notes saved by hand, imports). When sessions from different directories
+share the key the daemon cannot tell their notes apart, so it makes no alias and those old
+rows stay under the old key, visible by that name in the UI and in `project=` filters. Where
+no session recorded a directory, every repo that claims the key sees all of its rows. To
+force an alias, insert it yourself:
+`INSERT INTO project_aliases (old_key, new_key) VALUES ('ui', 'github.com/you/ui')`.
+A repo that moved directories since its sessions were recorded is treated like a shared key.
+The project list in the UI shows raw keys, so an old key and its new key appear separately.
+
+To undo, stop the daemon and run `DROP TABLE project_aliases` with a DuckDB client on
+`memory.duckdb` (Quack is read-only and refuses it). Reads then match only the key they are given; no data was
+changed, so nothing else needs restoring. A daemon of this version recreates the empty table
+at start and rebuilds aliases as directories are seen again, so to stay undone run the
+earlier release. Notes written under the new keys stay in the database but are invisible to
+that release.
+
 ## Where data lives
 
 | What | Where |

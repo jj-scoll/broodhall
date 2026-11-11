@@ -66,8 +66,9 @@ func takeHandoff(db *sql.DB, project, source string, now time.Time) (*handoffEnt
 	}
 	handoffClaimMu.Lock()
 	defer handoffClaimMu.Unlock()
+	pm, pa := projectMatch("project", projectKeys(db, project))
 	rows, err := db.Query(`SELECT fields, created_at FROM work_state
-		WHERE project = ? AND lower(list_name) = ? ORDER BY id`, project, wsHandoffList)
+		WHERE `+pm+` AND lower(list_name) = ? ORDER BY id`, append(pa, wsHandoffList)...)
 	if err != nil {
 		return nil, fmt.Errorf("handoff: query: %w", err)
 	}
