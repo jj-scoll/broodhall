@@ -40,10 +40,11 @@ starts.
 | `XDG_RUNTIME_DIR` | set by your system | Holds `memory.sock`. The launcher falls back to a private directory under `$TMPDIR` when it is unset. |
 | `XDG_DATA_HOME`, `XDG_CONFIG_HOME` | the XDG defaults | Used for the two default paths above. A relative value is ignored. |
 
-The launcher script has five more variables, mostly for testing a build: `MEMORY_BIN` (use
+The launcher script has six more variables, mostly for testing a build: `MEMORY_BIN` (use
 this program and skip the download), `MEMORY_RELEASE_URL` (download from here),
 `MEMORY_HOOK_TIMEOUT` (seconds a hook may run, default 3), `MEMORY_NO_DAEMON=1` (do not start
-the daemon) and `MEMORY_MCP_WAIT` (seconds the MCP server waits for a first install, default
+the daemon), `MEMORY_HANDOVER_TIMEOUT` (seconds the launcher lets the handover from an older
+daemon run, default 10) and `MEMORY_MCP_WAIT` (seconds the MCP server waits for a first install, default
 25).
 
 ## Ports
