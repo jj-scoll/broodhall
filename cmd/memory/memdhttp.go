@@ -24,12 +24,13 @@ const (
 	socketDialBudget = 500 * time.Millisecond
 )
 
-// memdTools are the MCP tools served over POST /tool/{name}: the eleven memory tools minus smart_*.
+// memdTools are the MCP tools served over POST /tool/{name}: the twelve memory tools minus smart_*.
 var memdTools = map[string]func(db *sql.DB, args map[string]any) (string, error){
 	"search":           memSearch,
 	"timeline":         memTimeline,
 	"get_observations": memGetObservations,
 	"get_tool_uses":    memGetToolUses,
+	"read_session":     memReadSession,
 	"work_state_read":  memWorkStateRead,
 	"work_state_write": memWorkStateWrite,
 	"save_memory":      memSaveMemory,

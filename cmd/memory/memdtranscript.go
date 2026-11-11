@@ -18,6 +18,8 @@ type memdEvent struct {
 	At                                             time.Time
 	Observer, Sub                                  bool
 	Usage                                          *memdUsage // Kind "usage" only
+	ReplyKey, ReplyText                            string     // Kind "reply": line uuid#block, masked text
+	GitBranch, Model                               string     // from the line; empty when it carries none
 }
 
 // memdFileState is the per-file state parseMemdLines carries between calls. Observer and Sub
@@ -72,6 +74,7 @@ func parseMemdLines(path, account string, lines [][]byte, st *memdFileState) (ev
 			SessionID: d.getStr("sessionId"),
 			Account:   account,
 			Cwd:       d.getStr("cwd"),
+			GitBranch: d.getStr("gitBranch"),
 		}
 		if base.SessionID == "" {
 			name := filepath.Base(path)
@@ -84,8 +87,17 @@ func parseMemdLines(path, account string, lines [][]byte, st *memdFileState) (ev
 		content, _ := msg.get("content").([]any)
 		switch d.get("type") {
 		case "assistant":
-			for _, x := range content {
+			if m := msg.getStr("model"); m != "<synthetic>" {
+				base.Model = m
+			}
+			for i, x := range content {
 				b, ok := x.(*obj)
+				if ok && b.get("type") == "text" {
+					if e, ok := replyEvent(base, d, msg, i, b, st); ok {
+						events = append(events, e)
+					}
+					continue
+				}
 				if !ok || b.get("type") != "tool_use" {
 					continue
 				}

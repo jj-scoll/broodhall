@@ -302,6 +302,9 @@ ON CONFLICT (path) DO UPDATE SET session_id = excluded.session_id, byte_offset =
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
+	if inserted > 0 {
+		memdRawIndexLogged(t.db) // commit holds memdWriteMu
+	}
 	return inserted, nil
 }
 
@@ -354,7 +357,12 @@ ON CONFLICT (session_id) DO UPDATE SET
 		e.SessionID, e.Project, e.Cwd, e.Observer, seenS, seenS); err != nil {
 		return 0, fmt.Errorf("upsert session: %w", err)
 	}
+	if err := touchSessionMeta(tx, e); err != nil {
+		return 0, err
+	}
 	switch e.Kind {
+	case "reply":
+		return insertReply(tx, e, atS)
 	case "prompt":
 		if e.Sub {
 			return 0, nil // a subagent brief, not something the user typed

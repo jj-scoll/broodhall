@@ -70,8 +70,8 @@ the payload is built. It replaces secret-shaped strings, such as API keys and to
 value after a secret-looking key, such as `password=...` or `token: ...`, with a tag. The
 same input always gets the same tag, and masking twice changes nothing more.
 
-User prompts, tool inputs, tool outputs and text saved by `save_memory` or `work_state_write`
-all pass through it.
+User prompts, Claude's replies, tool inputs, tool outputs and text saved by `save_memory` or
+`work_state_write` all pass through it.
 
 ## What redaction does not do
 
@@ -96,7 +96,15 @@ It matches patterns. It is not a data-loss filter.
 
 ## What is stored
 
-The database holds your prompts, tool inputs and outputs (masked), and the notes and
-summaries. It is a file in the state directory. For each file a note names, it also holds a
+The database holds your prompts, Claude's replies, tool inputs and outputs (all masked), and
+the notes and summaries. It is a file in the state directory. A reply is the text Claude
+wrote to you, one row per text block. Thinking blocks are not stored. Replies from
+subagents and from the observer are not stored. Replies are masked as they are read, like
+prompts, and are never sent anywhere: the observer and the summary writer do not see them.
+Each session also keeps the git branch and the model last seen in its transcript.
+
+The database also holds a search index over the prompts, replies, tool inputs and the file
+paths of file tool calls (see [Raw search](index.md#raw-search)). It is made of the same
+masked text, split into words, so it adds no new text. For each file a note names, it also holds a
 hash of that file's content at the time (see [Stale notes](index.md#stale-notes)); the hash
 is not sent anywhere. Treat it like your transcripts, which it mirrors.

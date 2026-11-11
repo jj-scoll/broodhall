@@ -313,7 +313,7 @@ func memdMigrate(db *sql.DB) error {
 			return fmt.Errorf("backfill search index %s: %w", k.table, err)
 		}
 	}
-	return nil
+	return memdRawMigrate(db)
 }
 
 // ftsSearch returns observation ids matching q, best score first. Minimal helper for

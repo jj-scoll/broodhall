@@ -61,18 +61,19 @@ on [Privacy and redaction](privacy.md).
    so it is filed by the working directory.) The context block
    that follows a compaction leaves out that session's own summary, because Claude Code
    already put it in the conversation.
-7. **Tools.** An MCP server named `memory` gives Claude 11 tools, listed below.
+7. **Tools.** An MCP server named `memory` gives Claude 12 tools, listed below.
 8. **UI.** The daemon serves a local web page on `127.0.0.1:9495`. See
    [UI and Quack](ui-and-quack.md).
 
-## The 11 tools
+## The 12 tools
 
 | Tool | Use |
 | --- | --- |
-| `search` | Search the notes. |
+| `search` | Search the notes, and the raw session records when no note matches. |
 | `timeline` | Notes around a given note or session, in time order. |
 | `get_observations` | Full text of notes, by ID. |
 | `get_tool_uses` | The recorded tool calls themselves, by ID. |
+| `read_session` | One session's conversation in order: prompts, replies and tool calls. |
 | `work_state_read` | Read the project's to-do lists and tracked items. |
 | `work_state_write` | Add or change an item on a list. |
 | `save_memory` | Keep a note you write by hand. |
@@ -88,6 +89,42 @@ Two `work_state_write` lists are special. `facts` keeps lasting facts about the 
 `user-facts` keeps facts for every project. Both appear at the start of every session. Write
 one key per fact, and null to delete it. An item can also carry a `work_product` field, the
 URL or path of something it produced, which the [UI](ui-and-quack.md) shows with the item.
+
+## Raw search
+
+Notes are written by a model, so they can lag behind, or not exist at all when `claude` is
+signed out. Raw search needs no model. It searches the records the daemon stores as it reads
+your transcripts: your prompts, Claude's replies, the inputs of tool calls and the file paths
+of `Read`, `Edit`, `MultiEdit`, `Write` and `NotebookEdit` calls. Tool outputs are left out
+because they are bulky. Everything is masked first (see [Privacy and redaction](privacy.md)).
+
+`search` falls back to it when no note matches, and `source: "raw"` asks for it directly.
+`source: "notes"` turns the fallback off. It returns sessions, most recently active first,
+each with a short snippet around the match. Then `read_session` with the session ID returns
+the conversation in order. Long sessions come in pages (`offset` and `limit`), and tool outputs
+are cut short.
+
+The rules follow Atuin Threads:
+
+- Each word matches a whole word, ignoring case. `alpha` does not match `alphabet`. A name
+  such as `parser.go` or `file_path` matches as a whole and also by its parts, so `parser`
+  finds `parser.go`.
+- Words in `"quotes"` match as a phrase: adjacent and in order, inside one message.
+- Every word and phrase must occur somewhere in the session, though not in the same message.
+- An empty query lists the newest sessions, each with its first prompt.
+
+Filters: `project`, `dateStart` and `dateEnd` (sessions active in that range), `branch` (the
+exact git branch) and `model` (a case-insensitive part of the model name, such as `opus`). Setting
+`branch` or `model` makes the search a raw one, because notes carry neither. A session keeps
+the branch and model last seen in its transcript.
+
+The index is a set of `rx_` tables next to the note indexes. New rows are indexed as the daemon
+stores them, and the first start after an upgrade indexes the records already there. Observer
+sessions are never indexed or returned, and subagent replies are not stored. Only the first
+3,000 words of each prompt, reply or tool input are indexed, which keeps a large `Write` from
+filling the index. The file path of a tool call is indexed apart from that, so it always
+stays findable. The index holds one row per word occurrence. In a test on 2.2 MB of source
+text it came to about 340,000 rows and added 3.7 MB to the database file.
 
 ## Token cost and cache misses
 
