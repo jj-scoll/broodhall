@@ -45,7 +45,7 @@ func memdTables(t *testing.T, db *sql.DB) []string {
 func TestMigrateIdempotent(t *testing.T) {
 	db, _ := openTestMemd(t)
 	want := []string{"api_usage", "compactions", "deliverables", "import_watermarks", "loss_receipts", "observation_files", "observations",
-		"observer_health", "ox_dict", "ox_docs", "ox_post", "prompts", "queue", "sessions", "summaries", "summary_requests",
+		"observer_health", "project_aliases", "ox_dict", "ox_docs", "ox_post", "prompts", "queue", "sessions", "summaries", "summary_requests",
 		"sx_dict", "sx_docs", "sx_post", "tool_uses", "transcript_offsets", "work_state"}
 	sort.Strings(want)
 	if got := memdTables(t, db); !reflect.DeepEqual(got, want) {

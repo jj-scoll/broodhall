@@ -64,6 +64,9 @@ func memdHandler(db *sql.DB) http.Handler {
 			writeText(w, 400, "Error: project is required")
 			return
 		}
+		if cwd := r.URL.Query().Get("cwd"); cwd != "" {
+			ensureProjectAlias(db, cwd)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
 		w.Write(contextJSON(buildStartContextFor(db, project, r.URL.Query().Get("source"), r.URL.Query().Get("session_id"), time.Now())))
@@ -130,6 +133,9 @@ func memdHandler(db *sql.DB) http.Handler {
 			if project == "" {
 				writeText(w, 400, `session_start_context needs a "project" or "projects" argument`)
 				return
+			}
+			if cwd := qStr(args, "cwd"); cwd != "" {
+				ensureProjectAlias(db, cwd)
 			}
 			out = buildContext(db, project, time.Now())
 		} else {
@@ -207,11 +213,9 @@ func byFileCtx(ctx context.Context, db *sql.DB, path, project string) (string, e
 	q := `SELECT ` + obsCols + ` FROM observations
 		WHERE id IN (SELECT observation_id FROM observation_files WHERE path = ? OR path LIKE ? ESCAPE '\')`
 	args := []any{p, "%/" + likeEscape(p)}
-	if project != "" {
-		q += ` AND project = ?`
-		args = append(args, project)
-	}
-	q += ` ORDER BY created_at DESC, id DESC LIMIT ?`
+	pc, pa := projAnd(db, "project", project)
+	q += pc + ` ORDER BY created_at DESC, id DESC LIMIT ?`
+	args = append(args, pa...)
 	args = append(args, byFileMaxObs)
 	rows, err := db.QueryContext(ctx, q, args...)
 	if err != nil {

@@ -74,7 +74,7 @@ func TestCompactionProjectFromGitCwd(t *testing.T) {
 	run("-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "x")
 	wt := filepath.Join(base, "wtfeature")
 	run("worktree", "add", "-q", wt)
-	for cwd, want := range map[string]string{filepath.Join(repo, "sub", "deep"): "zorgrepo", wt: "zorgrepo/wtfeature"} {
+	for cwd, want := range map[string]string{filepath.Join(repo, "sub", "deep"): projectKey(repo), wt: projectKey(repo)} {
 		db, _ := openTestMemd(t)
 		rec := &compactRecord{SessionID: "s-proj", Trigger: "manual", Cwd: cwd, Summary: "proj text"}
 		if _, err := storeCompaction(db, rec, time.Now()); err != nil {

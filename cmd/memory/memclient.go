@@ -243,7 +243,7 @@ func memContext(args []string) int {
 	ch := make(chan res, 1)
 	sock, pk, dir := memdSockPath(), memdProjectKey, memdProjectDir(in.Cwd)
 	go func() {
-		q := "/context?project=" + url.QueryEscape(pk(dir))
+		q := "/context?project=" + url.QueryEscape(pk(dir)) + "&cwd=" + url.QueryEscape(dir)
 		if in.Source != "" {
 			q += "&source=" + url.QueryEscape(in.Source)
 		}

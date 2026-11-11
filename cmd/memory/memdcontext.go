@@ -119,8 +119,9 @@ func buildContextWith(db *sql.DB, project string, now time.Time, h *handoffEntry
 // conversation, so showing it again only spends tokens.
 func buildContextExcluding(db *sql.DB, project string, now time.Time, h *handoffEntry, excludeSession string) string {
 	wd := loadWorkData(db, project, now)
-	obs, err := qObsQuery(db, `SELECT `+obsCols+` FROM observations WHERE project = ?
-		ORDER BY created_at DESC, id DESC LIMIT ?`, project, ctxObsCount)
+	pm, pa := projectMatch("project", projectKeys(db, project))
+	obs, err := qObsQuery(db, `SELECT `+obsCols+` FROM observations WHERE `+pm+`
+		ORDER BY created_at DESC, id DESC LIMIT ?`, append(pa, ctxObsCount)...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "memory context: observations: %v\n", err)
 		obs = nil
@@ -212,10 +213,11 @@ func ctxCut(block string) string {
 }
 
 func loadCtxSummaries(db *sql.DB, project, excludeSession string) ([]ctxSummary, error) {
+	pm, pa := projectMatch("project", projectKeys(db, project))
 	rows, err := db.Query(`SELECT id, request, investigated, learned, completed, next_steps, notes, created_at
-		FROM summaries WHERE project = ?
+		FROM summaries WHERE `+pm+`
 		AND (? = '' OR id NOT IN (SELECT summary_id FROM compactions WHERE session_id = ?))
-		ORDER BY created_at DESC, id DESC LIMIT ?`, project, excludeSession, excludeSession, ctxSessionCount)
+		ORDER BY created_at DESC, id DESC LIMIT ?`, append(pa, excludeSession, excludeSession, ctxSessionCount)...)
 	if err != nil {
 		return nil, err
 	}

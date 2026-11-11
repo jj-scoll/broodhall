@@ -111,7 +111,7 @@ func TestCompactionDrainIngestsSearchableIdempotent(t *testing.T) {
 	if f := spoolFiles(t, spool); len(f) != 0 {
 		t.Fatalf("spool not emptied: %v", f)
 	}
-	if got := countRows(t, db, `SELECT count(*) FROM summaries WHERE project = 'myproj' AND session_id = 'sess-9'`); got != 1 {
+	if got := countRows(t, db, `SELECT count(*) FROM summaries WHERE project = '`+projectKey(proj)+`' AND session_id = 'sess-9'`); got != 1 {
 		t.Fatalf("summaries rows = %d", got)
 	}
 	// Same capture again (hook retried, or a crash before the file was removed): no duplicate.
