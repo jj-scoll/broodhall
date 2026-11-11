@@ -65,7 +65,8 @@ type secretSpan struct {
 }
 
 // secretSpans is every secret-shaped value in s with its byte offsets, pattern by pattern
-// (spans from different patterns can overlap).
+// (spans from different patterns can overlap), then the gitleaks rules' values that no
+// pattern above covers (see secretgitleaks.go).
 func secretSpans(s string) []secretSpan {
 	var out []secretSpan
 	for _, p := range secretPatterns {
@@ -77,7 +78,7 @@ func secretSpans(s string) []secretSpan {
 			out = append(out, secretSpan{p.name, start, end})
 		}
 	}
-	return out
+	return append(out, withoutOverlap(gitleaksSpans(s), out)...)
 }
 
 // scanSecrets is scanForSecrets: one match per distinct pattern and value, with a preview
