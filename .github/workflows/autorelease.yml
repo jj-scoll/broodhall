@@ -2,15 +2,25 @@
 # is advertised before its assets exist (guardrails' hooks fail closed when the binary for the
 # plugin.json version cannot be downloaded):
 #   prepare   computes the next shared version (.github/scripts/next-version.sh), rewrites every
-#             plugin.json, makes the commit "release vX.Y.Z [skip ci]" locally and pushes it only
-#             to a scratch branch, so the build jobs can fetch it. Main and the tags are untouched.
+#             plugin.json, removes the last release's plugins/*/checksums.txt, makes the commit
+#             "release vX.Y.Z [skip ci]" locally and pushes it only to a scratch branch, so the
+#             build jobs can fetch it. Main and the tags are untouched.
 #   release   calls release.yml on that commit: tests, builds all 8 assets, checksums.txt, and a
 #             DRAFT release (drafts are invisible to the launchers' download URLs).
-#   finalize  pushes the commit and the tag to main in one atomic push (if main moved, it
-#             rebases; if shipped files changed meanwhile it stops, because the run queued for
-#             that merge releases them), then publishes the draft (.github/scripts/draft-release.sh,
-#             which retries transient API errors). The gap between the push and the publish is
-#             seconds.
+#   finalize  writes the built assets' sha256 into plugins/*/checksums.txt as a second commit,
+#             "release vX.Y.Z: checksums [skip ci]", tags it, and pushes both commits and the tag
+#             to main in one atomic push (if main moved, it rebases; if shipped files changed
+#             meanwhile it stops, because the run queued for that merge releases them), then
+#             publishes the draft (.github/scripts/draft-release.sh, which retries transient API
+#             errors). The gap between the push and the publish is seconds.
+#
+# Why two commits. The launchers check a download against the checksums.txt in the plugin
+# directory, which reaches the user through git, not through the release. The binaries are
+# stamped with the commit they were built from, so their hashes cannot be in that commit: the
+# first commit is what is built, the second records the result, and main only ever moves from
+# one tagged commit to the next, so no checkout sees the first without the second. The first
+# commit carries no checksums.txt at all, so the old version's hashes never sit beside the new
+# version number.
 #   cleanup   always deletes the scratch branch. A draft left unpublished is deleted only if its
 #             tag is not on the remote; once the push landed, main advertises the version, so
 #             cleanup publishes the draft instead, and fails the run if it cannot.
@@ -82,6 +92,8 @@ jobs:
             sed -i -E "0,/\"version\": *\"[^\"]*\"/s//\"version\": \"$next\"/" "$f"
           done
           .github/scripts/check-versions.sh
+          # They hold the last version's hashes; finalize commits this version's once it is built.
+          git rm -q --ignore-unmatch 'plugins/*/checksums.txt'
           git commit -a -m "release v$next [skip ci]"
           # A scratch branch, not main: nothing is advertised until the assets exist.
           git push --force origin "HEAD:refs/heads/autorelease-candidate"
@@ -112,14 +124,24 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
-      - name: Push the commit and tag, then publish the draft
+      # The checksums.txt the publish job made from the assets now in the draft release.
+      - uses: actions/download-artifact@v8
+        with:
+          name: checksums
+          path: ${{ runner.temp }}/checksums
+      - name: Commit the checksums, push the commits and tag, then publish the draft
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # A failure here stops the run before anything is pushed; cleanup deletes the draft.
+          .github/scripts/pin-checksums.sh write "$RUNNER_TEMP/checksums/checksums.txt" "${TAG#v}"
+          git add plugins/*/checksums.txt
+          git commit -m "release $TAG: checksums [skip ci]"
           shipped=(plugins .claude-plugin cmd go.mod go.sum
             ':(exclude)plugins/*/.claude-plugin/plugin.json'
             ':(exclude,glob)plugins/*/test/**' ':(exclude,glob)plugins/*/tests/**')
-          built_base=$(git rev-parse HEAD~1)
+          # HEAD is the checksums commit and HEAD~1 the built one, so main as built is HEAD~2.
+          built_base=$(git rev-parse HEAD~2)
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             if [ "$(git rev-parse origin/main)" != "$built_base" ]; then
@@ -129,10 +151,10 @@ jobs:
               fi
               # Only docs, tests or .github moved: the built tree is still what ships. Rebase.
               git rebase origin/main
-              built_base=$(git rev-parse HEAD~1)
+              built_base=$(git rev-parse HEAD~2)
             fi
             git tag -f "$TAG" HEAD
-            # Atomic: either the commit and the tag both land or neither does.
+            # Atomic: either both commits and the tag land or nothing does.
             if git push --atomic origin HEAD:refs/heads/main "refs/tags/$TAG"; then
               # Retries transient API errors; if it still fails, cleanup sees the tag and retries.
               exec .github/scripts/draft-release.sh publish "$TAG"

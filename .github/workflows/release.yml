@@ -3,14 +3,20 @@
 #   memory_<os>_<arch>.tar.xz        (memory, cgo + DuckDB, one native runner per platform)
 #   checksums.txt                    (sha256 of all eight; each run.sh picks its own asset's line)
 # All three plugins share the version, so the tag is v<that version> for every one of them.
+# autorelease also commits the eight hashes into plugins/{guardrails,memory}/checksums.txt, and a
+# launcher whose plugin directory has that file checks against it instead of the release's copy.
 #
 # Three ways in:
 #   workflow_call      autorelease.yml, with its bump commit (ref) not yet on main and no tag yet:
 #                      the release is a DRAFT, and autorelease pushes the commit and tag and
 #                      publishes the draft only after every asset exists. (A tag pushed with
 #                      GITHUB_TOKEN triggers no workflow, hence the direct call.)
-#   push of a v* tag   the manual path: bump every plugin.json to the same X.Y.Z, tag, push.
+#   push of a v* tag   the manual path: bump every plugin.json to the same X.Y.Z, delete
+#                      plugins/*/checksums.txt (the tests fail on hashes for another version),
+#                      tag, push. Its launchers fall back to the release's checksums.txt.
 #   workflow_dispatch  rebuild the release of an existing tag (for example after a failed run).
+#                      A tag whose commit has plugins/*/checksums.txt cannot be rebuilt: new
+#                      archives have new hashes, and the publish job stops on the difference.
 # Each stops unless the tag equals v<version> and all plugin.json versions are equal.
 #
 # Build jobs upload a plain .tar (it keeps the exec bit through the artifact); publish packs
@@ -144,19 +150,34 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.REF }}
-          sparse-checkout: .github/scripts
+          sparse-checkout: |
+            .github/scripts
+            plugins/guardrails
+            plugins/memory
       - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
-      - name: Checksums and release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DRAFT: ${{ inputs.draft }}
+      - name: Checksums
         run: |
           .github/scripts/pack-memory.sh dist
           cd dist && sha256sum -- *.tar.gz *.tar.xz > checksums.txt && cd ..
           [ "$(wc -l < dist/checksums.txt)" -eq 8 ] || { echo "expected 8 assets"; cat dist/checksums.txt; exit 1; }
+          # A commit that already pins hashes (a rebuild of an automatic release) only accepts
+          # the same bytes; autorelease's commit pins none yet.
+          .github/scripts/pin-checksums.sh check dist/checksums.txt
+      # autorelease commits these hashes into plugins/*/checksums.txt before it pushes the tag.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: checksums
+          path: dist/checksums.txt
+          if-no-files-found: error
+          overwrite: true
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
           if [ "${DRAFT-}" = true ]; then
             gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --target "$REF" --title "$TAG" --generate-notes
           else

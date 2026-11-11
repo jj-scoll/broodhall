@@ -48,9 +48,11 @@ jobs:
         run: shellcheck -s sh plugins/guardrails/scripts/run.sh plugins/memory/scripts/run.sh plugins/context-guard/scripts/run.sh
       - if: runner.os == 'Linux'
         run: bash plugins/context-guard/test/run_test.sh
-      # pack-memory.sh and draft-release.sh run only in ubuntu release jobs.
+      # pack-memory.sh, pin-checksums.sh and draft-release.sh run only in ubuntu release jobs.
       - if: runner.os == 'Linux'
         run: bash .github/scripts/test/pack-memory_test.sh
+      - if: runner.os == 'Linux'
+        run: bash .github/scripts/test/pin-checksums_test.sh
       - if: runner.os == 'Linux'
         run: bash .github/scripts/test/draft-release_test.sh
 
