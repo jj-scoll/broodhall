@@ -33,6 +33,9 @@ type memdFileState struct {
 	// Fork facts, latched from the first line that has them (see memdfork.go).
 	RootUUID, ForkedFrom string
 	OpenedAt             time.Time
+	// forkKnown: the file is read from the middle, so its first uuid and timestamp are not the
+	// transcript's and noteForkFacts must not latch them (the import sets it).
+	forkKnown bool
 }
 
 // parseMemdLines parses one batch of transcript lines in order. The caller keeps one

@@ -49,6 +49,7 @@ ok)
 	serve) exit 0 ;;
 	cost) sleep "${STUB_SLEEP-0}"; echo "stub cost $*" ;;
 	resume) echo "stub resume $*" ;;
+	import) echo "stub import $*" ;;
 	*) cat >/dev/null ;;
 	esac ;;
 crash) echo '{"decision":"block","reason":"partial"}'; echo "boom" >&2; exit 3 ;;
@@ -541,6 +542,25 @@ if [ "$rc" -eq 0 ] && [ "$out" = "stub resume resume --fork abc" ]; then
 	ok "resume ignores an open stdin and keeps its arguments"
 else
 	bad "resume ignores an open stdin and keeps its arguments" "rc=$rc out=$out"
+fi
+
+# --- 13c. `import` is run by a person too: it passes its arguments through and does not wait
+# for stdin
+newcase t13c
+mkrelease "$tmp/t13c/rel"
+mkdir -p "$tmp/t13c/data/bin/$ver"
+mkstub "$tmp/t13c/data/bin/$ver/memory"
+c=$tmp/t13c
+(sleep 8) | sh "$run_sh" import --dry-run >"$c/out" 2>"$c/stderr" &
+cpid=$!
+i=0
+while kill -0 "$cpid" 2>/dev/null && [ $i -lt 8 ]; do sleep 0.5; i=$((i + 1)); done
+if kill -0 "$cpid" 2>/dev/null; then rc=124; kill "$cpid" 2>/dev/null; else wait "$cpid"; rc=$?; fi
+out=$(cat "$c/out")
+if [ "$rc" -eq 0 ] && [ "$out" = "stub import import --dry-run" ]; then
+	ok "import ignores an open stdin and keeps its arguments"
+else
+	bad "import ignores an open stdin and keeps its arguments" "rc=$rc out=$out"
 fi
 
 # --- 14. `cost` from a terminal (no CLAUDE_PLUGIN_ROOT or CLAUDE_PLUGIN_DATA) finds the data

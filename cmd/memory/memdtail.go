@@ -44,6 +44,8 @@ type memdTailFile struct {
 	// startedAt filter and lines written while the daemon was down are kept.
 	resumed bool
 	since   time.Time // not resumed: events stamped before this are not recorded
+	// importFinal: the import's last chunk of this file (see memdimport.go).
+	importFinal bool
 }
 
 type memdTailer struct {
@@ -55,6 +57,11 @@ type memdTailer struct {
 	files   map[string]*memdTailFile
 	loaded  bool                 // stored offsets were read into files
 	covered map[string]time.Time // root -> newest stored offset update under it
+
+	// importing: this value is the import's writer, not a live tailer. It queues nothing, arms
+	// no summary and never moves a transcript_offsets row (memdimport.go).
+	importing   bool
+	impSessions map[string]*importSession // importing: session rows to write at the end of the chunk
 }
 
 // newMemdTailer returns a tailer over roots (root dir -> account). Files with a stored offset
@@ -243,6 +250,7 @@ func (t *memdTailer) commit(path string, f *memdTailFile, events []memdEvent, in
 	}
 	defer tx.Rollback()
 
+	t.impSessions = nil
 	newest := time.Time{}
 	var sessionID string
 	var usage []memdUsage
@@ -261,6 +269,9 @@ func (t *memdTailer) commit(path string, f *memdTailFile, events []memdEvent, in
 			continue
 		}
 		if e.Kind == "turn_end" {
+			if t.importing {
+				continue // imported history never reaches the summarizer
+			}
 			if err := requestSummary(tx, e); err != nil {
 				return 0, err
 			}
@@ -271,6 +282,9 @@ func (t *memdTailer) commit(path string, f *memdTailFile, events []memdEvent, in
 			return 0, err
 		}
 		inserted += n
+	}
+	if err := t.flushImportSessions(tx); err != nil {
+		return 0, err
 	}
 	if err := writeUsage(tx, usage); err != nil {
 		return 0, err
@@ -292,19 +306,22 @@ func (t *memdTailer) commit(path string, f *memdTailFile, events []memdEvent, in
 	if err := linkFork(tx, sessionID, &f.st); err != nil {
 		return 0, err
 	}
-	_, err = tx.Exec(`INSERT INTO transcript_offsets (path, session_id, byte_offset, inode, size, observer, sub, reset_kind, updated_at)
+	if t.importing {
+		if err := saveImportProgress(tx, path, sessionID, f, inode, newOffset, size); err != nil {
+			return 0, err
+		}
+	} else if _, err = tx.Exec(`INSERT INTO transcript_offsets (path, session_id, byte_offset, inode, size, observer, sub, reset_kind, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)
 ON CONFLICT (path) DO UPDATE SET session_id = excluded.session_id, byte_offset = excluded.byte_offset,
   inode = excluded.inode, size = excluded.size, observer = excluded.observer, sub = excluded.sub, reset_kind = excluded.reset_kind,
   updated_at = excluded.updated_at`,
-		path, sessionID, newOffset, inode, size, f.st.Observer, f.st.Sub, f.st.Reset)
-	if err != nil {
+		path, sessionID, newOffset, inode, size, f.st.Observer, f.st.Sub, f.st.Reset); err != nil {
 		return 0, fmt.Errorf("save offset: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	if inserted > 0 {
+	if inserted > 0 && !t.importing { // the import indexes in batches of its own
 		memdRawIndexLogged(t.db) // commit holds memdWriteMu
 	}
 	return inserted, nil
@@ -351,16 +368,20 @@ func (t *memdTailer) writeEvent(tx *sql.Tx, e memdEvent) (int, error) {
 	// Timestamps go in as UTC text and are cast in SQL: a time.Time parameter is converted
 	// through the session time zone, which shifts stored values and breaks equality checks.
 	atS, seenS := memdTS(at), memdTS(seen)
-	if _, err := tx.Exec(`INSERT INTO sessions (session_id, project, cwd, is_observer, started_at, last_seen_at)
+	if t.importing {
+		t.noteImportSession(e, seen) // one write per session and chunk, not per event
+	} else {
+		if _, err := tx.Exec(`INSERT INTO sessions (session_id, project, cwd, is_observer, started_at, last_seen_at)
 VALUES (?, ?, ?, ?, CAST(? AS TIMESTAMP), CAST(? AS TIMESTAMP))
 ON CONFLICT (session_id) DO UPDATE SET
   is_observer = sessions.is_observer OR excluded.is_observer,
   last_seen_at = greatest(sessions.last_seen_at, excluded.last_seen_at)`,
-		e.SessionID, e.Project, e.Cwd, e.Observer, seenS, seenS); err != nil {
-		return 0, fmt.Errorf("upsert session: %w", err)
-	}
-	if err := touchSessionMeta(tx, e); err != nil {
-		return 0, err
+			e.SessionID, e.Project, e.Cwd, e.Observer, seenS, seenS); err != nil {
+			return 0, fmt.Errorf("upsert session: %w", err)
+		}
+		if err := touchSessionMeta(tx, e); err != nil {
+			return 0, err
+		}
 	}
 	switch e.Kind {
 	case "reply":
@@ -385,7 +406,7 @@ VALUES (?, ?, ?, ?, ?, CAST(? AS TIMESTAMP)) ON CONFLICT (session_id, tool_use_i
 			return 0, fmt.Errorf("insert tool_use: %w", err)
 		}
 		n := rowsAffected(res)
-		if n > 0 && !e.Observer && !e.Sub && e.cap.queued() {
+		if n > 0 && !t.importing && !e.Observer && !e.Sub && e.cap.queued() {
 			if _, err := tx.Exec(`INSERT INTO queue (session_id, tool_use_id, state) VALUES (?, ?, 'queued')`,
 				e.SessionID, e.ToolUseID); err != nil {
 				return 0, fmt.Errorf("enqueue: %w", err)

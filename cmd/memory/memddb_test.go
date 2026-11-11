@@ -44,7 +44,7 @@ func memdTables(t *testing.T, db *sql.DB) []string {
 
 func TestMigrateIdempotent(t *testing.T) {
 	db, _ := openTestMemd(t)
-	want := []string{"api_usage", "compactions", "deliverables", "import_watermarks", "loss_receipts", "observation_files", "observations",
+	want := []string{"api_usage", "compactions", "deliverables", "import_files", "import_watermarks", "loss_receipts", "observation_files", "observations",
 		"observer_health", "project_aliases", "ox_dict", "ox_docs", "ox_post", "prompts", "queue", "replies", "rx_dict", "rx_docs", "rx_post", "rx_state",
 		"sessions", "summaries", "summary_requests", "sx_dict", "sx_docs", "sx_post", "tool_uses", "transcript_offsets", "work_state"}
 	sort.Strings(want)

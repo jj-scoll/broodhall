@@ -9,6 +9,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -75,6 +76,9 @@ WHERE session_id = ?`, st.RootUUID, opened, st.ForkedFrom, st.ForkedFrom, sessio
 	var orig string
 	err := tx.QueryRow(`SELECT session_id FROM sessions WHERE root_uuid = ?
 ORDER BY opened_at NULLS LAST, session_id LIMIT 1`, st.RootUUID).Scan(&orig)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil // the session has no row yet (its events were all dropped): the next batch retries
+	}
 	if err != nil {
 		return fmt.Errorf("find fork family: %w", err)
 	}
@@ -88,6 +92,9 @@ WHERE root_uuid = ? AND session_id <> ? AND (forked_from = '' OR forked_from IS 
 // noteForkFacts latches the first message uuid, the first timestamp and any forkedFrom
 // session id seen in a transcript line.
 func noteForkFacts(d *obj, st *memdFileState) {
+	if st.forkKnown {
+		return
+	}
 	if st.RootUUID == "" {
 		st.RootUUID = d.getStr("uuid")
 	}

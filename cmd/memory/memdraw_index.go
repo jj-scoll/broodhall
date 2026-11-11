@@ -210,12 +210,78 @@ func memdRawIndex(db *sql.DB) error {
 	return nil
 }
 
-// memdRawIndexLogged is memdRawIndex for the write path: a failure must not fail the capture,
-// and the next search or write retries.
-func memdRawIndexLogged(db *sql.DB) {
-	if err := memdRawIndex(db); err != nil {
-		log.Printf("memory raw search: %v (the next search catches up)", err)
+// rawLiveSteps bounds the index work done under one live write: a backlog (a database whose
+// index the background has not finished) is left to the background and to searches.
+const rawLiveSteps = 4
+
+// rawStepHook, when set (tests), runs after each batch round of rawIndexAll.
+var rawStepHook func()
+
+// rawIndexStep indexes one batch of each source and reports whether any source has more. The
+// caller holds memdWriteMu.
+func rawIndexStep(db *sql.DB) (more bool, err error) {
+	rawIndexMu.Lock()
+	defer rawIndexMu.Unlock()
+	for _, src := range rawSources {
+		n, err := rawIndexBatch(db, src)
+		if err != nil {
+			return false, fmt.Errorf("index %s: %w", src.table, err)
+		}
+		more = more || n >= rawBatchRows
 	}
+	return more, nil
+}
+
+// memdRawIndexLogged is the write path's index call: a failure must not fail the capture, and
+// the next search or write retries. It does at most rawLiveSteps batch rounds, so a backlog
+// never holds the write lock for long. The caller holds memdWriteMu.
+func memdRawIndexLogged(db *sql.DB) {
+	for i := 0; i < rawLiveSteps; i++ {
+		more, err := rawIndexStep(db)
+		if err != nil {
+			log.Printf("memory raw search: %v (the next search catches up)", err)
+			return
+		}
+		if !more {
+			return
+		}
+	}
+}
+
+// rawIndexAll indexes everything behind the watermarks, taking the write lock one batch round
+// at a time so hooks and the tailer are served in between. It stops early when ctx ends.
+func rawIndexAll(ctx context.Context, db *sql.DB) error {
+	for {
+		var more bool
+		err := withWrite(func() (err error) { more, err = rawIndexStep(db); return })
+		if err != nil {
+			return err
+		}
+		if rawStepHook != nil {
+			rawStepHook()
+		}
+		if !more {
+			return nil
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+}
+
+// memdRawIndexBackground catches the index up off the start path: the daemon runs it after
+// migrating, and searches wait for what is left (rawCatchUp).
+func memdRawIndexBackground(ctx context.Context, db *sql.DB) error {
+	behind, err := rawBehind(db)
+	if err != nil || !behind {
+		return err
+	}
+	t0 := time.Now()
+	if err := rawIndexAll(ctx, db); err != nil {
+		return err
+	}
+	log.Printf("memory raw search: background index caught up in %v", time.Since(t0).Round(time.Millisecond))
+	return nil
 }
 
 // rawBehind reports whether any source table has rows past its watermark.
@@ -233,13 +299,15 @@ func rawBehind(db *sql.DB) (bool, error) {
 	return false, nil
 }
 
-// rawCatchUp indexes rows that landed behind the write hook (a direct insert, a failed index).
+// rawCatchUp indexes rows that landed behind the write hook (a direct insert, a failed index,
+// a backlog the background has not reached). A search needs the whole index, so it waits for
+// it, but batch by batch: the write lock is free between batches.
 func rawCatchUp(db *sql.DB) error {
 	behind, err := rawBehind(db)
 	if err != nil || !behind {
 		return err
 	}
-	return withWrite(func() error { return memdRawIndex(db) })
+	return rawIndexAll(context.Background(), db)
 }
 
 type rawRow struct {

@@ -269,9 +269,9 @@ main() {
 		mcp_without_binary
 		return 0
 	fi
-	# `cost` and `resume` are run by a person at a terminal: no hook payload on stdin (a terminal
+	# `cost`, `resume` and `import` are run by a person at a terminal: no hook payload on stdin (a terminal
 	# never sends EOF; `resume` reads its pick from it) and no hook watchdog.
-	if [ "$mode" = cost ] || [ "$mode" = resume ]; then
+	if [ "$mode" = cost ] || [ "$mode" = resume ] || [ "$mode" = import ]; then
 		shift
 		[ -x "$bin" ] && exec "$bin" "$mode" "$@"
 		echo "memory: not installed yet; start a Claude Code session first" >&2

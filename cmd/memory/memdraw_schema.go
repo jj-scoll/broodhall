@@ -38,8 +38,9 @@ CREATE TABLE IF NOT EXISTS rx_state (source VARCHAR PRIMARY KEY, last_id BIGINT 
 CREATE INDEX IF NOT EXISTS rx_dict_term ON rx_dict (term);
 `
 
-// memdRawMigrate creates the raw-search tables, adds the session columns and indexes any rows
-// the index has not seen. Safe to call repeatedly.
+// memdRawMigrate creates the raw-search tables and adds the session columns. It does not
+// index: rows the index has not seen are indexed in the background after start (see
+// memdRawIndexBackground) or by the first search. Safe to call repeatedly.
 func memdRawMigrate(db *sql.DB) error {
 	if _, err := db.Exec(memdRawSchema); err != nil {
 		return fmt.Errorf("memory raw schema: %w", err)
@@ -49,9 +50,6 @@ func memdRawMigrate(db *sql.DB) error {
 		if _, err := db.Exec(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ` + c + ` VARCHAR DEFAULT ''`); err != nil {
 			return fmt.Errorf("memory schema: add sessions.%s: %w", c, err)
 		}
-	}
-	if err := memdRawIndex(db); err != nil {
-		return fmt.Errorf("memory raw index: %w", err)
 	}
 	return nil
 }

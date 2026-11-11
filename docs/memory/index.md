@@ -119,7 +119,8 @@ exact git branch) and `model` (a case-insensitive part of the model name, such a
 the branch and model last seen in its transcript.
 
 The index is a set of `rx_` tables next to the note indexes. New rows are indexed as the daemon
-stores them, and the first start after an upgrade indexes the records already there. Observer
+stores them. Records that are already there, after an upgrade or an [import](#import-past-sessions),
+are indexed in the background, and a search waits for whatever is left. Observer
 sessions are never indexed or returned, and subagent replies are not stored. Only the first
 3,000 words of each prompt, reply or tool input are indexed, which keeps a large `Write` from
 filling the index. The file path of a tool call is indexed apart from that, so it always
@@ -224,6 +225,50 @@ parent's session id. `memory resume` never lists subagents. If you give it a sub
 Like `memory cost`, it asks the running daemon, so start a session first. With no daemon it
 prints ``memory resume: ... (is `memory serve` running?)`` and exits 1. It exits 1 too when
 nothing matches or an id prefix fits several sessions.
+
+## Import past sessions
+
+The daemon only reads what Claude writes while it runs, and the last day of older files.
+`memory import` reads all the rest, so every past session is searchable and can be resumed.
+It costs no tokens: it sends nothing, and it never calls Claude.
+
+```sh
+m=$(ls -d ~/.claude/plugins/cache/broodhall/memory/*/ | sort -V | tail -1)
+sh "${m}scripts/run.sh" import --dry-run   # count the files and bytes, write nothing
+sh "${m}scripts/run.sh" import             # start the import and show progress
+sh "${m}scripts/run.sh" import --status    # show the current or last import
+```
+
+Like `memory resume`, it asks the running daemon, so start a session first. The daemon does
+the work in the background and the command prints progress: files done out of the total, and
+bytes read. You can stop the command at any time. The import carries on in the daemon, and
+`--status` shows it. A second `memory import` while one runs is refused.
+
+What it does:
+
+- It reads the transcripts of every config directory the daemon watches, in the same way as
+  live capture. The same masking and the same [capture rules](privacy.md#what-is-never-kept)
+  apply. It stores sessions (directory, project, branch, model), prompts, Claude's replies and
+  tool calls. Observer sessions and subagent transcripts are handled as live capture
+  handles them.
+- It adds no notes. Imported tool calls are not queued, no summary is requested, and the
+  observer is never started for them, so the history costs nothing to import. Notes are
+  written only for what you do after the import. If you continue an old session, its new
+  turns get notes and a summary as usual, and that summary can mention the old prompts.
+- It fills in the fork links of sessions that are already stored, so
+  [forks](#resume-a-session) of old sessions show up.
+- It can be run again. A second run reads only what is new, and never writes a row twice.
+- It leaves the last lines of a file to the live reader. The daemon reads those itself, so
+  a file the daemon has not seen yet is picked up by the next `memory import`.
+- It works in small steps. Hooks, MCP calls and the UI are served as usual while it runs.
+  Its progress is kept in the `import_files` table.
+
+Search works while the import runs, and finds what has been imported so far. The search index
+for the new rows is built as the import goes.
+
+Time depends on your disk and your history. On one machine, 5.3 GB of transcripts (7,627
+files) took 26 to 34 minutes and made a database of about 1 GB. Plan on five to six minutes
+per GB.
 
 ## Stale notes
 

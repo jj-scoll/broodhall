@@ -289,6 +289,9 @@ func memdMigrate(db *sql.DB) error {
 	if err := memdMigrateFork(db); err != nil {
 		return err
 	}
+	if err := memdMigrateImport(db); err != nil {
+		return err
+	}
 	if _, err := db.Exec(memdSearchSchema); err != nil {
 		return fmt.Errorf("memory search schema: %w", err)
 	}

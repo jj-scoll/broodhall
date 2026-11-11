@@ -10,6 +10,11 @@ like any other Claude request, and the usage counts against your account.
 The same command writes the session summaries, and for those it sends your prompts and the
 titles of the session's notes (see [What is sent](#what-is-sent)).
 
+`memory import` (see [Import past sessions](index.md#import-past-sessions)) is local. It reads
+old transcripts into the database, sends nothing, and never starts `claude`. The history it
+adds is not queued for notes and gets no summary. If you later continue an old session, the
+summary written for it can include that session's imported prompts, as for any session.
+
 Nothing else is sent anywhere. The daemon's own code makes no outbound network request. The
 database, the UI and the Quack server stay on your machine (see
 [UI and Quack](ui-and-quack.md)). The only other download is the program itself, from this

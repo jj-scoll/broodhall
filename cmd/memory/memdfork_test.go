@@ -157,6 +157,21 @@ func TestUISessionsShowForks(t *testing.T) {
 	}
 }
 
+// A recently modified file that holds only events from before the tailer started: they are
+// all dropped, so the session has no row yet, and linking the family must not fail the batch
+// (it would be retried on every scan and the file's offset never saved).
+func TestTailFileOfDroppedEventsDoesNotFailTheBatch(t *testing.T) {
+	e := newTailEnv(t, "")
+	old := "2026-10-20T09:00:00.000Z"
+	tailAppend(t, e.path("sess-dropped.jsonl"), forkOpen("sess-dropped", old)+forkPrompt("sess-dropped", "u-1", "old ask", old, ""))
+	if _, err := e.tailer().Scan(); err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if got := tailCount(t, e.db, "SELECT count(*) FROM transcript_offsets"); got != 1 {
+		t.Errorf("transcript_offsets rows = %d, want the file's offset saved", got)
+	}
+}
+
 func TestTranscriptSessionID(t *testing.T) {
 	for _, tc := range []struct{ path, want string }{
 		{"/h/.claude/projects/-w/sess1.jsonl", "sess1"},

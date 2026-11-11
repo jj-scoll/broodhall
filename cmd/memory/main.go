@@ -32,6 +32,7 @@ var commands = map[string]func(args []string) int{
 	"mcp":             func([]string) int { return memMCP(os.Stdin, os.Stdout, memdSockPath()) },
 	"cost":            func(args []string) int { return memCostTo(args, memdSockPath(), os.Stdout, os.Stderr) },
 	"resume":          memResumeCmd,
+	"import":          func(args []string) int { return memImportTo(args, memdSockPath(), os.Stdout, os.Stderr) },
 	"version":         func([]string) int { return memVersionTo(os.Stdout) },
 	"handover":        func([]string) int { return memHandoverCmd(os.Stdout) },
 	"gc":              memGCCmd,
@@ -41,12 +42,12 @@ func main() { os.Exit(run(os.Args[1:], os.Stderr)) }
 
 func run(args []string, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: memory <serve|context|lookup|compact-capture|mcp|cost|resume|version>")
+		fmt.Fprintln(stderr, "usage: memory <serve|context|lookup|compact-capture|mcp|cost|resume|import|version>")
 		return 2
 	}
 	cmd, ok := commands[args[0]]
 	if !ok {
-		fmt.Fprintf(stderr, "memory: unknown subcommand %q (want %s)\n", args[0], "serve|context|lookup|compact-capture|mcp|cost|resume|version")
+		fmt.Fprintf(stderr, "memory: unknown subcommand %q (want %s)\n", args[0], "serve|context|lookup|compact-capture|mcp|cost|resume|import|version")
 		return 2
 	}
 	return cmd(args[1:])
