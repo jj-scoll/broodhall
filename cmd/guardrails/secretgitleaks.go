@@ -1,6 +1,6 @@
 // Secret detection by the rules of gitleaks (https://github.com/gitleaks/gitleaks, v8.30.1),
-// used as a library, next to the hand-written secretPatterns. Its rules are compiled into
-// the binary, so its licence notice is kept here:
+// next to the hand-written secretPatterns. Its rules are compiled into the binary as data
+// (secretrules/rules_gen.go, which keeps the notice too), so the licence notice is kept here:
 //
 // MIT License
 //
@@ -28,45 +28,19 @@ package main
 
 import (
 	"strings"
-	"sync"
 
-	"github.com/zricethezav/gitleaks/v8/detect"
+	"github.com/jj-scoll/broodhall/cmd/guardrails/secretrules"
 )
 
-// gitleaksSkip are the default rules left out. generic-api-key matches key = value pairs
-// by name and entropy, which is the key-name masking's job (it tags those [secret:tag]) and
-// the main source of false positives on command lines.
-var gitleaksSkip = []string{"generic-api-key"}
-
-// gitleaksDetector builds the detector on first use: parsing the embedded rules and
-// compiling their regexes costs about 20 ms, which a process that never scans must not pay.
-var gitleaksDetector = sync.OnceValue(func() *detect.Detector {
-	d, err := detect.NewDetectorDefaultConfig()
-	if err != nil {
-		return nil
-	}
-	for _, id := range gitleaksSkip {
-		delete(d.Config.Rules, id)
-	}
-	d.MaxDecodeDepth = 0         // match the text as written; a decoded hit has no span in it
-	d.IgnoreGitleaksAllow = true // a "gitleaks:allow" comment must not hide a secret from the guard
-	return d
-})
-
 // gitleaksSpans is every occurrence of every value the gitleaks rules report in s, named by
-// rule ID (a slug already). Scans are serialised: one detector is shared, and its
-// concurrent use is not something this code has verified.
+// rule ID (a slug already). secretrules evaluates them with no decoding and no
+// "gitleaks:allow" escape, and without generic-api-key (it matches key = value pairs by name
+// and entropy, which is the key-name masking's job, and is the main source of false
+// positives on command lines).
 func gitleaksSpans(s string) []secretSpan {
-	d := gitleaksDetector()
-	if d == nil {
-		return nil
-	}
-	gitleaksMu.Lock()
-	findings := d.DetectString(s)
-	gitleaksMu.Unlock()
 	var out []secretSpan
 	seen := map[string]bool{}
-	for _, f := range findings {
+	for _, f := range secretrules.Scan(s) {
 		if f.Secret == "" || seen[f.RuleID+"\x00"+f.Secret] {
 			continue
 		}
@@ -82,8 +56,6 @@ func gitleaksSpans(s string) []secretSpan {
 	}
 	return out
 }
-
-var gitleaksMu sync.Mutex
 
 // withoutOverlap is the spans of extra that touch none of base, so where a hand-written
 // pattern and a gitleaks rule find the same value the pattern keeps its name and mask.

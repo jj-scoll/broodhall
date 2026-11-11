@@ -1,0 +1,66 @@
+// This file replaces cmd/generate/config/utils/validate.go of the gitleaks module in a
+// copy of the module made for one build (see ../regen.sh). The upstream Validate runs each rule over its own
+// true-positive and false-positive examples while the rule list is being generated; this one
+// writes the examples to the file named by $GITLEAKSRULES_EXAMPLES, one JSON object per rule,
+// so the parity check can use them. It is not compiled as part of this module.
+
+package utils
+
+import (
+	"encoding/json"
+	"os"
+	"strings"
+
+	"github.com/zricethezav/gitleaks/v8/config"
+)
+
+type examples struct {
+	Rule string   `json:"rule"`
+	TP   []string `json:"tp"`
+	FP   []string `json:"fp"`
+}
+
+func record(rule string, tp, fp []string) {
+	f, err := os.OpenFile(os.Getenv("GITLEAKSRULES_EXAMPLES"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	if err := json.NewEncoder(f).Encode(examples{rule, tp, fp}); err != nil {
+		panic(err)
+	}
+}
+
+// normalise lower-cases and de-duplicates the keywords, which upstream's Validate does as a
+// side effect (and the generated default config therefore has).
+func normalise(r *config.Rule) {
+	seen := map[string]struct{}{}
+	var keywords []string
+	for _, k := range r.Keywords {
+		k = strings.ToLower(k)
+		if _, ok := seen[k]; !ok {
+			seen[k] = struct{}{}
+			keywords = append(keywords, k)
+		}
+	}
+	r.Keywords = keywords
+}
+
+func Validate(rule config.Rule, truePositives []string, falsePositives []string) *config.Rule {
+	record(rule.RuleID, truePositives, falsePositives)
+	normalise(&rule)
+	return &rule
+}
+
+func ValidateWithPaths(rule config.Rule, truePositives map[string]string, falsePositives map[string]string) *config.Rule {
+	normalise(&rule)
+	var tp, fp []string
+	for _, v := range truePositives {
+		tp = append(tp, v)
+	}
+	for _, v := range falsePositives {
+		fp = append(fp, v)
+	}
+	record(rule.RuleID, tp, fp)
+	return &rule
+}

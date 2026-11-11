@@ -1,10 +1,11 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
+	"sort"
 	"strings"
 	"testing"
-
-	"github.com/zricethezav/gitleaks/v8/detect"
 )
 
 // Synthetic, randomly generated values in the shape of provider tokens that the hand-written
@@ -79,30 +80,54 @@ func TestGitleaksKeepsExistingShape(t *testing.T) {
 	}
 }
 
+// parityFixtures are the texts these tests and the hand-written pattern tests scan, for
+// tools/gitleaksrules: it runs the gitleaks library and the detector over them and records the
+// library's answers (regen.sh sets PARITY_FIXTURES_OUT; otherwise this is skipped).
+func parityFixtures() []string {
+	var out []string
+	for _, c := range fakeGitleaksSecrets {
+		out = append(out, "export TOKEN="+c.value+"\n", "see "+c.value+" and "+c.value+"\n", "token "+c.value+" end")
+	}
+	names := make([]string, 0, len(fakeSecrets))
+	for k := range fakeSecrets {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, k := range names {
+		out = append(out, fakeSecrets[k], "k "+fakeSecrets[k])
+	}
+	return append(out, fakeSecrets["pemRsa"]+"\n-----END RSA PRIVATE KEY-----", `api_key = "q8Zr3xTn5Lw0Vb2Hc9Ud4Ke7Fy1Gs6Ja"`, fakeAtlassian, typicalOutput())
+}
+
+func TestWriteParityFixtures(t *testing.T) {
+	path := os.Getenv("PARITY_FIXTURES_OUT")
+	if path == "" {
+		t.Skip("PARITY_FIXTURES_OUT not set")
+	}
+	b, err := json.Marshal(parityFixtures())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // typicalOutput is about 30 KB of source-looking lines, the size of a long tool result.
 func typicalOutput() string {
 	line := "func (x *redactor) maskSecretShapes(s string) string { spans := secretSpans(s) } // token=abc.def\n"
 	return strings.Repeat(line, 30000/len(line))
 }
 
-// BenchmarkSecretSpans30K is the in-process scan (hand-written patterns plus gitleaks) and
-// BenchmarkGitleaksDetector the one-off cost each hook process pays on its first scan:
+// BenchmarkSecretSpans30K is the in-process scan (hand-written patterns plus gitleaks rules):
 //
-//	CGO_ENABLED=0 go test ./cmd/guardrails -run '^$' -bench 'SecretSpans30K|GitleaksDetector'
+//	CGO_ENABLED=0 go test ./cmd/guardrails -run '^$' -bench SecretSpans30K
 func BenchmarkSecretSpans30K(b *testing.B) {
 	s := typicalOutput()
-	gitleaksDetector()
+	secretSpans(s)
 	b.SetBytes(int64(len(s)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		secretSpans(s)
-	}
-}
-
-func BenchmarkGitleaksDetector(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		if d, err := detect.NewDetectorDefaultConfig(); err != nil || d == nil {
-			b.Fatal(err)
-		}
 	}
 }
