@@ -72,13 +72,16 @@ SLOW_OP: `docker build` detected. Only run this if there is a concrete reason (e
   out, so no call runs unchecked. Turn on the `fail_open` option to let calls through
   unguarded instead. A failed download never stops the session start itself.
 - **One static binary.** The hooks are a single Go program with no runtime dependencies. It
-  is downloaded once per plugin version and checked against a published sha256 before it is
-  used.
+  is downloaded once per plugin version and installed only when its sha256 is the one the
+  release committed to the git repository beside the launcher. That stops an archive swapped
+  in the GitHub release; it does not protect against a change to the repository itself. See
+  [How a download is checked](install.md#how-a-download-is-checked).
 - **Nothing leaves the machine from the guards.** The binary's dependency graph contains no
   networking packages, so the guards make no network calls of their own. The only thing in
   the plugin that touches the network is the launcher script, which fetches the release
-  tarball and `checksums.txt` from this project's GitHub releases at session start, when
-  the binary for that plugin version is not already on disk. The guards run `git` locally,
+  tarball (and, for a version whose plugin directory has no `checksums.txt`, the release's
+  copy of it) from this project's GitHub releases at session start, when the binary for that
+  plugin version is not already on disk. The guards run `git` locally,
   to read your `user.email` and to look for unpushed commits. When a read is masked, the
   guard runs the command Claude asked for, so that command does whatever it would have done
   anyway.
