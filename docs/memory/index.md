@@ -199,8 +199,9 @@ cd -- /work/demo && CLAUDE_CONFIG_DIR=/home/me/.claude-work claude --resume 3f2a
 - `--fork` adds `--fork-session`, which resumes into a new session and leaves the original as
   it is.
 
-A word that is not an id is a search. All its words must appear, in any case, in a prompt, in
-a summary request, or in the project name or directory. When stdin is a terminal you pick a
+A word that is not an id is a search, with the rules of [Raw search](#raw-search): each word
+and `"quoted phrase"` must appear in the session's prompts, Claude's replies, tool inputs or
+file paths, or, as text in any case, in a summary request or the project name or directory. When stdin is a terminal you pick a
 result by number; the list goes to stderr and only the command goes to stdout, so
 `eval "$(...)"` works. When stdin is not a terminal, the list is printed instead. `--limit N`
 caps the list at N (default 20).

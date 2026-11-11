@@ -25,7 +25,7 @@ import (
 	"unicode/utf8"
 )
 
-// resumeItem is one resumable session. Branch is empty until sessions has a git_branch column.
+// resumeItem is one resumable session.
 type resumeItem struct {
 	ID         string    `json:"id"`
 	Title      string    `json:"title"`
@@ -63,29 +63,53 @@ func resumeConfigDir(path string) string {
 const resumeBase = ` WHERE NOT s.is_observer AND EXISTS (SELECT 1 FROM transcript_offsets o
 	WHERE o.session_id = s.session_id AND NOT o.sub AND NOT o.observer)`
 
-// resumeSearch finds resumable sessions whose prompts, summary request, project or directory
-// contain every word of q (case-insensitive), newest first. An empty q matches all. It is the
-// one search call, so a faster index can replace it without touching the rest.
+// resumeSearch finds resumable sessions matching every word and "quoted phrase" of q, newest
+// first. A unit matches through the raw index (prompts, replies, tool inputs, file paths;
+// whole words, see rawSearch), or as text (case-insensitive) in the summary request, project
+// or directory. An empty q matches all; a q with no words (only punctuation) matches none.
 func resumeSearch(db *sql.DB, q string, limit int) ([]resumeItem, error) {
+	units := parseRawQuery(q)
+	if len(units) == 0 && strings.TrimSpace(q) != "" {
+		return []resumeItem{}, nil
+	}
+	ids := map[string]int{}
+	if len(units) > 0 {
+		if err := rawCatchUp(db); err != nil {
+			return nil, fmt.Errorf("raw search index: %w", err)
+		}
+		var err error
+		if ids, _, err = rawTermIDs(db, units); err != nil {
+			return nil, err
+		}
+	}
 	where, args := resumeBase, []any{}
-	for _, term := range strings.Fields(q) {
-		pat := "%" + likeEscape(term) + "%"
-		where += ` AND (EXISTS (SELECT 1 FROM prompts p WHERE p.session_id = s.session_id AND p.text ILIKE ? ESCAPE '\')
+	for _, u := range units {
+		indexed := "false"
+		if resumeUnitIndexed(u, ids) {
+			indexed = "s.session_id IN (SELECT d.session_id FROM " + rawUnitFrom(u, ids, true) + ")"
+		}
+		pat := "%" + likeEscape(strings.Join(u, " ")) + "%"
+		where += ` AND (` + indexed + `
 			OR EXISTS (SELECT 1 FROM summaries m WHERE m.session_id = s.session_id AND m.request ILIKE ? ESCAPE '\')
 			OR s.project ILIKE ? ESCAPE '\' OR s.cwd ILIKE ? ESCAPE '\')`
-		args = append(args, pat, pat, pat, pat)
+		args = append(args, pat, pat, pat)
 	}
 	return resumeQuery(db, where, args, limit)
 }
 
+// resumeUnitIndexed reports whether every term of u is in the raw index's dictionary.
+func resumeUnitIndexed(u rawUnit, ids map[string]int) bool {
+	for _, t := range u {
+		if _, ok := ids[t]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // resumeQuery runs the session select with a WHERE clause built on resumeBase.
 func resumeQuery(db *sql.DB, where string, args []any, limit int) ([]resumeItem, error) {
-	branch := `''`
-	var n int
-	if err := db.QueryRow(`SELECT count(*) FROM duckdb_columns() WHERE table_name = 'sessions' AND column_name = 'git_branch'`).Scan(&n); err == nil && n > 0 {
-		branch = `coalesce(s.git_branch, '')`
-	}
-	rows, err := db.Query(`SELECT s.session_id, s.project, s.cwd, `+branch+`, coalesce(s.forked_from, ''), s.last_seen_at,
+	rows, err := db.Query(`SELECT s.session_id, s.project, s.cwd, coalesce(s.git_branch, ''), coalesce(s.forked_from, ''), s.last_seen_at,
 	coalesce((SELECT substr(p.text, 1, 600) FROM prompts p WHERE p.session_id = s.session_id ORDER BY p.created_at, p.id LIMIT 1), ''),
 	coalesce((SELECT substr(m.request, 1, 600) FROM summaries m WHERE m.session_id = s.session_id AND m.request <> '' ORDER BY m.id DESC LIMIT 1), ''),
 	CAST((SELECT count(*) FROM prompts p WHERE p.session_id = s.session_id) AS INTEGER),

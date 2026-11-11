@@ -105,6 +105,29 @@ func TestResumeSearch(t *testing.T) {
 			}
 		})
 	}
+	t.Run("raw index: a reply, a quoted phrase, phrase order", func(t *testing.T) {
+		if _, err := db.Exec(`INSERT INTO replies (session_id, reply_key, text) VALUES ('s-acct2-2222', 'r1#0', 'I rolled back the migration')`); err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range []struct{ q, want string }{
+			{"migration", "s-acct2-2222"},
+			{`"rolled back"`, "s-acct2-2222"},
+			{`"back rolled"`, ""},
+			{`"parser bug"`, "s-fork-3333,s-main-1111"},
+			{"migration vpc", "s-acct2-2222"}, // one word from a reply, one from the summary
+		} {
+			got, err := resumeSearch(db, tc.q, 20)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if g := strings.Join(resumeIDs(got), ","); g != tc.want {
+				t.Errorf("%s: ids = %q, want %q", tc.q, g, tc.want)
+			}
+		}
+		if _, err := db.Exec(`DELETE FROM replies`); err != nil {
+			t.Fatal(err)
+		}
+	})
 	t.Run("limit", func(t *testing.T) {
 		got, err := resumeSearch(db, "", 1)
 		if err != nil || len(got) != 1 || got[0].ID != "s-fork-3333" {
