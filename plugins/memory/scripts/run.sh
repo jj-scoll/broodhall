@@ -5,7 +5,9 @@
 # memory. Diagnostics go to $data/memory.log. A binary whose checksum does not match is never
 # installed and never run.
 #
-#   run.sh session-start   binary installed: start the daemon, print the context block;
+#   run.sh session-start   binary installed: replace an older running daemon (`memory handover`),
+#                          start the daemon, remove old versions' dirs (`memory gc`, detached),
+#                          print the context block;
 #                          not installed: start a background install and print nothing
 #   run.sh install         install the binary if needed (in the foreground)
 #   run.sh mcp             exec the MCP stdio server; with no binary for this version it serves from the
@@ -121,11 +123,35 @@ spawn() {
 	fi
 }
 
-# start_daemon launches `memory serve` detached. A second instance exits at once because the
-# first holds the socket.
+# handover lets this version's binary ask a running older daemon to finish and exit (over the
+# daemon's own socket, so it reaches exactly that one; never a process-name match). It leaves a
+# newer or equal daemon alone. Exit 3 from the binary means an older daemon stays running (one
+# that predates the shutdown request, or one that did not stop in time) and its stdout is the
+# one-line note. Bounded and fail-open: whatever happens, the caller goes on to start the daemon.
+handover() {
+	hl=$limit
+	limit=${MEMORY_HANDOVER_TIMEOUT:-10}
+	run_bounded handover
+	hrc=$?
+	limit=$hl
+	if [ "$hrc" -eq 3 ]; then
+		note=$(cat "$outf" 2>/dev/null)
+		log "$note"
+		echo "memory: $note" >&2
+	fi
+	return 0
+}
+
+# start_daemon replaces an older daemon if there is one, launches `memory serve` detached (a
+# second instance exits at once because the first holds the socket), and then, detached, has
+# the binary remove old versions' dirs once this version's daemon answers. A local MEMORY_BIN
+# build leaves bin/ alone.
 start_daemon() {
 	[ -n "${MEMORY_NO_DAEMON-}" ] && return 0
+	handover
 	spawn "$bin" serve
+	[ -z "${MEMORY_BIN-}" ] && spawn "$bin" gc "$data/bin" "$ver"
+	return 0
 }
 
 # bg_install starts the install detached and returns at once, so a slow download never holds

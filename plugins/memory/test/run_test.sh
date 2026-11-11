@@ -28,6 +28,14 @@ mkstub() {
 	cat >"$1" <<'EOF'
 #!/bin/sh
 [ -n "${STUB_MARK-}" ] && echo "$* dir=${MEMORY_DIR-} ext=${MEMORY_EXT_DIR-}" >>"$STUB_MARK"
+if [ "$1" = handover ]; then
+	case "${STUB_HANDOVER-}" in
+	crash) echo "boom" >&2; exit 5 ;;
+	hang) echo $$ >"$STUB_PIDFILE.handover"; exec sleep 30 ;;
+	legacy) echo "an older memory daemon is still running; run pkill"; exit 3 ;;
+	esac
+	exit 0
+fi
 case "${STUB_MODE-ok}" in
 ok)
 	case "$1" in
@@ -68,7 +76,7 @@ newcase() {
 	c=$tmp/$1
 	mkdir -p "$c/data" "$c/path"
 	: >"$c/mark"
-	unset MEMORY_BIN STUB_MODE MEMORY_DIR MEMORY_EXT_DIR XDG_DATA_HOME NO_EXT
+	unset MEMORY_BIN STUB_MODE STUB_HANDOVER MEMORY_HANDOVER_TIMEOUT MEMORY_NO_DAEMON MEMORY_DIR MEMORY_EXT_DIR XDG_DATA_HOME NO_EXT
 	export CLAUDE_PLUGIN_ROOT=$root CLAUDE_PLUGIN_DATA=$c/data HOME=$c/home
 	export STUB_MARK=$c/mark STUB_PIDFILE=$c/pid MEMORY_HOOK_TIMEOUT=2
 	export MEMORY_RELEASE_URL=file://$c/no-such-release
@@ -606,6 +614,76 @@ n=$(grep -c "$asset" "$c/path/curl.log" 2>/dev/null)
 if [ "${n:-0}" = 1 ]; then ok "non-exclusive mkdir: two concurrent session-starts download once"; else bad "non-exclusive mkdir: two concurrent session-starts download once" "downloads: ${n:-0} [curl.log: $(cat "$c/path/curl.log" 2>/dev/null)]"; fi
 if [ ! -s "$c/o1" ] && [ ! -s "$c/o2" ] && [ -x "$c/data/bin/$ver/memory" ]; then ok "non-exclusive mkdir: the install lands and both session-starts stay silent"; else bad "non-exclusive mkdir: the install lands and both session-starts stay silent" "o1=$(cat "$c/o1") o2=$(cat "$c/o2") log=$(cat "$c/data/memory.log" 2>/dev/null)"; fi
 sleep 2 # let a second installer, if one ran, finish before the sandbox is removed
+
+# --- 17. daemon handover and old-version cleanup. `memory handover` runs before `memory serve`
+# (the new binary asks an older daemon to stop); `memory gc` runs after it. Both fail open:
+# a crashing, hanging or refusing handover never stops the daemon start or the context.
+mark_lines() { tr '\n' '|' <"$1" | sed 's/ dir=[^|]*//g'; } # one-line view of a mark file
+waitmark() { # <mark file> <pattern> : wait up to 5 s for a line
+	local i=0
+	while ! grep -q "$2" "$1" 2>/dev/null && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+}
+newcase t17a
+mkstub "$tmp/t17a/memory"
+export MEMORY_BIN=$tmp/t17a/memory
+hook t17a session-start
+lines=$(mark_lines "$tmp/t17a/mark")
+case $lines in
+handover\|*serve*) ok "session-start runs handover first, then starts serve" ;;
+*) bad "session-start runs handover first, then starts serve" "mark: $lines" ;;
+esac
+if grep -q '^gc ' "$tmp/t17a/mark"; then bad "a local MEMORY_BIN build never garbage-collects bin/" "$lines"; else ok "a local MEMORY_BIN build never garbage-collects bin/"; fi
+
+newcase t17b
+mkstub "$tmp/t17b/memory"
+export MEMORY_BIN=$tmp/t17b/memory STUB_HANDOVER=crash
+hook t17b session-start
+if [ "$rc" -eq 0 ] && printf %s "$out" | grep -q 'stub memory' && grep -q '^serve ' "$tmp/t17b/mark"; then
+	ok "a crashing handover still starts the daemon and prints the context"
+else
+	bad "a crashing handover still starts the daemon and prints the context" "rc=$rc out=$out mark=$(mark_lines "$tmp/t17b/mark")"
+fi
+
+newcase t17c
+mkstub "$tmp/t17c/memory"
+export MEMORY_BIN=$tmp/t17c/memory STUB_HANDOVER=hang MEMORY_HANDOVER_TIMEOUT=1
+hook t17c session-start
+if [ "$rc" -eq 0 ] && [ "$secs" -le 6 ] && printf %s "$out" | grep -q 'stub memory' && grep -q '^serve ' "$tmp/t17c/mark"; then
+	ok "a hung handover is killed at its timeout and the daemon still starts (${secs}s)"
+else
+	bad "a hung handover is killed at its timeout and the daemon still starts" "rc=$rc secs=$secs out=$out mark=$(mark_lines "$tmp/t17c/mark")"
+fi
+[ -s "$tmp/t17c/pid.handover" ] && kill "$(cat "$tmp/t17c/pid.handover")" 2>/dev/null
+
+newcase t17d
+mkstub "$tmp/t17d/memory"
+export MEMORY_BIN=$tmp/t17d/memory STUB_HANDOVER=legacy
+hook t17d session-start
+if [ "$rc" -eq 0 ] && printf %s "$out" | grep -q 'stub memory' && ! printf %s "$out" | grep -q pkill &&
+	grep -q 'still running; run pkill' "$tmp/t17d/stderr" && grep -q 'still running; run pkill' "$tmp/t17d/data/memory.log"; then
+	ok "an old daemon that stays running gets one line on stderr and in the log, stdout stays the context"
+else
+	bad "an old daemon that stays running gets one line on stderr and in the log, stdout stays the context" "rc=$rc out=$out stderr=$(cat "$tmp/t17d/stderr") log=$(cat "$tmp/t17d/data/memory.log" 2>/dev/null)"
+fi
+
+newcase t17e
+mkstub "$tmp/t17e/memory"
+export MEMORY_BIN=$tmp/t17e/memory MEMORY_NO_DAEMON=1
+hook t17e session-start
+if grep -q -e '^handover' -e '^serve' -e '^gc' "$tmp/t17e/mark"; then bad "MEMORY_NO_DAEMON skips handover, serve and gc" "$(mark_lines "$tmp/t17e/mark")"; else ok "MEMORY_NO_DAEMON skips handover, serve and gc"; fi
+
+# The installed binary (no MEMORY_BIN): after serve, a detached `memory gc <bin dir> <version>`.
+newcase t17f
+mkrelease "$tmp/t17f/rel"
+export MEMORY_RELEASE_URL=file://$tmp/t17f/rel
+hook t17f session-start
+settle t17f
+waitmark "$tmp/t17f/mark" '^gc '; waitmark "$tmp/t17f/mark" '^serve '
+if grep -q "^gc $tmp/t17f/data/bin $ver " "$tmp/t17f/mark" && [ "$(head -n1 "$tmp/t17f/mark" | cut -d' ' -f1)" = handover ] && grep -q '^serve ' "$tmp/t17f/mark"; then
+	ok "an installed binary runs handover first, then serve and gc on its bin dir"
+else
+	bad "an installed binary runs handover first, then serve and gc on its bin dir" "mark: $(mark_lines "$tmp/t17f/mark")"
+fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

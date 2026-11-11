@@ -9,6 +9,8 @@
 //	memory mcp      MCP stdio server that forwards tool calls to the daemon
 //	memory cost     token cost at list prices and why the big cache writes happened
 //	memory version  the release and commit this binary was built from
+//	memory handover launcher step: ask a running older daemon to stop before this version's starts
+//	memory gc       launcher step: remove install dirs of old versions once this version's daemon is up
 package main
 
 import (
@@ -29,6 +31,8 @@ var commands = map[string]func(args []string) int{
 	"mcp":             func([]string) int { return memMCP(os.Stdin, os.Stdout, memdSockPath()) },
 	"cost":            func(args []string) int { return memCostTo(args, memdSockPath(), os.Stdout, os.Stderr) },
 	"version":         func([]string) int { return memVersionTo(os.Stdout) },
+	"handover":        func([]string) int { return memHandoverCmd(os.Stdout) },
+	"gc":              memGCCmd,
 }
 
 func main() { os.Exit(run(os.Args[1:], os.Stderr)) }

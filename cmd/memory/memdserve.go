@@ -131,6 +131,9 @@ func memdServe(ctx context.Context, dir string, roots map[string]string) error {
 
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
+	// POST /shutdown stops the daemon the way SIGTERM does.
+	memdRequestStop = stop
+	defer func() { memdRequestStop = func() {} }()
 
 	srv := &http.Server{
 		Handler:           memdHandler(db),

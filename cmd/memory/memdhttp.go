@@ -38,6 +38,8 @@ var memdTools = map[string]func(db *sql.DB, args map[string]any) (string, error)
 // memdHandler serves the daemon's socket API:
 //
 //	GET  /healthz                      200 "ok"
+//	GET  /version                      200, {"version","pid"} of this daemon (see registerControl)
+//	POST /shutdown                     202, then the daemon drains and exits (see registerControl)
 //	GET  /context?project=P[&source=S] 200, exactly contextJSON's bytes (SessionStart hook output);
 //	                                   claims the project's unshown handoff (not for source=resume)
 //	GET  /by-file?path=F[&project=P]   200, <= 3 observations touching F, <= 1500 bytes; empty body if none
@@ -55,6 +57,7 @@ func memdHandler(db *sql.DB) http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeText(w, 200, "ok")
 	})
+	registerControl(mux)
 	mux.HandleFunc("GET /context", func(w http.ResponseWriter, r *http.Request) {
 		project := r.URL.Query().Get("project")
 		if project == "" {
