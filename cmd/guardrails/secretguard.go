@@ -1,7 +1,8 @@
 package main
 
 // Secret-file guard (pre-tool-use). The protected files are secretPathsDefault, the Claude
-// credentials in each config directory (claudeConfigDirs), the PII key, plus the
+// credentials in each config directory (claudeConfigDirs), the PII key, project files by name
+// (.env, *.tfvars, *.pem, ... in any directory), plus the
 // lines of ~/.config/guardrails/secret-paths and ~/.config/claude-tools/secret-paths (a path or
 // glob per line, ~ allowed, # comments). Each list adds to the defaults and is protected
 // itself. Claude sees the
@@ -42,6 +43,24 @@ var secretPathsDefault = []string{
 	"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed25519", "~/.ssh/id_ecdsa_sk", "~/.ssh/id_ed25519_sk",
 	"~/.netrc", "~/.pgpass", "~/.docker/config.json", "~/.config/gh/hosts.yml",
 	"~/.local/state/guardrails/pii-key", "~/.local/state/claude-tools/pii-key",
+	"~/.kube/config", "~/.pypirc", "~/.git-credentials",
+	"~/.config/gcloud/application_default_credentials.json", "~/.config/gcloud/credentials.db",
+}
+
+// secretNamesDefault are file names protected in any directory (filepath.Match on the base
+// name), and secretNamesSkip the templates among them that hold no secret. Only the defaults
+// use names: the lines of a secret-paths file stay absolute paths.
+var (
+	secretNamesDefault = []string{".env", ".env.*", ".npmrc", ".pypirc", ".git-credentials", "*.tfvars", "*.pem"}
+	secretNamesSkip    = []string{".env.example", ".env.sample", ".env.template"}
+)
+
+// secretNamed reports whether a file's base name is one of secretNamesDefault.
+func secretNamed(base string) bool {
+	if slices.Contains(secretNamesSkip, base) {
+		return false
+	}
+	return slices.ContainsFunc(secretNamesDefault, func(p string) bool { ok, _ := filepath.Match(p, base); return ok })
 }
 
 const secretMaskNote = "pre-tool-use masked this read of a protected secret file (`guardrails redact --secrets`): " +
@@ -137,6 +156,7 @@ func (g *secretGuard) protected(word string) (file, under bool) {
 				ok, _ := filepath.Match(p, c)
 				file = file || ok
 				// A ~/.claude* dir that does not exist yet is not in g.paths.
+				file = file || secretNamed(filepath.Base(c))
 				file = file || filepath.Base(c) == ".credentials.json" && isClaudeConfigDir(filepath.Dir(c), g.home)
 				under = under || strings.HasPrefix(p, strings.TrimSuffix(c, "/")+"/")
 			}
