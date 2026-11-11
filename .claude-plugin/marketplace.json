@@ -30,7 +30,8 @@
         "source": "git-subdir",
         "url": "https://github.com/jj-scoll/rtk.git",
         "path": "claude-plugin",
-        "ref": "develop"
+        "ref": "develop",
+        "sha": "ee3bf48212012f57f187c8abfa462255237e6c20"
       },
       "description": "Tells Claude how rtk-condensed command output reads, and warns at session start when rtk is missing or is not the jj-scoll/rtk fork. It does not rewrite commands: turn on the guardrails rtk option for that. Needs the fork's rtk on PATH.",
       "category": "productivity"

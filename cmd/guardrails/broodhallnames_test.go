@@ -166,8 +166,13 @@ func TestMarketplaceRTKEntry(t *testing.T) {
 		if err := json.Unmarshal(p.Source, &got); err != nil {
 			t.Fatalf("rtk source is not an object of strings: %s", p.Source)
 		}
-		if len(got) != len(want) {
-			t.Errorf("rtk source = %v, want %v", got, want)
+		// sha pins installs to one rtk commit (rtk has no tags); the marketplace reference
+		// requires a full 40-character lowercase SHA, and it wins over ref.
+		if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(got["sha"]) {
+			t.Errorf("rtk source sha = %q, want a full lowercase commit SHA", got["sha"])
+		}
+		if len(got) != len(want)+1 {
+			t.Errorf("rtk source = %v, want %v plus sha", got, want)
 		}
 		for k, v := range want {
 			if got[k] != v {
