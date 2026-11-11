@@ -46,6 +46,8 @@ var memdTools = map[string]func(db *sql.DB, args map[string]any) (string, error)
 //	GET  /by-file?path=F[&project=P]   200, <= 3 observations touching F, <= 1500 bytes; empty body if none
 //	GET  /cost[?days=N&include_sidechain=1&min_cache=N&top=N]
 //	                                   200, the plain-text usage cost report (`memory cost`)
+//	GET  /resume?id=REF | ?q=WORDS[&limit=N]
+//	                                   200, JSON {"item","via"} or {"items"} for `memory resume`; 404 no match, 409 ambiguous id
 //	POST /tool/{name}                  JSON object of arguments in, tool text out
 //
 // POST /tool status mapping, which the MCP server maps to isError: 200 is a normal result;
@@ -59,6 +61,7 @@ func memdHandler(db *sql.DB) http.Handler {
 		writeText(w, 200, "ok")
 	})
 	registerControl(mux)
+	registerResume(mux, db)
 	mux.HandleFunc("GET /context", func(w http.ResponseWriter, r *http.Request) {
 		project := r.URL.Query().Get("project")
 		if project == "" {

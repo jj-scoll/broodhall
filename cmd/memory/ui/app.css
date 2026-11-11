@@ -123,6 +123,7 @@ button.chip .n { opacity: 0.75; margin-left: 4px; font-variant-numeric: tabular-
 .card .label { color: var(--muted); font-size: 0.875rem; }
 .feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .feed > li { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.feed > li.fork { margin-left: 24px; }
 .row { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
 .badge { display: inline-block; padding: 1px 10px; border-radius: 10px; font-size: 0.8125rem; font-weight: 650;
   background: hsl(var(--h, 215) var(--s, 45%) var(--badge-bg)); color: hsl(var(--h, 215) 45% var(--badge-fg)); }

@@ -8,6 +8,7 @@
 //	memory compact-capture  PostCompact hook: spools the compaction summary for the daemon
 //	memory mcp      MCP stdio server that forwards tool calls to the daemon
 //	memory cost     token cost at list prices and why the big cache writes happened
+//	memory resume   find a session in any Claude account and print the command that resumes it
 //	memory version  the release and commit this binary was built from
 //	memory handover launcher step: ask a running older daemon to stop before this version's starts
 //	memory gc       launcher step: remove install dirs of old versions once this version's daemon is up
@@ -30,6 +31,7 @@ var commands = map[string]func(args []string) int{
 	"compact-capture": func([]string) int { return memCompactCaptureCmd(os.Stdin, os.Stderr) },
 	"mcp":             func([]string) int { return memMCP(os.Stdin, os.Stdout, memdSockPath()) },
 	"cost":            func(args []string) int { return memCostTo(args, memdSockPath(), os.Stdout, os.Stderr) },
+	"resume":          memResumeCmd,
 	"version":         func([]string) int { return memVersionTo(os.Stdout) },
 	"handover":        func([]string) int { return memHandoverCmd(os.Stdout) },
 	"gc":              memGCCmd,
@@ -39,12 +41,12 @@ func main() { os.Exit(run(os.Args[1:], os.Stderr)) }
 
 func run(args []string, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: memory <serve|context|lookup|compact-capture|mcp|cost|version>")
+		fmt.Fprintln(stderr, "usage: memory <serve|context|lookup|compact-capture|mcp|cost|resume|version>")
 		return 2
 	}
 	cmd, ok := commands[args[0]]
 	if !ok {
-		fmt.Fprintf(stderr, "memory: unknown subcommand %q (want %s)\n", args[0], "serve|context|lookup|compact-capture|mcp|cost|version")
+		fmt.Fprintf(stderr, "memory: unknown subcommand %q (want %s)\n", args[0], "serve|context|lookup|compact-capture|mcp|cost|resume|version")
 		return 2
 	}
 	return cmd(args[1:])

@@ -165,6 +165,65 @@ daemon it prints ``memory cost: ... (is `memory serve` running?)`` and exits 1.
 Prices are a dated table in `cmd/memory/memdcost.go`. Models not in it count as $0 and are
 named in the report.
 
+## Resume a session
+
+Claude Code's own `/resume` lists only the sessions of the current directory and account.
+Memory reads the transcripts of every config directory, so `memory resume` finds a session
+from any of your accounts and prints the command that resumes it. It never runs `claude`
+itself.
+
+```sh
+m=$(ls -d ~/.claude/plugins/cache/broodhall/memory/*/ | sort -V | tail -1)
+sh "${m}scripts/run.sh" resume --list parser       # sessions that mention "parser"
+sh "${m}scripts/run.sh" resume 3f2a9c              # print the command for a session id or id prefix
+eval "$(sh "${m}scripts/run.sh" resume --fork 3f2a9c)"   # run it, as a fork
+```
+
+The list is newest first. Each session shows its title (the first line of its first prompt, or
+the session summary's request), the id, the project, the branch when memory has one, how long
+ago it was last active, the number of prompts and the config directory it lives in.
+
+The command looks like this:
+
+```sh
+cd -- /work/demo && CLAUDE_CONFIG_DIR=/home/me/.claude-work claude --resume 3f2a9c1e-...
+```
+
+- `CLAUDE_CONFIG_DIR` comes from where the transcript is stored. It is left out only when the
+  session is in `~/.claude` and your shell is not pointing at another account. Otherwise it
+  is written out, so the command resumes in the right account.
+- Paths and ids are quoted for a POSIX shell.
+- If the session's directory no longer exists, the command has no `cd`, and a note on stderr
+  says so. Claude looks sessions up by project directory, so it may not find the session
+  from another directory.
+- `--fork` adds `--fork-session`, which resumes into a new session and leaves the original as
+  it is.
+
+A word that is not an id is a search. All its words must appear, in any case, in a prompt, in
+a summary request, or in the project name or directory. When stdin is a terminal you pick a
+result by number; the list goes to stderr and only the command goes to stdout, so
+`eval "$(...)"` works. When stdin is not a terminal, the list is printed instead. `--limit N`
+caps the list at N (default 20).
+
+**Forks.** `claude --resume X --fork-session` writes a new transcript with a new session id.
+Memory links it to the original and `memory resume --list` shows forks under the original,
+which also shows how many forks it has. The Sessions page in the [UI](ui-and-quack.md) does
+the same, with a "Fork of" link on the fork and links to the forks on the original.
+
+Claude Code does not record the original in a fork made this way (checked with Claude Code
+2.1.322). The fork repeats the original's lines, message ids included, so memory takes two
+transcripts that start with the same message id to be one session and its fork. The one that
+was opened first is the original. When a transcript carries a `forkedFrom` session id, which
+Claude Code's in-session branch writes, that id is used instead.
+
+**Subagents.** A subagent's transcript is stored under its parent session and carries the
+parent's session id. `memory resume` never lists subagents. If you give it a subagent's id
+(`agent-<id>` or the id alone) it resumes the parent session and says so on stderr.
+
+Like `memory cost`, it asks the running daemon, so start a session first. With no daemon it
+prints ``memory resume: ... (is `memory serve` running?)`` and exits 1. It exits 1 too when
+nothing matches or an id prefix fits several sessions.
+
 ## Stale notes
 
 A note about a file is wrong once the file changes. When the daemon stores a note, it also
