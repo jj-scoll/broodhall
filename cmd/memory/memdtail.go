@@ -287,8 +287,10 @@ func (t *memdTailer) commit(path string, f *memdTailFile, events []memdEvent, in
 		return 0, err
 	}
 	if sessionID == "" {
-		name := filepath.Base(path)
-		sessionID = strings.TrimSuffix(name, filepath.Ext(name))
+		sessionID = transcriptSessionID(path)
+	}
+	if err := linkFork(tx, sessionID, &f.st); err != nil {
+		return 0, err
 	}
 	_, err = tx.Exec(`INSERT INTO transcript_offsets (path, session_id, byte_offset, inode, size, observer, sub, reset_kind, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)

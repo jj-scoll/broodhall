@@ -626,6 +626,14 @@ type uiSession struct {
 	USD         float64   `json:"usd"`
 	PromptCount int       `json:"prompt_count"`
 	Summary     uiSummary `json:"summary"`
+	ForkedFrom  string    `json:"forked_from"` // the original session, "" when none
+	Forks       int       `json:"forks"`       // sessions forked from this one
+}
+
+// uiForkRef names a session forked from the one shown.
+type uiForkRef struct {
+	ID      string `json:"id"`
+	EndedAt string `json:"ended_at"`
 }
 
 const uiSessionSelect = `SELECT s.session_id, s.project, s.started_at, s.last_seen_at,
@@ -634,7 +642,9 @@ const uiSessionSelect = `SELECT s.session_id, s.project, s.started_at, s.last_se
 	CAST((SELECT coalesce(sum(input_tokens), 0) FROM queue q WHERE q.session_id = s.session_id) AS BIGINT),
 	CAST((SELECT coalesce(sum(cache_read_tokens), 0) FROM queue q WHERE q.session_id = s.session_id) AS BIGINT),
 	CAST((SELECT coalesce(sum(cache_creation_tokens), 0) FROM queue q WHERE q.session_id = s.session_id) AS BIGINT),
-	CAST((SELECT coalesce(sum(output_tokens), 0) FROM queue q WHERE q.session_id = s.session_id) AS BIGINT)
+	CAST((SELECT coalesce(sum(output_tokens), 0) FROM queue q WHERE q.session_id = s.session_id) AS BIGINT),
+	coalesce(s.forked_from, ''),
+	CAST((SELECT count(*) FROM sessions f WHERE f.forked_from = s.session_id) AS INTEGER)
 	FROM sessions s`
 
 func scanSessions(rows *sql.Rows) ([]*uiSession, error) {
@@ -644,7 +654,7 @@ func scanSessions(rows *sql.Rows) ([]*uiSession, error) {
 		var started, ended time.Time
 		var tk uiTokens
 		if err := rows.Scan(&s.ID, &s.Project, &started, &ended, &s.ToolUses, &s.PromptCount,
-			&tk.Input, &tk.CachedRead, &tk.CacheWrite, &tk.Output); err != nil {
+			&tk.Input, &tk.CachedRead, &tk.CacheWrite, &tk.Output, &s.ForkedFrom, &s.Forks); err != nil {
 			return nil, err
 		}
 		s.StartedAt, s.EndedAt, s.USD = uiTime(started), uiTime(ended), tk.usd()
@@ -783,11 +793,31 @@ func (a *uiAPI) session(w http.ResponseWriter, r *http.Request) error {
 	if err := or.Err(); err != nil {
 		return err
 	}
+	or.Close() // the connection is needed for the next query
+	forks := []uiForkRef{}
+	fr, err := a.db.QueryContext(ctx, `SELECT session_id, last_seen_at FROM sessions WHERE forked_from = ? ORDER BY last_seen_at DESC, session_id`, id)
+	if err != nil {
+		return err
+	}
+	defer fr.Close()
+	for fr.Next() {
+		var f uiForkRef
+		var at time.Time
+		if err := fr.Scan(&f.ID, &at); err != nil {
+			return err
+		}
+		f.EndedAt = uiTime(at)
+		forks = append(forks, f)
+	}
+	if err := fr.Err(); err != nil {
+		return err
+	}
 	writeJSON(w, 200, struct {
 		*uiSession
-		Prompts        []prompt `json:"prompts"`
-		ObservationIDs []string `json:"observation_ids"`
-	}{items[0], prompts, obsIDs})
+		Prompts        []prompt    `json:"prompts"`
+		ObservationIDs []string    `json:"observation_ids"`
+		ForkSessions   []uiForkRef `json:"fork_sessions"`
+	}{items[0], prompts, obsIDs, forks})
 	return nil
 }
 

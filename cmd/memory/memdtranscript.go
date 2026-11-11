@@ -5,7 +5,6 @@ package main
 
 import (
 	"encoding/json"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -28,6 +27,9 @@ type memdFileState struct {
 	Pending       map[string]*memdEvent
 	Observer, Sub bool
 	Reset         string // "clear" or "compact" until the next main-thread response takes it
+	// Fork facts, latched from the first line that has them (see memdfork.go).
+	RootUUID, ForkedFrom string
+	OpenedAt             time.Time
 }
 
 // parseMemdLines parses one batch of transcript lines in order. The caller keeps one
@@ -55,6 +57,7 @@ func parseMemdLines(path, account string, lines [][]byte, st *memdFileState) (ev
 		if !ok {
 			continue
 		}
+		noteForkFacts(d, st)
 		if strings.HasPrefix(d.getStr("entrypoint"), "sdk") {
 			st.Observer = true
 		}
@@ -74,8 +77,7 @@ func parseMemdLines(path, account string, lines [][]byte, st *memdFileState) (ev
 			Cwd:       d.getStr("cwd"),
 		}
 		if base.SessionID == "" {
-			name := filepath.Base(path)
-			base.SessionID = strings.TrimSuffix(name, filepath.Ext(name))
+			base.SessionID = transcriptSessionID(path)
 		}
 		base.Project = projectKey(base.Cwd)
 		if ts := d.getStr("timestamp"); ts != "" {

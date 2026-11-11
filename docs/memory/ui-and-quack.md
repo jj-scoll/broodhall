@@ -17,7 +17,7 @@ and dark. It is read-only, and every stored string is shown as plain text.
 | Overview | Estimated cost, memories written today, memory size and the latest memories. |
 | Stats | Daemon status and build (a Go pseudo-version that names the commit time and commit, not the release number), last ingest time, totals, database size, and a chart of memories per day by type or by project. |
 | Memories | Full-text search with filters for project, type, date range and session. List view, or a timeline grouped by day. |
-| Sessions | Each session with its summary, prompts, a link to its memories and the handoff it wrote. |
+| Sessions | Each session with its summary, prompts, a link to its memories and the handoff it wrote. A forked session sits under its original, with a "Fork of" link; the original lists its forks. |
 | Handoffs and work | Stored handoffs rendered from Markdown, whether each has been shown to a later session, and the work-state lists per project. |
 | Observer | Queue counts, rejections and model calls. |
 | Privacy | Bind address and database location. |
