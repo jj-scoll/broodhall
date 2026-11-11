@@ -18,6 +18,7 @@ type memdEvent struct {
 	At                                             time.Time
 	Observer, Sub                                  bool
 	Usage                                          *memdUsage // Kind "usage" only
+	cap                                            captureDecision
 }
 
 // memdFileState is the per-file state parseMemdLines carries between calls. Observer and Sub
@@ -100,7 +101,9 @@ func parseMemdLines(path, account string, lines [][]byte, st *memdFileState) (ev
 						in.vals["command"] = cmdNorm(cmd)
 					}
 				}
-				e.Input = memdRedact(memdJSON(b.get("input")))
+				raw := memdJSON(b.get("input"))
+				e.cap = captureFor(captureCfg, base.Cwd, e.ToolName, raw)
+				e.Input = e.cap.input(memdRedact(raw))
 				pending[id] = &e
 			}
 			if msg.get("stop_reason") == "end_turn" {
@@ -117,7 +120,7 @@ func parseMemdLines(path, account string, lines [][]byte, st *memdFileState) (ev
 				}
 				id := b.getStr("tool_use_id")
 				if e, ok := pending[id]; ok {
-					e.Output = memdRedact(textOf(b.get("content")))
+					e.Output = e.cap.output(memdRedact(textOf(b.get("content"))), truthy(b.get("is_error")))
 					e.Observer, e.Sub = st.Observer, st.Sub
 					events = append(events, *e)
 					delete(pending, id)

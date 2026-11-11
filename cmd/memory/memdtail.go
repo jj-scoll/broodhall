@@ -375,7 +375,7 @@ VALUES (?, ?, ?, ?, ?, CAST(? AS TIMESTAMP)) ON CONFLICT (session_id, tool_use_i
 			return 0, fmt.Errorf("insert tool_use: %w", err)
 		}
 		n := rowsAffected(res)
-		if n > 0 && !e.Observer && !e.Sub {
+		if n > 0 && !e.Observer && !e.Sub && e.cap.queued() {
 			if _, err := tx.Exec(`INSERT INTO queue (session_id, tool_use_id, state) VALUES (?, ?, 'queued')`,
 				e.SessionID, e.ToolUseID); err != nil {
 				return 0, fmt.Errorf("enqueue: %w", err)

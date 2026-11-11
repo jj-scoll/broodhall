@@ -29,6 +29,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/jj-scoll/broodhall/cmd/guardrails/secretfiles"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -37,31 +38,19 @@ import (
 // config of mark (github.com/kovetskiy/mark, Markdown to Confluence), which holds an
 // Atlassian API token in plain text. No broodhall code reads it; it stays as a well-known
 // tool's credentials file, like gh's hosts.yml.
-var secretPathsDefault = []string{
-	"~/.config/mark.toml",
-	"~/.aws/credentials", "~/.aws/sso/cache/*.json", "~/.aws/cli/cache/*.json",
-	"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed25519", "~/.ssh/id_ecdsa_sk", "~/.ssh/id_ed25519_sk",
-	"~/.netrc", "~/.pgpass", "~/.docker/config.json", "~/.config/gh/hosts.yml",
-	"~/.local/state/guardrails/pii-key", "~/.local/state/claude-tools/pii-key",
-	"~/.kube/config", "~/.pypirc", "~/.git-credentials",
-	"~/.config/gcloud/application_default_credentials.json", "~/.config/gcloud/credentials.db",
-}
+var secretPathsDefault = secretfiles.Paths
 
 // secretNamesDefault are file names protected in any directory (filepath.Match on the base
 // name), and secretNamesSkip the templates among them that hold no secret. Only the defaults
-// use names: the lines of a secret-paths file stay absolute paths.
+// use names: the lines of a secret-paths file stay absolute paths. The lists live in
+// cmd/guardrails/secretfiles so the memory daemon shares them.
 var (
-	secretNamesDefault = []string{".env", ".env.*", ".npmrc", ".pypirc", ".git-credentials", "*.tfvars", "*.pem"}
-	secretNamesSkip    = []string{".env.example", ".env.sample", ".env.template"}
+	secretNamesDefault = secretfiles.Names
+	secretNamesSkip    = secretfiles.Skip
 )
 
 // secretNamed reports whether a file's base name is one of secretNamesDefault.
-func secretNamed(base string) bool {
-	if slices.Contains(secretNamesSkip, base) {
-		return false
-	}
-	return slices.ContainsFunc(secretNamesDefault, func(p string) bool { ok, _ := filepath.Match(p, base); return ok })
-}
+func secretNamed(base string) bool { return secretfiles.Named(base) }
 
 const secretMaskNote = "pre-tool-use masked this read of a protected secret file (`guardrails redact --secrets`): " +
 	"token shapes show as [kind:tag] and values under secret-looking keys as [secret:tag]; equal values share a tag. " +

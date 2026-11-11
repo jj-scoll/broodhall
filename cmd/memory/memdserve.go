@@ -118,6 +118,8 @@ func memdServe(ctx context.Context, dir string, roots map[string]string) error {
 	settings := memdSettingsPath()
 	skipTools, skipBashPatterns = loadSkipSettings(settings)
 	log.Printf("memory: skip lists from %s: %d tools, %d bash patterns", settings, len(skipTools), len(skipBashPatterns))
+	captureCfg = loadCaptureSettings(settings)
+	log.Printf("memory: capture: tools=%v, %d excluded directories", captureCfg.Tools, len(captureCfg.ExcludeDirs))
 
 	db, err := openMemdDB(dir)
 	if err != nil {

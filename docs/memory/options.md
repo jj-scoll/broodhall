@@ -8,14 +8,16 @@ and restart Claude Code and the daemon (see below) for them to apply.
 
 `~/.config/memory/settings.json`, or `$XDG_CONFIG_HOME/memory/settings.json`, or the path in
 `MEMORY_SETTINGS`. The file is optional. A missing or unreadable file means all defaults. The
-daemon reads the skip lists when it starts; the handoff age is read each time a session
+daemon reads the skip lists and the capture settings when it starts; the handoff age is read each time a session
 starts.
 
 ```json
 {
   "skip_tools": "skill,todowrite,askuserquestion",
   "skip_bash_patterns": "^(ls|pwd)( |$)",
-  "handoff_max_age_hours": 72
+  "handoff_max_age_hours": 72,
+  "capture_tools": true,
+  "capture_exclude_dirs": "~/clients,/work/private"
 }
 ```
 
@@ -24,6 +26,8 @@ starts.
 | `skip_tools` | string, comma-separated | `listmcpresourcestool,slashcommand,skill,todowrite,askuserquestion` | Tool names that are never turned into notes and never sent to the model. Names match without regard to case. Your list replaces the default, it does not add to it. |
 | `skip_bash_patterns` | string, one regular expression | empty | Bash and PowerShell commands that match are skipped. The command is matched with its spaces collapsed. A pattern that does not compile is ignored, with a line in the daemon log. |
 | `handoff_max_age_hours` | number above 0 | `168` (7 days) | How old a handoff can be and still show at session start. |
+| `capture_tools` | boolean | `true` | Set to `false` to keep only each tool's name, and whether it errored, in every session. No tool input or output is stored or sent, and those calls get no notes. Prompts are still kept. |
+| `capture_exclude_dirs` | string, comma-separated, or a list | empty | Directories (absolute, `~` allowed). A session that runs in one of them, or under it, keeps only the tool name and the error flag of each call, like `capture_tools: false`. Prompts are still kept, masked. A relative path is ignored. |
 
 ## Environment variables
 
@@ -31,6 +35,8 @@ starts.
 | --- | --- | --- |
 | `MEMORY_DIR` | `$XDG_DATA_HOME/memory`, else `~/.local/share/memory` | State directory: the database, the daemon log and the Quack token. |
 | `MEMORY_EXT_DIR` | `<state directory>/ext` | Where the daemon finds the DuckDB extensions `fts`, `httpfs` and `quack`. The launcher sets this to the extensions that came with the download, so you rarely set it. |
+| `MEMORY_CAPTURE_TOOLS` | unset | `0`, `false`, `no` or `off` turns `capture_tools` off; `1`, `true`, `yes` or `on` turns it on. Overrides the settings file. |
+| `MEMORY_CAPTURE_EXCLUDE_DIRS` | unset | A `:`-separated list of directories, as `capture_exclude_dirs`. Replaces the settings file's list. |
 | `MEMORY_SETTINGS` | `~/.config/memory/settings.json` | Path of the settings file. |
 | `MEMORY_LOOKUP_SHELL` | unset | Set to `1` to run the lookup before `Bash`, `Grep` and `Glob` too. It then needs the hook matcher to include them; the plugin's matcher is <code>Edit&#124;Write&#124;NotebookEdit</code>, so on its own this has no effect. |
 | `MEMORY_OBSERVER_CONFIG_DIR` | unset | The Claude config directory (account) the observer and summary calls run as. Unset, they run as the account that started the daemon. Set it when you have several accounts and want every note written through one of them. |
@@ -46,6 +52,10 @@ this program and skip the download), `MEMORY_RELEASE_URL` (download from here),
 the daemon), `MEMORY_HANDOVER_TIMEOUT` (seconds the launcher lets the handover from an older
 daemon run, default 10) and `MEMORY_MCP_WAIT` (seconds the MCP server waits for a first install, default
 25).
+
+Two more rules need no setting: calls that read or write a credential file, and commands
+whose output is a credential, are always kept without that content. See
+[What is never kept](privacy.md#what-is-never-kept).
 
 ## Ports
 
