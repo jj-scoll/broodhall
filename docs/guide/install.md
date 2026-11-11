@@ -71,8 +71,9 @@ No other plugin states a minimum Claude Code version.
 On its first SessionStart, and again at the first SessionStart after each plugin update, the
 plugin downloads the static binary for its own version from this repo's GitHub release. The
 download is a `guardrails_<os>_<arch>.tar.gz` of about 3.5 MB that unpacks to a binary of
-about 9 MB. It is checked against the release's `checksums.txt` by sha256, then kept in the
-plugin's data directory under `bin/<version>/`, so a version is downloaded once.
+about 9 MB. Its sha256 is checked (see [How a download is checked](#how-a-download-is-checked)),
+then it is kept in the plugin's data directory under `bin/<version>/`, so a version is
+downloaded once.
 
 If the download fails, you see a one-line notice and the guards fail closed: tool calls are
 blocked, with a message that says how to retry, until the binary installs. The next session
@@ -85,8 +86,8 @@ memory downloads differently, because it is large and must not hold up a session
 first SessionStart after install, and again after each plugin update, the launcher starts the
 download in the background and the session goes on while it runs. The download is a
 `memory_<os>_<arch>.tar.xz` of about 33 MB. It holds the program and three signed DuckDB
-extensions, so nothing more is fetched later. It is checked against the release's
-`checksums.txt` by sha256, then kept in the plugin's data directory under `bin/<version>/`.
+extensions, so nothing more is fetched later. Its sha256 is checked the same way as
+guardrails', then it is kept in the plugin's data directory under `bin/<version>/`.
 
 When the download finishes, the launcher starts the daemon, and it records the rest of that
 session. The memory tools wait up to 25 seconds for the download at session start, so on a
@@ -94,6 +95,44 @@ slow link they may be missing until the next session. The context block at sessi
 the next session. If the download fails, memory stays off
 and says why in `memory.log` in the plugin data directory. It does not retry for an hour.
 See [Troubleshooting](troubleshooting.md#memory-does-not-start).
+
+### How a download is checked
+
+The archive comes from the GitHub release. The sha256 it must have comes from somewhere else:
+a `checksums.txt` in the plugin's own directory, which Claude Code fetched from the git
+repository along with the launcher script. The release workflow commits that file in the
+same push as the version number, after it has built the archives. The launcher hashes the
+download with `sha256sum` or `shasum` and installs it only when the hash is the one in that
+file.
+
+| The plugin's `checksums.txt` | What the launcher does |
+| --- | --- |
+| is for this version and lists the archive, and the hash matches | installs the archive |
+| lists the archive with another hash | installs nothing |
+| is for another version (its `# version` line is not the `plugin.json` version) | installs nothing |
+| has no line for the archive | installs nothing |
+| is not there | checks against the `checksums.txt` in the release instead |
+
+When the file is there, the launcher never reads the release's `checksums.txt`, so nothing in
+the release can stand in for it. The file is absent only from a release cut by hand (see
+[Release](../reference/release.md#manual-release)) and from versions older than this check.
+
+What this proves: the archive is, byte for byte, one the release workflow built for the commit
+you installed. Someone who can change a release's files, but not the repository's `main`
+branch, cannot get a different archive past the launcher.
+
+What it does not prove:
+
+- That the repository itself is sound. Someone who can push to `main`, or change what the
+  release workflow builds, controls both the archive and the hash. The hashes are not signed,
+  and the releases carry no build attestation.
+- That your copy of the plugin is the repository's. The launcher trusts the plugin directory
+  Claude Code fetched.
+- Anything, when the plugin has no `checksums.txt`. The release's own copy sits beside the
+  archive, so it only shows that the archive arrived whole.
+- That the binary is unchanged later. The check runs once, at install. For guardrails,
+  [doctor](../guardrails/doctor.md) compares the binary at each session start with the hash
+  recorded at install, a record kept beside the binary.
 
 ## Test a local build
 

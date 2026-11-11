@@ -8,7 +8,9 @@ claude plugin update rtk@broodhall
 ```
 
 Restart Claude Code to apply the update. At the next session start the plugin finds no
-binary for the new version, downloads it, checks its sha256, and keeps it beside the old
+binary for the new version, downloads it, checks its sha256 against the `checksums.txt` that
+came with the update (see [How a download is checked](install.md#how-a-download-is-checked)),
+and keeps it beside the old
 one under `bin/<version>/` in the plugin data directory. If that download fails, you see a
 one-line notice, and the next session start retries. Until the new binary lands, the guards
 keep running on the previous version's binary (see below).
