@@ -36,8 +36,8 @@ func TestMemdTranscriptBasic(t *testing.T) {
 	st := &memdFileState{}
 	evs := parseMemdLines(path, "acct", lines[:4], st)
 	pending := st.Pending
-	if got := kinds(evs); got != "prompt" {
-		t.Fatalf("batch1 kinds = %q, want prompt", got)
+	if got := kinds(evs); got != "prompt,reply" {
+		t.Fatalf("batch1 kinds = %q, want prompt,reply", got)
 	}
 	p := evs[0]
 	if p.PromptText != "fix the flaky test in parser" || p.SessionID != "sess-basic-0001" || p.Cwd != "/work/demo" ||
@@ -51,7 +51,7 @@ func TestMemdTranscriptBasic(t *testing.T) {
 	// Batch 2: first result and the end_turn.
 	evs = parseMemdLines(path, "acct", lines[4:6], st)
 	pending = st.Pending
-	if got := kinds(evs); got != "tool_use,turn_end" {
+	if got := kinds(evs); got != "tool_use,reply,turn_end" {
 		t.Fatalf("batch2 kinds = %q", got)
 	}
 	tu := evs[0]
@@ -108,8 +108,9 @@ func TestMemdTranscriptFlags(t *testing.T) {
 				}
 			}
 			evs := parseMemdLines(tt.path, "a", in, nil)
-			// Events follow the line that completes them: result 01, end_turn, result 02.
-			if got := kinds(evs); got != "prompt,tool_use,turn_end,tool_use" {
+			// Events follow the line that completes them: the reply text, result 01, the closing
+			// reply and end_turn, result 02.
+			if got := kinds(evs); got != "prompt,reply,tool_use,reply,turn_end,tool_use" {
 				t.Fatalf("kinds = %q", got)
 			}
 			for _, e := range evs {

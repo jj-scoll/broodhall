@@ -5,7 +5,6 @@ package main
 
 import (
 	"encoding/json"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -18,6 +17,9 @@ type memdEvent struct {
 	At                                             time.Time
 	Observer, Sub                                  bool
 	Usage                                          *memdUsage // Kind "usage" only
+	ReplyKey, ReplyText                            string     // Kind "reply": line uuid#block, masked text
+	GitBranch, Model                               string     // from the line; empty when it carries none
+	cap                                            captureDecision
 }
 
 // memdFileState is the per-file state parseMemdLines carries between calls. Observer and Sub
@@ -28,6 +30,12 @@ type memdFileState struct {
 	Pending       map[string]*memdEvent
 	Observer, Sub bool
 	Reset         string // "clear" or "compact" until the next main-thread response takes it
+	// Fork facts, latched from the first line that has them (see memdfork.go).
+	RootUUID, ForkedFrom string
+	OpenedAt             time.Time
+	// forkKnown: the file is read from the middle, so its first uuid and timestamp are not the
+	// transcript's and noteForkFacts must not latch them (the import sets it).
+	forkKnown bool
 }
 
 // parseMemdLines parses one batch of transcript lines in order. The caller keeps one
@@ -55,6 +63,7 @@ func parseMemdLines(path, account string, lines [][]byte, st *memdFileState) (ev
 		if !ok {
 			continue
 		}
+		noteForkFacts(d, st)
 		if strings.HasPrefix(d.getStr("entrypoint"), "sdk") {
 			st.Observer = true
 		}
@@ -72,10 +81,10 @@ func parseMemdLines(path, account string, lines [][]byte, st *memdFileState) (ev
 			SessionID: d.getStr("sessionId"),
 			Account:   account,
 			Cwd:       d.getStr("cwd"),
+			GitBranch: d.getStr("gitBranch"),
 		}
 		if base.SessionID == "" {
-			name := filepath.Base(path)
-			base.SessionID = strings.TrimSuffix(name, filepath.Ext(name))
+			base.SessionID = transcriptSessionID(path)
 		}
 		base.Project = projectKey(base.Cwd)
 		if ts := d.getStr("timestamp"); ts != "" {
@@ -84,8 +93,17 @@ func parseMemdLines(path, account string, lines [][]byte, st *memdFileState) (ev
 		content, _ := msg.get("content").([]any)
 		switch d.get("type") {
 		case "assistant":
-			for _, x := range content {
+			if m := msg.getStr("model"); m != "<synthetic>" {
+				base.Model = m
+			}
+			for i, x := range content {
 				b, ok := x.(*obj)
+				if ok && b.get("type") == "text" {
+					if e, ok := replyEvent(base, d, msg, i, b, st); ok {
+						events = append(events, e)
+					}
+					continue
+				}
 				if !ok || b.get("type") != "tool_use" {
 					continue
 				}
@@ -100,7 +118,9 @@ func parseMemdLines(path, account string, lines [][]byte, st *memdFileState) (ev
 						in.vals["command"] = cmdNorm(cmd)
 					}
 				}
-				e.Input = memdRedact(memdJSON(b.get("input")))
+				raw := memdJSON(b.get("input"))
+				e.cap = captureFor(captureCfg, base.Cwd, e.ToolName, raw)
+				e.Input = e.cap.input(memdRedact(raw))
 				pending[id] = &e
 			}
 			if msg.get("stop_reason") == "end_turn" {
@@ -117,7 +137,7 @@ func parseMemdLines(path, account string, lines [][]byte, st *memdFileState) (ev
 				}
 				id := b.getStr("tool_use_id")
 				if e, ok := pending[id]; ok {
-					e.Output = memdRedact(textOf(b.get("content")))
+					e.Output = e.cap.output(memdRedact(textOf(b.get("content"))), truthy(b.get("is_error")))
 					e.Observer, e.Sub = st.Observer, st.Sub
 					events = append(events, *e)
 					delete(pending, id)

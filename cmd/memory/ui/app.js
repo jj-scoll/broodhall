@@ -636,7 +636,7 @@ const views = {
       try {
         const page = await api("sessions?" + qs);
         if (my !== req || gen !== state.gen) return;
-        feed.append(...page.items.map((s) => sessionCard(s, bySession.get(s.id), false)));
+        feed.append(...groupForks(page.items).map((s) => sessionCard(s, bySession.get(s.id), false)));
         cursor = page.next_cursor;
         more.hidden = !cursor;
         if (!feed.children.length) feed.append(h("li", {}, empty("No sessions yet.")));
@@ -745,6 +745,22 @@ function handoffCard(x, open) {
     det);
 }
 
+// groupForks puts each fork directly after its original when both are on the page, and marks
+// it nested so the card is indented. A fork whose original is on another page stays where it is.
+function groupForks(items) {
+  const by = new Map(items.map((s) => [s.id, s]));
+  const rootOf = (s) => {
+    for (let i = 0; i < items.length && s.forked_from && by.has(s.forked_from); i++) s = by.get(s.forked_from);
+    return s;
+  };
+  const kids = new Map();
+  for (const s of items) {
+    const r = rootOf(s);
+    if (r !== s) { s.nested = true; if (!kids.has(r.id)) kids.set(r.id, []); kids.get(r.id).push(s); }
+  }
+  return items.filter((s) => !s.nested).flatMap((s) => [s, ...(kids.get(s.id) || [])]);
+}
+
 function sessionCard(s, handoff, expanded) {
   const sm = s.summary || {};
   const sections = [["Request", sm.request], ["Investigated", sm.investigated], ["Learned", sm.learned],
@@ -760,10 +776,13 @@ function sessionCard(s, handoff, expanded) {
     } catch (err) { delete det.dataset.loaded; body.textContent = "Could not load prompts."; }
   };
   det.addEventListener("toggle", loadPrompts);
-  const li = h("li", {},
+  const li = h("li", s.nested ? { class: "fork" } : {},
     h("div", { class: "row" }, h("span", { class: "title", text: s.project || "(no project)" }),
       h("time", { class: "time", title: fullTime(s.started_at), text: ago(s.started_at) + ", " + dur(s.started_at, s.ended_at) }),
-      h("span", { class: "muted", text: s.tool_uses + " tool uses, " + usd(s.usd) + ", " + s.prompt_count + " prompts" })),
+      h("span", { class: "muted", text: s.tool_uses + " tool uses, " + usd(s.usd) + ", " + s.prompt_count + " prompts" }),
+      s.forked_from ? h("span", { class: "muted" }, "Fork of ", link("sessions", { id: s.forked_from }, shortId(s.forked_from))) : null,
+      s.forks ? h("span", { class: "muted" }, s.forks + (s.forks === 1 ? " fork" : " forks"),
+        (s.fork_sessions || []).map((f) => [" ", link("sessions", { id: f.id }, shortId(f.id))])) : null),
     sections.length ? h("dl", {}, sections.flatMap(([k, v]) => [h("dt", { text: k }), h("dd", { text: v })]))
       : h("div", { class: "sub", text: "No summary yet." }),
     h("p", { class: "links" }, link("memory", { session: s.id }, "Memories from this session"),

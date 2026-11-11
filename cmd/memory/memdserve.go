@@ -118,6 +118,8 @@ func memdServe(ctx context.Context, dir string, roots map[string]string) error {
 	settings := memdSettingsPath()
 	skipTools, skipBashPatterns = loadSkipSettings(settings)
 	log.Printf("memory: skip lists from %s: %d tools, %d bash patterns", settings, len(skipTools), len(skipBashPatterns))
+	captureCfg = loadCaptureSettings(settings)
+	log.Printf("memory: capture: tools=%v, %d excluded directories", captureCfg.Tools, len(captureCfg.ExcludeDirs))
 
 	db, err := openMemdDB(dir)
 	if err != nil {
@@ -146,7 +148,19 @@ func memdServe(ctx context.Context, dir string, roots map[string]string) error {
 
 	var wg sync.WaitGroup
 	tailer := newMemdTailer(db, roots, time.Now())
-	wg.Add(5)
+	importer := newMemdImporter(db, roots, tailer.frontier)
+	importer.ctx = runCtx
+	memdActiveImporter.Store(importer)
+	defer memdActiveImporter.Store(nil)
+	wg.Add(7)
+	// The raw-search index catches up here, not in the migration that blocks start.
+	go func() {
+		defer wg.Done()
+		if err := memdRawIndexBackground(runCtx, db); err != nil && runCtx.Err() == nil {
+			log.Printf("memory raw search: background index: %v (searches catch up)", err)
+		}
+	}()
+	go func() { defer wg.Done(); <-runCtx.Done(); importer.Wait() }()
 	// The in-memory search index builds in the background; searches use SQL until it is ready.
 	go func() { defer wg.Done(); searcherFor(db).buildAll(runCtx) }()
 	go func() {
@@ -177,7 +191,6 @@ func memdServe(ctx context.Context, dir string, roots map[string]string) error {
 	}
 	// Quack: failure is logged by startQuack; memory keeps running without it.
 	quackUp := startQuack(db, dir) == nil
-	// Later: memory import (Task 22) is a separate subcommand, not part of the daemon.
 	log.Printf("memory: serving on %s, state in %s", sock, dir)
 
 	var serveErr error

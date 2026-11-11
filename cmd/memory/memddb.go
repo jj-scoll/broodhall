@@ -286,6 +286,12 @@ func memdMigrate(db *sql.DB) error {
 	if _, err := db.Exec(`ALTER TABLE transcript_offsets ADD COLUMN IF NOT EXISTS reset_kind VARCHAR DEFAULT ''`); err != nil {
 		return fmt.Errorf("memory schema: add transcript_offsets.reset_kind: %w", err)
 	}
+	if err := memdMigrateFork(db); err != nil {
+		return err
+	}
+	if err := memdMigrateImport(db); err != nil {
+		return err
+	}
 	if _, err := db.Exec(memdSearchSchema); err != nil {
 		return fmt.Errorf("memory search schema: %w", err)
 	}
@@ -313,7 +319,7 @@ func memdMigrate(db *sql.DB) error {
 			return fmt.Errorf("backfill search index %s: %w", k.table, err)
 		}
 	}
-	return nil
+	return memdRawMigrate(db)
 }
 
 // ftsSearch returns observation ids matching q, best score first. Minimal helper for

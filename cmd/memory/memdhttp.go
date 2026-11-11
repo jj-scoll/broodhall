@@ -24,12 +24,13 @@ const (
 	socketDialBudget = 500 * time.Millisecond
 )
 
-// memdTools are the MCP tools served over POST /tool/{name}: the eleven memory tools minus smart_*.
+// memdTools are the MCP tools served over POST /tool/{name}: the twelve memory tools minus smart_*.
 var memdTools = map[string]func(db *sql.DB, args map[string]any) (string, error){
 	"search":           memSearch,
 	"timeline":         memTimeline,
 	"get_observations": memGetObservations,
 	"get_tool_uses":    memGetToolUses,
+	"read_session":     memReadSession,
 	"work_state_read":  memWorkStateRead,
 	"work_state_write": memWorkStateWrite,
 	"save_memory":      memSaveMemory,
@@ -45,6 +46,10 @@ var memdTools = map[string]func(db *sql.DB, args map[string]any) (string, error)
 //	GET  /by-file?path=F[&project=P]   200, <= 3 observations touching F, <= 1500 bytes; empty body if none
 //	GET  /cost[?days=N&include_sidechain=1&min_cache=N&top=N]
 //	                                   200, the plain-text usage cost report (`memory cost`)
+//	GET  /resume?id=REF | ?q=WORDS[&limit=N]
+//	                                   200, JSON {"item","via"} or {"items"} for `memory resume`; 404 no match, 409 ambiguous id
+//	POST /import[?dry_run=1]           202, JSON status; starts `memory import` in the background; 409 while one runs
+//	GET  /import                       200, JSON status of the current or last import
 //	POST /tool/{name}                  JSON object of arguments in, tool text out
 //
 // POST /tool status mapping, which the MCP server maps to isError: 200 is a normal result;
@@ -58,6 +63,8 @@ func memdHandler(db *sql.DB) http.Handler {
 		writeText(w, 200, "ok")
 	})
 	registerControl(mux)
+	registerResume(mux, db)
+	registerImport(mux)
 	mux.HandleFunc("GET /context", func(w http.ResponseWriter, r *http.Request) {
 		project := r.URL.Query().Get("project")
 		if project == "" {

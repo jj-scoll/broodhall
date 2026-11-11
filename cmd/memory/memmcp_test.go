@@ -92,7 +92,7 @@ func TestMemMCPProtocol(t *testing.T) {
 		}
 	}
 	sort.Strings(names)
-	want := []string{"get_observations", "get_tool_uses", "save_memory", "search", "session_start_context",
+	want := []string{"get_observations", "get_tool_uses", "read_session", "save_memory", "search", "session_start_context",
 		"smart_outline", "smart_search", "smart_unfold", "timeline", "work_state_read", "work_state_write"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("tools = %v, want %v", names, want)

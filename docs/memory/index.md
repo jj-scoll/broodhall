@@ -61,18 +61,19 @@ on [Privacy and redaction](privacy.md).
    so it is filed by the working directory.) The context block
    that follows a compaction leaves out that session's own summary, because Claude Code
    already put it in the conversation.
-7. **Tools.** An MCP server named `memory` gives Claude 11 tools, listed below.
+7. **Tools.** An MCP server named `memory` gives Claude 12 tools, listed below.
 8. **UI.** The daemon serves a local web page on `127.0.0.1:9495`. See
    [UI and Quack](ui-and-quack.md).
 
-## The 11 tools
+## The 12 tools
 
 | Tool | Use |
 | --- | --- |
-| `search` | Search the notes. |
+| `search` | Search the notes, and the raw session records when no note matches. |
 | `timeline` | Notes around a given note or session, in time order. |
 | `get_observations` | Full text of notes, by ID. |
 | `get_tool_uses` | The recorded tool calls themselves, by ID. |
+| `read_session` | One session's conversation in order: prompts, replies and tool calls. |
 | `work_state_read` | Read the project's to-do lists and tracked items. |
 | `work_state_write` | Add or change an item on a list. |
 | `save_memory` | Keep a note you write by hand. |
@@ -88,6 +89,43 @@ Two `work_state_write` lists are special. `facts` keeps lasting facts about the 
 `user-facts` keeps facts for every project. Both appear at the start of every session. Write
 one key per fact, and null to delete it. An item can also carry a `work_product` field, the
 URL or path of something it produced, which the [UI](ui-and-quack.md) shows with the item.
+
+## Raw search
+
+Notes are written by a model, so they can lag behind, or not exist at all when `claude` is
+signed out. Raw search needs no model. It searches the records the daemon stores as it reads
+your transcripts: your prompts, Claude's replies, the inputs of tool calls and the file paths
+of `Read`, `Edit`, `MultiEdit`, `Write` and `NotebookEdit` calls. Tool outputs are left out
+because they are bulky. Everything is masked first (see [Privacy and redaction](privacy.md)).
+
+`search` falls back to it when no note matches, and `source: "raw"` asks for it directly.
+`source: "notes"` turns the fallback off. It returns sessions, most recently active first,
+each with a short snippet around the match. Then `read_session` with the session ID returns
+the conversation in order. Long sessions come in pages (`offset` and `limit`), and tool outputs
+are cut short.
+
+The rules follow Atuin Threads:
+
+- Each word matches a whole word, ignoring case. `alpha` does not match `alphabet`. A name
+  such as `parser.go` or `file_path` matches as a whole and also by its parts, so `parser`
+  finds `parser.go`.
+- Words in `"quotes"` match as a phrase: adjacent and in order, inside one message.
+- Every word and phrase must occur somewhere in the session, though not in the same message.
+- An empty query lists the newest sessions, each with its first prompt.
+
+Filters: `project`, `dateStart` and `dateEnd` (sessions active in that range), `branch` (the
+exact git branch) and `model` (a case-insensitive part of the model name, such as `opus`). Setting
+`branch` or `model` makes the search a raw one, because notes carry neither. A session keeps
+the branch and model last seen in its transcript.
+
+The index is a set of `rx_` tables next to the note indexes. New rows are indexed as the daemon
+stores them. Records that are already there, after an upgrade or an [import](#import-past-sessions),
+are indexed in the background, and a search waits for whatever is left. Observer
+sessions are never indexed or returned, and subagent replies are not stored. Only the first
+3,000 words of each prompt, reply or tool input are indexed, which keeps a large `Write` from
+filling the index. The file path of a tool call is indexed apart from that, so it always
+stays findable. The index holds one row per word occurrence. In a test on 2.2 MB of source
+text it came to about 340,000 rows and added 3.7 MB to the database file.
 
 ## Token cost and cache misses
 
@@ -127,6 +165,110 @@ daemon it prints ``memory cost: ... (is `memory serve` running?)`` and exits 1.
 
 Prices are a dated table in `cmd/memory/memdcost.go`. Models not in it count as $0 and are
 named in the report.
+
+## Resume a session
+
+Claude Code's own `/resume` lists only the sessions of the current directory and account.
+Memory reads the transcripts of every config directory, so `memory resume` finds a session
+from any of your accounts and prints the command that resumes it. It never runs `claude`
+itself.
+
+```sh
+m=$(ls -d ~/.claude/plugins/cache/broodhall/memory/*/ | sort -V | tail -1)
+sh "${m}scripts/run.sh" resume --list parser       # sessions that mention "parser"
+sh "${m}scripts/run.sh" resume 3f2a9c              # print the command for a session id or id prefix
+eval "$(sh "${m}scripts/run.sh" resume --fork 3f2a9c)"   # run it, as a fork
+```
+
+The list is newest first. Each session shows its title (the first line of its first prompt, or
+the session summary's request), the id, the project, the branch when memory has one, how long
+ago it was last active, the number of prompts and the config directory it lives in.
+
+The command looks like this:
+
+```sh
+cd -- /work/demo && CLAUDE_CONFIG_DIR=/home/me/.claude-work claude --resume 3f2a9c1e-...
+```
+
+- `CLAUDE_CONFIG_DIR` comes from where the transcript is stored. It is left out only when the
+  session is in `~/.claude` and your shell is not pointing at another account. Otherwise it
+  is written out, so the command resumes in the right account.
+- Paths and ids are quoted for a POSIX shell.
+- If the session's directory no longer exists, the command has no `cd`, and a note on stderr
+  says so. Claude looks sessions up by project directory, so it may not find the session
+  from another directory.
+- `--fork` adds `--fork-session`, which resumes into a new session and leaves the original as
+  it is.
+
+A word that is not an id is a search, with the rules of [Raw search](#raw-search): each word
+and `"quoted phrase"` must appear in the session's prompts, Claude's replies, tool inputs or
+file paths, or, as text in any case, in a summary request or the project name or directory. When stdin is a terminal you pick a
+result by number; the list goes to stderr and only the command goes to stdout, so
+`eval "$(...)"` works. When stdin is not a terminal, the list is printed instead. `--limit N`
+caps the list at N (default 20).
+
+**Forks.** `claude --resume X --fork-session` writes a new transcript with a new session id.
+Memory links it to the original and `memory resume --list` shows forks under the original,
+which also shows how many forks it has. The Sessions page in the [UI](ui-and-quack.md) does
+the same, with a "Fork of" link on the fork and links to the forks on the original.
+
+Claude Code does not record the original in a fork made this way (checked with Claude Code
+2.1.322). The fork repeats the original's lines, message ids included, so memory takes two
+transcripts that start with the same message id to be one session and its fork. The one that
+was opened first is the original. When a transcript carries a `forkedFrom` session id, which
+Claude Code's in-session branch writes, that id is used instead.
+
+**Subagents.** A subagent's transcript is stored under its parent session and carries the
+parent's session id. `memory resume` never lists subagents. If you give it a subagent's id
+(`agent-<id>` or the id alone) it resumes the parent session and says so on stderr.
+
+Like `memory cost`, it asks the running daemon, so start a session first. With no daemon it
+prints ``memory resume: ... (is `memory serve` running?)`` and exits 1. It exits 1 too when
+nothing matches or an id prefix fits several sessions.
+
+## Import past sessions
+
+The daemon only reads what Claude writes while it runs, and the last day of older files.
+`memory import` reads all the rest, so every past session is searchable and can be resumed.
+It costs no tokens: it sends nothing, and it never calls Claude.
+
+```sh
+m=$(ls -d ~/.claude/plugins/cache/broodhall/memory/*/ | sort -V | tail -1)
+sh "${m}scripts/run.sh" import --dry-run   # count the files and bytes, write nothing
+sh "${m}scripts/run.sh" import             # start the import and show progress
+sh "${m}scripts/run.sh" import --status    # show the current or last import
+```
+
+Like `memory resume`, it asks the running daemon, so start a session first. The daemon does
+the work in the background and the command prints progress: files done out of the total, and
+bytes read. You can stop the command at any time. The import carries on in the daemon, and
+`--status` shows it. A second `memory import` while one runs is refused.
+
+What it does:
+
+- It reads the transcripts of every config directory the daemon watches, in the same way as
+  live capture. The same masking and the same [capture rules](privacy.md#what-is-never-kept)
+  apply. It stores sessions (directory, project, branch, model), prompts, Claude's replies and
+  tool calls. Observer sessions and subagent transcripts are handled as live capture
+  handles them.
+- It adds no notes. Imported tool calls are not queued, no summary is requested, and the
+  observer is never started for them, so the history costs nothing to import. Notes are
+  written only for what you do after the import. If you continue an old session, its new
+  turns get notes and a summary as usual, and that summary can mention the old prompts.
+- It fills in the fork links of sessions that are already stored, so
+  [forks](#resume-a-session) of old sessions show up.
+- It can be run again. A second run reads only what is new, and never writes a row twice.
+- It leaves the last lines of a file to the live reader. The daemon reads those itself, so
+  a file the daemon has not seen yet is picked up by the next `memory import`.
+- It works in small steps. Hooks, MCP calls and the UI are served as usual while it runs.
+  Its progress is kept in the `import_files` table.
+
+Search works while the import runs, and finds what has been imported so far. The search index
+for the new rows is built as the import goes.
+
+Time depends on your disk and your history. On one machine, 5.3 GB of transcripts (7,627
+files) took 26 to 34 minutes and made a database of about 1 GB. Plan on five to six minutes
+per GB.
 
 ## Stale notes
 

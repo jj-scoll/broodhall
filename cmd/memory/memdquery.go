@@ -680,6 +680,13 @@ func memSearch(db *sql.DB, args map[string]any) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("offset must be an integer of 0 or more")
 	}
+	rawOnly, notesOnly, err := rawMode(args)
+	if err != nil {
+		return "", err
+	}
+	if rawOnly {
+		return memRawSearch(db, query, f, args, limit, offset, false)
+	}
 	doObs, doSess, doPrompts, types := resolveCategories(args)
 	f.types = types
 
@@ -717,7 +724,10 @@ func memSearch(db *sql.DB, args map[string]any) (string, error) {
 	}
 	total := nObs + nSums + len(prompts)
 	if total == 0 {
-		return fmt.Sprintf("No results found matching %q", query), nil
+		if notesOnly {
+			return fmt.Sprintf("No results found matching %q", query), nil
+		}
+		return memRawSearch(db, query, f, args, limit, offset, true) // nothing in the notes: try the raw records
 	}
 	items := make([]qItem, 0, total)
 	for _, o := range obs {
