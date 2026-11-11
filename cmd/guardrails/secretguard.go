@@ -108,6 +108,7 @@ func secretPaths(home, xdg string) []string {
 
 type secretGuard struct {
 	home, cwd string
+	self      string   // the guardrails binary whose wrapper counts as masked ("" for none)
 	paths     []string // as written, then with symlinks resolved
 }
 
@@ -163,6 +164,18 @@ func (g *secretGuard) protected(word string) (file, under bool) {
 		}
 	}
 	return file, under
+}
+
+// ownWrapper reports whether words are the command secretRewrite emits: this very binary,
+// `redact --secrets --`, then a reader whose flags the mask accepts. Another binary, another
+// flag or a non-reader is judged as if the wrapper were not there. A pipeline stage after the
+// wrapper, or a command chained to it, is a statement of its own and is scanned on its own.
+func (g *secretGuard) ownWrapper(words []string) bool {
+	if g.self == "" || len(words) < 5 || words[0] != g.self || words[1] != "redact" || words[2] != "--secrets" || words[3] != "--" {
+		return false
+	}
+	name := path.Base(words[4])
+	return secretReaders[name] && readerOK(name, words[5:])
 }
 
 // readerOK reports whether a reader's flags keep each output line whole, key included.
@@ -348,6 +361,8 @@ func (g *secretGuard) scan(cmd string) secretScan {
 		switch {
 		case out:
 			askOnce(name)
+		case g.ownWrapper(words):
+			cover(st) // already masked: not wrapped again, not asked
 		case name == "cd" || name == "pushd":
 			if fs := g.files(words[len(words)-1]); len(words) > 1 && len(fs) == 1 {
 				g.cwd = fs[0]
@@ -424,7 +439,9 @@ func secretFileRule(env *guardEnv, cmd string) decision {
 		return secretAsk("secret-arg:"+strings.ToLower(strings.ReplaceAll(m[0].Pattern, " ", "-")),
 			"the command holds a secret-shaped value ("+m[0].Pattern+" "+m[0].Redacted+"). Prefer a file or variable the tool reads itself.")
 	}
-	s := newSecretGuard(env.Home, env.XDGConfig, env.Cwd).scan(cmd)
+	g := newSecretGuard(env.Home, env.XDGConfig, env.Cwd)
+	g.self = env.Self
+	s := g.scan(cmd)
 	switch {
 	case s.ask != "":
 		return secretAsk("secret-file:"+s.ask, "it reads or writes a protected secret file in a way the mask cannot cover. "+
@@ -438,7 +455,9 @@ func secretFileRule(env *guardEnv, cmd string) decision {
 
 // secretRewrite runs every masked reader in cmd under `self redact --secrets --`.
 func secretRewrite(env *guardEnv, cmd, self string) (string, bool) {
-	s := newSecretGuard(env.Home, env.XDGConfig, env.Cwd).scan(cmd)
+	g := newSecretGuard(env.Home, env.XDGConfig, env.Cwd)
+	g.self = self
+	s := g.scan(cmd)
 	if s.ask != "" || len(s.wrap) == 0 {
 		return "", false
 	}

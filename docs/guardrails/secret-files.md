@@ -83,6 +83,14 @@ The tags are derived per machine, so yours differ. Only flags that print whole l
 the mask working (the key name must stay on the line); other flags on a reader ask instead.
 A recursive `grep` or `rg` of a directory that holds a protected file is masked the same way.
 
+In auto mode a rewrite can be denied, and Claude then re-issues the rewritten command as
+it is. The guard lets that through, without wrapping it again, when it is exactly its own
+wrapper: this plugin's binary, `redact --secrets --`, then a reader the mask accepts. A
+wrapper with another binary (even one named `guardrails`), another flag, or a reader flag
+that would ask, is judged as if the wrapper were not there, and so is one behind `sudo` or
+`env`. Each pipeline stage and each `&&` part is judged on its own, so a later `cat` of the
+same file that is not wrapped is masked, or asks.
+
 ### Asks
 
 ```text
