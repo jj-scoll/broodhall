@@ -1,0 +1,263 @@
+package main
+
+import (
+	"bytes"
+	"flag"
+	"fmt"
+	"go/format"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/zricethezav/gitleaks/v8/config"
+	"github.com/zricethezav/gitleaks/v8/detect"
+)
+
+// generate writes the rules of the library's default config as Go source. The detector in
+// cmd/guardrails/secretrules runs on text with no file path and no commit, so everything that
+// needs one is resolved here, once, the way the library resolves it for a bare string:
+//
+//   - a rule with a path regex only fires on a file path that matches it, and with no path
+//     (PathAllowed and the rule's Path both see "") none does: those rules are left out and
+//     listed in the header;
+//   - an allowlist's paths and commits never allow anything with no path or commit, so under
+//     condition "or" they are dropped, and under "and" the allowlist can never be satisfied
+//     and is dropped whole;
+//   - the global allowlist's paths go the same way, its regexes and stop words stay.
+//
+// Anything else the detector does not implement (required rules, skipReport, an unknown
+// regexTarget, a path rule the empty path matches) is an error, not a silent omission.
+func generate(args []string) error {
+	fs := flag.NewFlagSet("generate", flag.ExitOnError)
+	out := fs.String("out", "../../cmd/guardrails/secretrules/rules_gen.go", "file to write")
+	toml := fs.String("toml", "", "output of the gitleaks rule generator to compare with the embedded default config")
+	fs.Parse(args)
+
+	d, err := detect.NewDetectorDefaultConfig()
+	if err != nil {
+		return err
+	}
+	cfg := d.Config
+	if *toml != "" {
+		got, err := os.ReadFile(*toml)
+		if err != nil {
+			return err
+		}
+		if string(got) != config.DefaultConfig {
+			return fmt.Errorf("%s (what the library's rule generator writes) differs from its embedded default config", *toml)
+		}
+	}
+
+	var (
+		b        bytes.Buffer
+		omitted  []string
+		kept     int
+		noKw     []string
+		dropped  int
+		seen     = map[string]bool{}
+		globalOK []allow
+	)
+	for _, id := range cfg.OrderedRules {
+		r, ok := cfg.Rules[id]
+		if !ok || seen[id] {
+			continue
+		}
+		seen[id] = true
+		if skipRules[id] {
+			omitted = append(omitted, id+" (skipped on purpose, see library.go)")
+			continue
+		}
+		if len(r.RequiredRules) > 0 || r.SkipReport {
+			return fmt.Errorf("%s: required rules / skipReport are not implemented by the detector", id)
+		}
+		if strings.Contains(strings.ToLower(id), "generic") {
+			return fmt.Errorf("%s: the library drops findings of 'generic' rules that another rule covers; the detector does not implement that", id)
+		}
+		if r.Path != nil {
+			if r.Path.MatchString("") {
+				return fmt.Errorf("%s: its path regex matches the empty path; the detector does not implement path rules", id)
+			}
+			omitted = append(omitted, id+" (needs a file path)")
+			continue
+		}
+		if r.Regex == nil {
+			return fmt.Errorf("%s: no regex and no path", id)
+		}
+		var al []allow
+		for _, a := range r.Allowlists {
+			x, ok, err := reduce(a)
+			if err != nil {
+				return fmt.Errorf("%s: %w", id, err)
+			}
+			if !ok {
+				dropped++
+				continue
+			}
+			al = append(al, x)
+		}
+		if len(r.Keywords) == 0 {
+			noKw = append(noKw, id)
+		}
+		kept++
+		fmt.Fprintf(&b, "\t{ID: %s, Regex: %s", lit(id), lit(r.Regex.String()))
+		if r.SecretGroup != 0 {
+			fmt.Fprintf(&b, ", Group: %d", r.SecretGroup)
+		}
+		if r.Entropy != 0 {
+			fmt.Fprintf(&b, ", Entropy: %s", strconv.FormatFloat(r.Entropy, 'g', -1, 64))
+		}
+		if len(r.Keywords) > 0 {
+			fmt.Fprintf(&b, ", Keywords: %s", strs(r.Keywords))
+		}
+		if len(al) > 0 {
+			fmt.Fprintf(&b, ", Allow: []Allowlist{\n")
+			for _, x := range al {
+				fmt.Fprintf(&b, "\t\t%s,\n", x.src())
+			}
+			fmt.Fprintf(&b, "\t}")
+		}
+		fmt.Fprintf(&b, "},\n")
+	}
+	var gb bytes.Buffer
+	for _, a := range cfg.Allowlists {
+		x, ok, err := reduce(a)
+		if err != nil {
+			return fmt.Errorf("global allowlist: %w", err)
+		}
+		if ok {
+			globalOK = append(globalOK, x)
+			fmt.Fprintf(&gb, "\t%s,\n", x.src())
+		}
+	}
+
+	var src bytes.Buffer
+	fmt.Fprintf(&src, header, libraryVersion(), kept, len(noKw), strings.Join(omitted, "\n//   "), dropped)
+	fmt.Fprintf(&src, "package secretrules\n\nvar defaultRules = []Rule{\n%s}\n\n", b.String())
+	fmt.Fprintf(&src, "// defaultGlobal applies to every finding of every rule.\nvar defaultGlobal = []Allowlist{\n%s}\n", gb.String())
+	code, err := format.Source(src.Bytes())
+	if err != nil {
+		return fmt.Errorf("formatting generated source: %w", err)
+	}
+	if err := os.WriteFile(*out, code, 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("%s: %d rules (%d without keywords), %d allowlists that can never allow dropped, %d rules omitted, %d global allowlists\n", *out, kept, len(noKw), dropped, len(omitted), len(globalOK))
+	for _, o := range omitted {
+		fmt.Println("  omitted:", o)
+	}
+	return nil
+}
+
+const header = `// Code generated by tools/gitleaksrules; DO NOT EDIT.
+//
+// The default rules of gitleaks (https://github.com/gitleaks/gitleaks) %s, vendored as data.
+// Regenerate with: sh tools/gitleaksrules/regen.sh [TAG]
+//
+// %d rules, %d of them without keywords (those are tried on every scan). Rules left out:
+//   %s
+// %d allowlists were dropped because, with no file path and no commit, they cannot allow anything.
+//
+// The gitleaks licence applies to this data:
+//
+// MIT License
+//
+// Copyright (c) 2019 Zachary Rice
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+`
+
+type allow struct {
+	And       bool
+	Target    string // "secret", "match" or "line"
+	Regexes   []string
+	StopWords []string
+}
+
+func (a allow) src() string {
+	var parts []string
+	if a.And {
+		parts = append(parts, "And: true")
+	}
+	switch a.Target {
+	case "match":
+		parts = append(parts, "Target: TargetMatch")
+	case "line":
+		parts = append(parts, "Target: TargetLine")
+	}
+	if len(a.Regexes) > 0 {
+		parts = append(parts, "Regexes: "+strs(a.Regexes))
+	}
+	if len(a.StopWords) > 0 {
+		parts = append(parts, "StopWords: "+strs(a.StopWords))
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
+}
+
+// reduce is an allowlist as the detector needs it, or false if with no path and no commit it
+// can never allow anything.
+func reduce(a *config.Allowlist) (allow, bool, error) {
+	x := allow{Target: "secret"}
+	switch a.RegexTarget {
+	case "", "match", "line":
+		if a.RegexTarget != "" {
+			x.Target = a.RegexTarget
+		}
+	default:
+		return x, false, fmt.Errorf("unknown regexTarget %q", a.RegexTarget)
+	}
+	if a.MatchCondition == config.AllowlistMatchAnd {
+		if len(a.Paths) > 0 || len(a.Commits) > 0 {
+			return x, false, nil // a path or commit is required and there is none
+		}
+		x.And = true
+	}
+	for _, re := range a.Regexes {
+		x.Regexes = append(x.Regexes, re.String())
+	}
+	x.StopWords = append(x.StopWords, a.StopWords...)
+	sort.Strings(x.StopWords)
+	if len(x.Regexes) == 0 && len(x.StopWords) == 0 {
+		return x, false, nil
+	}
+	if len(x.Regexes) == 0 {
+		x.Target = "secret" // the target only picks what the regexes are tried on
+	}
+	return x, true, nil
+}
+
+func strs(ss []string) string {
+	q := make([]string, len(ss))
+	for i, s := range ss {
+		q[i] = lit(s)
+	}
+	return "[]string{" + strings.Join(q, ", ") + "}"
+}
+
+// lit is s as a Go string literal, raw when that reads the same.
+func lit(s string) string {
+	if utf8.ValidString(s) && !strings.ContainsFunc(s, func(r rune) bool {
+		return r == '`' || r == 0xFEFF || (r < ' ' && r != '\t' && r != '\n')
+	}) {
+		return "`" + s + "`"
+	}
+	return strconv.Quote(s)
+}

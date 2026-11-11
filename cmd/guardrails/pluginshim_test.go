@@ -47,7 +47,14 @@ func readManifest(t *testing.T) pluginManifest {
 
 func runShim(t *testing.T, env map[string]string, stdin string, args ...string) (int, string) {
 	t.Helper()
-	root, _ := filepath.Abs(pluginDir)
+	// Run from a copy without the release's checksums.txt: that pin is for the published
+	// archives and would refuse the stub archives these tests install.
+	root := t.TempDir()
+	for _, d := range []string{"scripts", ".claude-plugin"} {
+		if err := os.CopyFS(filepath.Join(root, d), os.DirFS(filepath.Join(pluginDir, d))); err != nil {
+			t.Fatal(err)
+		}
+	}
 	c := exec.Command("sh", append([]string{filepath.Join(root, "scripts/run.sh")}, args...)...)
 	// A guard with no binary starts an install; point it at a release that does not exist.
 	c.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "CLAUDE_PLUGIN_ROOT=" + root, "CLAUDE_TOOLS_RELEASE_URL=file://" + t.TempDir() + "/none"}
