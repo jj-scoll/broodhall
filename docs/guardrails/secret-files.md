@@ -32,8 +32,13 @@ These files, plus the ones you add:
 
 `~/.aws/credentials`, `~/.aws/sso/cache/*.json`, `~/.aws/cli/cache/*.json`,
 `~/.ssh/id_rsa`, `id_ecdsa`, `id_ed25519` (and the `_sk` variants), `~/.netrc`, `~/.pgpass`,
-`~/.docker/config.json`, `~/.config/gh/hosts.yml`, `~/.config/mark.toml`,
-`.credentials.json` in every Claude config directory, and the PII key.
+`~/.docker/config.json`, `~/.config/gh/hosts.yml`, `~/.config/mark.toml`, `~/.kube/config`,
+`~/.pypirc`, `~/.git-credentials`, `~/.config/gcloud/application_default_credentials.json`,
+`~/.config/gcloud/credentials.db`, `.credentials.json` in every Claude config directory, and
+the PII key. These files are protected by name, in any directory (a project `.env` as much
+as one in your home): `.env`, `.env.*`, `.npmrc`, `.pypirc`, `.git-credentials`, `*.tfvars`
+and `*.pem`. The templates `.env.example`, `.env.sample` and `.env.template` are not
+protected, and neither is `*.tfvars.example`.
 
 - A Claude config directory is the session's `CLAUDE_CONFIG_DIR`, whatever its name, or a
   directory right in your home whose name starts with `.claude`: `~/.claude`,
@@ -78,6 +83,14 @@ The tags are derived per machine, so yours differ. Only flags that print whole l
 the mask working (the key name must stay on the line); other flags on a reader ask instead.
 A recursive `grep` or `rg` of a directory that holds a protected file is masked the same way.
 
+In auto mode a rewrite can be denied, and Claude then re-issues the rewritten command as
+it is. The guard lets that through, without wrapping it again, when it is exactly its own
+wrapper: this plugin's binary, `redact --secrets --`, then a reader the mask accepts. A
+wrapper with another binary (even one named `guardrails`), another flag, or a reader flag
+that would ask, is judged as if the wrapper were not there, and so is one behind `sudo` or
+`env`. Each pipeline stage and each `&&` part is judged on its own, so a later `cat` of the
+same file that is not wrapped is masked, or asks.
+
 ### Asks
 
 ```text
@@ -86,7 +99,8 @@ ASK: it reads or writes a protected secret file in a way the mask cannot cover. 
 
 That is the reply to `base64 ~/.aws/credentials`, `cp ~/.aws/credentials /tmp/c`,
 `echo hi > ~/.aws/credentials` and `bash -c 'cat ~/.aws/credentials'`. A protected path
-named anywhere else in the command text asks too. Edit and Write on a protected file ask:
+spelled out anywhere else in the command text asks too (not the by-name files such as
+`.env`, which ask only when named as an argument or redirect target). Edit and Write on a protected file ask:
 
 ```text
 ASK: /home/you/.aws/credentials is a protected secret file. Confirm with the user before running it.
@@ -118,7 +132,11 @@ The block runs in the plugin's Read hook (`large-read-guard`), not in `pre-tool-
 - Reading any file that is not protected.
 
 This is a speed bump, not a wall. Claude runs as you, and a script written earlier or a path
-built from variables gets past the check.
+built from variables gets past the check. So does a program that opens the file itself:
+`cat .env` is masked, but `python3 -c "print(open('.env').read())"` is not seen, because
+a file name alone in a script is not a reason to ask. A recursive `grep` or `rg` is masked
+for a directory that holds a protected path from the list above (such as `~/.aws`), but
+not for a directory that merely holds a `.env`; name the file.
 
 ## Turning it off
 

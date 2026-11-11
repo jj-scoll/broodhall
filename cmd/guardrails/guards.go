@@ -45,6 +45,9 @@ type guardEnv struct {
 	Session string
 	Cwd     string
 	Home    string
+	// Self is the path of the running guardrails binary, the one a rewrite puts in front of a
+	// reader. "" in replay and tests that do not set it: no wrapper is then recognised.
+	Self string
 	// XDGConfig is the hook process's XDG_CONFIG_HOME (not the model's: Bash commands never
 	// change it), where the PII rules file may live.
 	XDGConfig string
