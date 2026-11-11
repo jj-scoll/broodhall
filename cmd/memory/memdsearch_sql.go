@@ -74,8 +74,9 @@ func docFilter(k *searchKind, f qFilter) (string, []any) {
 	var conds []string
 	var args []any
 	if f.project != "" {
-		conds = append(conds, "d.project = ?")
-		args = append(args, f.project)
+		pm, pa := projectMatch("d.project", f.projKeys())
+		conds = append(conds, pm)
+		args = append(args, pa...)
 	}
 	if k.typed && len(f.types) > 0 {
 		conds = append(conds, "d.typ IN ("+strings.TrimSuffix(strings.Repeat("?,", len(f.types)), ",")+")")

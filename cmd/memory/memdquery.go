@@ -317,6 +317,7 @@ func fileLabel(o *qObs) string {
 // qFilter collects the shared WHERE pieces for one table.
 type qFilter struct {
 	project, platform string
+	keys              []string // project plus its aliases; projKeys falls back to project
 	types             []string
 	start, end        *time.Time
 }
@@ -325,8 +326,9 @@ func (f qFilter) where(projCol string, withTypes bool) (string, []any) {
 	var c []string
 	var a []any
 	if f.project != "" {
-		c = append(c, projCol+" = ?")
-		a = append(a, f.project)
+		pm, pa := projectMatch(projCol, f.projKeys())
+		c = append(c, pm)
+		a = append(a, pa...)
 	}
 	if withTypes && len(f.types) > 0 {
 		ph := strings.TrimSuffix(strings.Repeat("?,", len(f.types)), ",")
@@ -346,8 +348,17 @@ func (f qFilter) where(projCol string, withTypes bool) (string, []any) {
 	return strings.Join(c, " AND "), a
 }
 
-func readFilter(args map[string]any) (qFilter, error) {
+// projKeys is the project and the old keys aliased to it.
+func (f qFilter) projKeys() []string {
+	if len(f.keys) > 0 {
+		return f.keys
+	}
+	return []string{f.project}
+}
+
+func readFilter(db *sql.DB, args map[string]any) (qFilter, error) {
 	f := qFilter{project: qStr(args, "project"), platform: qStr(args, "platformSource")}
+	f.keys = projectKeys(db, f.project)
 	for _, k := range []string{"dateStart", "dateEnd"} {
 		s := qStr(args, k)
 		if s == "" {
@@ -570,8 +581,9 @@ func searchPrompts(db *sql.DB, q string, f qFilter, limit, offset int) ([]*qProm
 		c = append(c, "("+strings.Join(ors, " OR ")+")")
 	}
 	if f.project != "" {
-		c = append(c, "s.project = ?")
-		args = append(args, f.project)
+		pm, pa := projectMatch("s.project", f.projKeys())
+		c = append(c, pm)
+		args = append(args, pa...)
 	}
 	if f.start != nil {
 		c = append(c, "p.created_at >= CAST(? AS TIMESTAMP)")
@@ -653,7 +665,7 @@ func resolveCategories(args map[string]any) (obs, sess, prompts bool, types []st
 // memSearch is the search tool: an index table grouped by day and file.
 func memSearch(db *sql.DB, args map[string]any) (string, error) {
 	query := qStr(args, "query")
-	f, err := readFilter(args)
+	f, err := readFilter(db, args)
 	if err != nil {
 		return "", err
 	}
@@ -857,7 +869,7 @@ func memTimeline(db *sql.DB, args map[string]any) (string, error) {
 	if hasAnchor && query != "" {
 		return `Error: "anchor" and "query" cannot be combined; pass only one`, nil
 	}
-	f, err := readFilter(args)
+	f, err := readFilter(db, args)
 	if err != nil {
 		return "", err
 	}
@@ -887,7 +899,7 @@ func memTimeline(db *sql.DB, args map[string]any) (string, error) {
 			return "", err
 		}
 	case numAnchor != 0:
-		obs, err := qObsQuery(db, `SELECT `+obsCols+` FROM observations WHERE id = ?`+projClause(argProject), projArgs(numAnchor, argProject)...)
+		obs, err := qObsQuery(db, `SELECT `+obsCols+` FROM observations WHERE id = ?`+projClause(db, argProject), projArgs(db, numAnchor, argProject)...)
 		if err != nil {
 			return "", err
 		}
@@ -904,7 +916,7 @@ func memTimeline(db *sql.DB, args map[string]any) (string, error) {
 		if sid <= 0 {
 			return "A session anchor looks like S12: the letter S and a positive whole number", nil
 		}
-		rows, err := db.Query(`SELECT `+sumCols+` FROM summaries WHERE id = ?`+projClause(argProject), projArgs(sid, argProject)...)
+		rows, err := db.Query(`SELECT `+sumCols+` FROM summaries WHERE id = ?`+projClause(db, argProject), projArgs(db, sid, argProject)...)
 		if err != nil {
 			return "", err
 		}
@@ -963,18 +975,14 @@ func orDefault(a, b string) string {
 	return b
 }
 
-func projClause(p string) string {
-	if p == "" {
-		return ""
-	}
-	return " AND project = ?"
+func projClause(db *sql.DB, p string) string {
+	c, _ := projAnd(db, "project", p)
+	return c
 }
 
-func projArgs(id int64, p string) []any {
-	if p == "" {
-		return []any{id}
-	}
-	return []any{id, p}
+func projArgs(db *sql.DB, id int64, p string) []any {
+	_, a := projAnd(db, "project", p)
+	return append([]any{id}, a...)
 }
 
 // timelineWindow loads observations, summaries and prompts inside the time span that
@@ -982,10 +990,7 @@ func projArgs(id int64, p string) []any {
 // observation the boundary rows include the anchor itself ; with only
 // a timestamp the boundaries are strict.
 func timelineWindow(db *sql.DB, anchor *int64, ts time.Time, before, after int, project string) ([]tlItem, error) {
-	pc, pa := "", []any{}
-	if project != "" {
-		pc, pa = " AND project = ?", []any{project}
-	}
+	pc, pa := projAnd(db, "project", project)
 	tsStr := memdTS(ts)
 	edge := func(dir string, n int) (time.Time, bool, error) {
 		var cmp, ord string
@@ -1064,10 +1069,9 @@ func timelineWindow(db *sql.DB, anchor *int64, ts time.Time, before, after int, 
 	pq := `SELECT p.id, p.prompt_number, p.text, p.created_at FROM prompts p LEFT JOIN sessions s ON s.session_id = p.session_id
 		WHERE p.created_at >= CAST(? AS TIMESTAMP) AND p.created_at <= CAST(? AS TIMESTAMP)`
 	pargs := []any{loS, hiS}
-	if project != "" {
-		pq += ` AND s.project = ?`
-		pargs = append(pargs, project)
-	}
+	spc, spa := projAnd(db, "s.project", project)
+	pq += spc
+	pargs = append(pargs, spa...)
 	prows, err := db.Query(pq+` ORDER BY p.created_at, p.id`, pargs...)
 	if err != nil {
 		return nil, fmt.Errorf("timeline prompts: %w", err)
@@ -1324,9 +1328,10 @@ func memGetObservations(db *sql.DB, args map[string]any) (string, error) {
 		dir = "ASC"
 	}
 	q := `SELECT ` + obsCols + ` FROM observations WHERE id IN (` + strings.Join(ph, ",") + `)`
-	if p := qStr(args, "project"); p != "" {
-		q += ` AND project = ?`
-		ids = append(ids, p)
+	pc, pa := projAnd(db, "project", qStr(args, "project"))
+	q += pc
+	for _, a := range pa {
+		ids = append(ids, a.(string))
 	}
 	q += ` ORDER BY created_at ` + dir + `, id ` + dir
 	if limit > 0 {
@@ -1411,10 +1416,9 @@ func getSummaries(db *sql.DB, ids []int64, project string) (string, error) {
 	q := `SELECT s.id, s.project, s.request, s.investigated, s.learned, s.completed, s.next_steps, s.notes,
 		s.created_at, c.trigger IS NOT NULL FROM summaries s LEFT JOIN compactions c ON c.summary_id = s.id
 		WHERE s.id IN (` + ph + `)`
-	if project != "" {
-		q += ` AND s.project = ?`
-		args = append(args, project)
-	}
+	pc, pa := projAnd(db, "s.project", project)
+	q += pc
+	args = append(args, pa...)
 	rows, err := db.Query(q+` ORDER BY s.created_at DESC, s.id DESC`, args...)
 	if err != nil {
 		return "", fmt.Errorf("get summaries: %w", err)
@@ -1626,10 +1630,9 @@ func memGetToolUses(db *sql.DB, args map[string]any) (string, error) {
 		qa = append(qa, strs...)
 	}
 	q := `SELECT t.id, t.tool_name, t.input, t.output FROM tool_uses t LEFT JOIN sessions s ON s.session_id = t.session_id WHERE (` + strings.Join(cond, " OR ") + `)`
-	if p := qStr(args, "project"); p != "" {
-		q += ` AND s.project = ?`
-		qa = append(qa, p)
-	}
+	pc, pa := projAnd(db, "s.project", qStr(args, "project"))
+	q += pc
+	qa = append(qa, pa...)
 	if c := qStr(args, "contentSessionId"); c != "" {
 		q += ` AND t.session_id = ?`
 		qa = append(qa, c)
@@ -1704,6 +1707,7 @@ func memSaveMemory(db *sql.DB, args map[string]any) (string, error) {
 		if cwd == "" {
 			return wsNoCwd, nil
 		}
+		ensureProjectAlias(db, cwd)
 		project = projectKey(cwd)
 	}
 	session := "manual-" + project

@@ -484,8 +484,9 @@ func (a *uiAPI) observations(w http.ResponseWriter, r *http.Request) error {
 		args = append(args, "%"+likeEscape(strings.ToLower(s))+"%")
 	}
 	if p := q.Get("project"); p != "" {
-		where = append(where, `project = ?`)
-		args = append(args, p)
+		pm, pa := projectMatch("project", projectKeys(a.db, p))
+		where = append(where, pm)
+		args = append(args, pa...)
 	}
 	if ts := q.Get("type"); ts != "" {
 		parts := strings.Split(ts, ",")
@@ -696,8 +697,9 @@ func (a *uiAPI) sessions(w http.ResponseWriter, r *http.Request) error {
 	}
 	where, args := ` WHERE NOT s.is_observer`, []any{}
 	if p := q.Get("project"); p != "" {
-		where += ` AND s.project = ?`
-		args = append(args, p)
+		pc, pa := projAnd(a.db, "s.project", p)
+		where += pc
+		args = append(args, pa...)
 	}
 	args = append(args, limit+1, offset)
 	rows, err := a.db.QueryContext(r.Context(), uiSessionSelect+where+` ORDER BY s.started_at DESC, s.session_id LIMIT ? OFFSET ?`, args...)

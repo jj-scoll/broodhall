@@ -200,6 +200,14 @@ CREATE TABLE IF NOT EXISTS work_state (
 	fields     VARCHAR NOT NULL DEFAULT '{}',
 	created_at TIMESTAMP NOT NULL DEFAULT current_timestamp
 );
+-- Reads for new_key also read rows written under old_key (the pre-identity basename key). Rows
+-- are never rewritten; DROP TABLE project_aliases undoes the mapping.
+CREATE TABLE IF NOT EXISTS project_aliases (
+	old_key    VARCHAR NOT NULL,
+	new_key    VARCHAR NOT NULL,
+	created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+	PRIMARY KEY (old_key, new_key)
+);
 CREATE TABLE IF NOT EXISTS deliverables (
 	id         BIGINT PRIMARY KEY DEFAULT nextval('deliverables_seq'),
 	project    VARCHAR NOT NULL DEFAULT '',

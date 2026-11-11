@@ -240,13 +240,16 @@ func (ix *memIndex) search(terms []string, f qFilter, want int) []int64 {
 		return nil
 	}
 	// Filters resolve to interned ids once.
-	projID := int32(-1)
+	var projIDs []int32
 	if f.project != "" {
-		id, ok := ix.strs[f.project]
-		if !ok {
+		for _, p := range f.projKeys() {
+			if id, ok := ix.strs[p]; ok {
+				projIDs = append(projIDs, id)
+			}
+		}
+		if len(projIDs) == 0 {
 			return nil
 		}
-		projID = id
 	}
 	var typeIDs []int32
 	if ix.k.typed && len(f.types) > 0 {
@@ -266,7 +269,7 @@ func (ix *memIndex) search(terms []string, f qFilter, want int) []int64 {
 	if f.end != nil {
 		hi = f.end.UTC().UnixMicro()
 	}
-	filtered := projID >= 0 || typeIDs != nil || f.start != nil || f.end != nil
+	filtered := projIDs != nil || typeIDs != nil || f.start != nil || f.end != nil
 
 	sc, _ := ix.pool.Get().(*memScratch)
 	if sc == nil {
@@ -310,7 +313,7 @@ func (ix *memIndex) search(terms []string, f qFilter, want int) []int64 {
 			p := &pl[i]
 			d := &ix.docs[p.doc]
 			if filtered {
-				if projID >= 0 && d.project != projID || d.created < lo || d.created > hi {
+				if projIDs != nil && !containsInt32(projIDs, d.project) || d.created < lo || d.created > hi {
 					continue
 				}
 				if typeIDs != nil && !containsInt32(typeIDs, d.typ) {
