@@ -8,12 +8,17 @@
 # never run.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
-root=$(cd "$here/.." && pwd)
-run_sh=$root/scripts/run.sh
-ver=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json")
+src=$(cd "$here/.." && pwd)
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+# The launcher runs from a copy of the plugin that has no checksums.txt: the file in the
+# checkout pins the real release archives, and these cases install fake ones. The cases about
+# the pin write their own.
+root=$tmp/plugin
+mkdir -p "$root" && cp -R "$src/scripts" "$src/.claude-plugin" "$root/"
+run_sh=$root/scripts/run.sh
+ver=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json")
 pass=0 fail=0
 ok() { pass=$((pass + 1)); printf 'ok   %s\n' "$1"; }
 bad() { fail=$((fail + 1)); printf 'FAIL %s: %s\n' "$1" "$2"; }
@@ -70,6 +75,32 @@ install() { # <case>
 }
 
 bin() { printf %s "$tmp/$1/data/bin/$ver/guardrails"; }
+
+# path_without <dir> <command>: fills <dir> with links to every command on PATH but that one.
+path_without() {
+	mkdir -p "$1"
+	while IFS= read -r d; do # one PATH entry per line, so entries with spaces stay whole
+		[ -n "$d" ] || continue
+		for f in "$d"/*; do
+			n=${f##*/}
+			[ "$n" = "$2" ] || [ -e "$1/$n" ] || ln -s "$f" "$1/$n" 2>/dev/null
+		done
+	done < <(printf '%s\n' "$PATH" | tr : '\n')
+}
+
+# pinned <case> <version> [sum [name]]: after newcase and mkrelease, gives the case its own
+# plugin copy whose checksums.txt (the file that arrives with the git checkout) is for
+# <version> and lists the archive under <name> with <sum>. The defaults are the archive's real
+# sum and name.
+pinned() {
+	c=$tmp/$1
+	cp -R "$root" "$c/plugin"
+	export CLAUDE_PLUGIN_ROOT=$c/plugin
+	{
+		echo "# version $2"
+		echo "${3:-$($sum "$c/rel/v$ver/$asset" | cut -d' ' -f1)}  ${4:-$asset}"
+	} >"$c/plugin/checksums.txt"
+}
 
 # --- 1. fresh install: binary in place, checksum recorded, doctor run and passed through
 newcase t1
@@ -135,14 +166,7 @@ if [ "$rc" -eq 0 ] && [ ! -s "$tmp/t5/mark" ] && printf %s "$out" | grep -q 'cou
 newcase t6
 mkrelease "$tmp/t6/rel"
 export CLAUDE_TOOLS_RELEASE_URL=file://$tmp/t6/rel
-mkdir -p "$tmp/t6/path"
-while IFS= read -r d; do # one PATH entry per line, so entries with spaces stay whole
-	[ -n "$d" ] || continue
-	for f in "$d"/*; do
-		n=${f##*/}
-		[ "$n" = curl ] || [ -e "$tmp/t6/path/$n" ] || ln -s "$f" "$tmp/t6/path/$n" 2>/dev/null
-	done
-done < <(printf '%s\n' "$PATH" | tr : '\n')
+path_without "$tmp/t6/path" curl
 out=$(printf '{"source":"startup"}' | PATH=$tmp/t6/path sh "$run_sh" install 2>"$tmp/t6/stderr")
 rc=$?
 if [ "$rc" -eq 0 ] && [ ! -e "$(bin t6)" ] && printf %s "$out" | grep -q 'curl not found'; then ok "with no curl the notice says curl not found"; else bad "with no curl the notice says curl not found" "rc=$rc out=$out"; fi
@@ -173,6 +197,88 @@ for variant in uncreatable readonly-bin; do
 		ok "an unwritable data dir ($variant) says cannot write"
 	else
 		bad "an unwritable data dir ($variant) says cannot write" "rc=$rc took=${took}s out=$out"
+	fi
+done
+
+# --- 8. checksums.txt in the plugin (from the git checkout) is the only source of the expected
+# hash when it is there; the release's own checksums.txt is then never read.
+newcase t8
+mkrelease "$tmp/t8/rel"
+pinned t8 "$ver"
+rm "$tmp/t8/rel/v$ver/checksums.txt"
+export CLAUDE_TOOLS_RELEASE_URL=file://$tmp/t8/rel
+install t8
+if [ "$rc" -eq 0 ] && [ -x "$(bin t8)" ]; then ok "a matching pin installs without the release's checksums.txt"; else bad "a matching pin installs without the release's checksums.txt" "rc=$rc out=$out"; fi
+
+# --- 8b. the archive and the release's checksums.txt were replaced together: the pin refuses it
+newcase t8b
+mkrelease "$tmp/t8b/rel"
+pinned t8b "$ver" "$(printf '%064d' 1)"
+export CLAUDE_TOOLS_RELEASE_URL=file://$tmp/t8b/rel
+install t8b
+if [ "$rc" -eq 0 ] && [ ! -e "$(bin t8b)" ] && [ ! -s "$tmp/t8b/mark" ] && printf %s "$out" | grep -q "checksum mismatch against the plugin's checksums.txt"; then
+	ok "an archive that differs from the pin is refused, whatever the release's checksums.txt says"
+else
+	bad "an archive that differs from the pin is refused, whatever the release's checksums.txt says" "rc=$rc out=$out mark=$(cat "$tmp/t8b/mark")"
+fi
+
+# --- 8c. a pin for another version is refused, not skipped in favour of the release's file
+newcase t8c
+mkrelease "$tmp/t8c/rel"
+pinned t8c 0.0.0
+export CLAUDE_TOOLS_RELEASE_URL=file://$tmp/t8c/rel
+install t8c
+if [ "$rc" -eq 0 ] && [ ! -e "$(bin t8c)" ] && [ ! -s "$tmp/t8c/mark" ] && printf %s "$out" | grep -q "the plugin's checksums.txt is not for version $ver"; then
+	ok "a pin for another version installs nothing and says so"
+else
+	bad "a pin for another version installs nothing and says so" "rc=$rc out=$out mark=$(cat "$tmp/t8c/mark")"
+fi
+
+# --- 8d. a pin with no line for the archive is refused, though the release's file lists it
+newcase t8d
+mkrelease "$tmp/t8d/rel"
+pinned t8d "$ver" "" some-other-asset.tar.gz
+export CLAUDE_TOOLS_RELEASE_URL=file://$tmp/t8d/rel
+install t8d
+if [ "$rc" -eq 0 ] && [ ! -e "$(bin t8d)" ] && [ ! -s "$tmp/t8d/mark" ] && printf %s "$out" | grep -q "no checksum for $asset in the plugin's checksums.txt"; then
+	ok "a pin without the archive installs nothing and names $asset"
+else
+	bad "a pin without the archive installs nothing and names $asset" "rc=$rc out=$out mark=$(cat "$tmp/t8d/mark")"
+fi
+
+# --- 8e. a release from before the rename has only claude-tools_*, a name no pin lists
+newcase t8e
+mkrelease "$tmp/t8e/rel"
+pinned t8e "$ver"
+mv "$tmp/t8e/rel/v$ver/$asset" "$tmp/t8e/rel/v$ver/claude-tools_${os}_$arch.tar.gz"
+export CLAUDE_TOOLS_RELEASE_URL=file://$tmp/t8e/rel
+install t8e
+if [ "$rc" -eq 0 ] && [ ! -e "$(bin t8e)" ] && [ ! -s "$tmp/t8e/mark" ] && printf %s "$out" | grep -q "no checksum for claude-tools_.* in the plugin's checksums.txt"; then
+	ok "an archive under a name the pin does not list is refused"
+else
+	bad "an archive under a name the pin does not list is refused" "rc=$rc out=$out mark=$(cat "$tmp/t8e/mark")"
+fi
+
+# --- 9. with shasum only (no sha256sum on PATH) the pin accepts and refuses the same way.
+# Where the machine has no shasum, a stand-in that calls sha256sum takes its place, so the
+# launcher's shasum command lines still run.
+real256=$(command -v sha256sum || true)
+path_without "$tmp/shasum-path" sha256sum
+if [ ! -e "$tmp/shasum-path/shasum" ]; then
+	printf '#!/bin/sh\n[ "$1" = -a ] && [ "$2" = 256 ] || exit 64\nshift 2\nexec %s "$@"\n' "$real256" >"$tmp/shasum-path/shasum"
+	chmod +x "$tmp/shasum-path/shasum"
+fi
+for variant in match mismatch; do
+	newcase t9$variant
+	mkrelease "$tmp/t9$variant/rel"
+	if [ $variant = match ]; then pinned t9$variant "$ver"; else pinned t9$variant "$ver" "$(printf '%064d' 1)"; fi
+	export CLAUDE_TOOLS_RELEASE_URL=file://$tmp/t9$variant/rel
+	out=$(printf '{"source":"startup"}' | PATH=$tmp/shasum-path sh "$run_sh" install 2>"$tmp/t9$variant/stderr")
+	rc=$?
+	if [ $variant = match ]; then
+		[ "$rc" -eq 0 ] && [ -x "$(bin t9match)" ] && ok "shasum: a matching pin installs" || bad "shasum: a matching pin installs" "rc=$rc out=$out"
+	else
+		[ "$rc" -eq 0 ] && [ ! -e "$(bin t9mismatch)" ] && printf %s "$out" | grep -q 'checksum mismatch' && ok "shasum: a mismatched pin is refused" || bad "shasum: a mismatched pin is refused" "rc=$rc out=$out"
 	fi
 done
 

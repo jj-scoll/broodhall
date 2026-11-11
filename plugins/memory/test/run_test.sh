@@ -7,12 +7,17 @@
 # writes nothing to stdout, and an unverified binary is never executed.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
-root=$(cd "$here/.." && pwd)
-run_sh=$root/scripts/run.sh
-ver=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json")
+src=$(cd "$here/.." && pwd)
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+# The launcher runs from a copy of the plugin that has no checksums.txt: the file in the
+# checkout pins the real release archives, and these cases install fake ones. The cases about
+# the pin write their own.
+root=$tmp/plugin
+mkdir -p "$root" && cp -R "$src/scripts" "$src/.claude-plugin" "$src/hooks" "$root/"
+run_sh=$root/scripts/run.sh
+ver=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json")
 pass=0 fail=0
 
 ok() { pass=$((pass + 1)); printf 'ok   %s\n' "$1"; }
@@ -229,6 +234,87 @@ hook t3b session-start
 expect_open "checksums.txt lacks the asset"
 settle t3b
 if [ -s "$tmp/t3b/mark" ]; then bad "unlisted asset never executes" "stub ran"; else ok "unlisted asset never executes"; fi
+
+# --- 3c. checksums.txt in the plugin (from the git checkout) is the only source of the expected
+# hash when it is there; the release's own checksums.txt is then never read.
+# pinned <case> <version> [sum [name]]: after newcase and mkrelease, gives the case its own
+# plugin copy whose checksums.txt is for <version> and lists the archive under <name> with
+# <sum>. The defaults are the archive's real sum and name.
+pinned() {
+	c=$tmp/$1
+	cp -R "$root" "$c/plugin"
+	export CLAUDE_PLUGIN_ROOT=$c/plugin MEMORY_RELEASE_URL=file://$c/rel
+	{
+		echo "# version $2"
+		echo "${3:-$($sum "$c/rel/v$ver/$asset" | cut -d' ' -f1)}  ${4:-$asset}"
+	} >"$c/plugin/checksums.txt"
+}
+# refused <case> <name> <log text>: nothing installed, nothing run, and the log says why
+refused() {
+	if [ ! -e "$tmp/$1/data/bin/$ver/memory" ] && [ ! -s "$tmp/$1/mark" ] && grep -q "$3" "$tmp/$1/data/memory.log" 2>/dev/null; then
+		ok "$2"
+	else
+		bad "$2" "binary: $(ls "$tmp/$1/data/bin/$ver" 2>&1) mark: $(cat "$tmp/$1/mark") log: $(cat "$tmp/$1/data/memory.log" 2>/dev/null)"
+	fi
+}
+newcase t3c
+mkrelease "$tmp/t3c/rel"
+pinned t3c "$ver"
+rm "$tmp/t3c/rel/v$ver/checksums.txt"
+hook t3c install
+expect_open "a matching pin (install)"
+if [ -x "$tmp/t3c/data/bin/$ver/memory" ]; then ok "a matching pin installs without the release's checksums.txt"; else bad "a matching pin installs without the release's checksums.txt" "log: $(cat "$tmp/t3c/data/memory.log" 2>/dev/null)"; fi
+
+# The archive and the release's checksums.txt were replaced together: the pin refuses it.
+newcase t3d
+mkrelease "$tmp/t3d/rel"
+pinned t3d "$ver" "$(printf '%064d' 1)"
+hook t3d install
+expect_open "an archive that differs from the pin (install)"
+refused t3d "an archive that differs from the pin is refused, whatever the release's checksums.txt says" "checksum mismatch for $asset against the plugin's checksums.txt"
+
+# A pin for another version is refused, not skipped in favour of the release's file.
+newcase t3e
+mkrelease "$tmp/t3e/rel"
+pinned t3e 0.0.0
+hook t3e install
+expect_open "a pin for another version (install)"
+refused t3e "a pin for another version installs nothing and says so" "the plugin's checksums.txt is not for version $ver"
+
+# A pin with no line for the archive is refused, though the release's file lists it.
+newcase t3f
+mkrelease "$tmp/t3f/rel"
+pinned t3f "$ver" "" some_other_asset.tar.gz
+hook t3f install
+expect_open "a pin without the archive (install)"
+refused t3f "a pin without the archive installs nothing and names it" "the plugin's checksums.txt has no entry for $asset"
+
+# With shasum only (no sha256sum on PATH) the pin accepts and refuses the same way. Where the
+# machine has no shasum, a stand-in that calls sha256sum takes its place, so the launcher's
+# shasum command line still runs.
+real256=$(command -v sha256sum || true)
+mkdir -p "$tmp/shasum-path"
+while IFS= read -r d; do # one PATH entry per line, so entries with spaces stay whole
+	[ -n "$d" ] || continue
+	for f in "$d"/*; do
+		n=${f##*/}
+		[ "$n" = sha256sum ] || [ -e "$tmp/shasum-path/$n" ] || ln -s "$f" "$tmp/shasum-path/$n" 2>/dev/null
+	done
+done < <(printf '%s\n' "$PATH" | tr : '\n')
+if [ ! -e "$tmp/shasum-path/shasum" ]; then
+	printf '#!/bin/sh\n[ "$1" = -a ] && [ "$2" = 256 ] || exit 64\nshift 2\nexec %s "$@"\n' "$real256" >"$tmp/shasum-path/shasum"
+	chmod +x "$tmp/shasum-path/shasum"
+fi
+newcase t3g
+mkrelease "$tmp/t3g/rel"
+pinned t3g "$ver"
+PATH=$tmp/shasum-path hook t3g install
+if [ -x "$tmp/t3g/data/bin/$ver/memory" ]; then ok "shasum: a matching pin installs"; else bad "shasum: a matching pin installs" "log: $(cat "$tmp/t3g/data/memory.log" 2>/dev/null)"; fi
+newcase t3h
+mkrelease "$tmp/t3h/rel"
+pinned t3h "$ver" "$(printf '%064d' 1)"
+PATH=$tmp/shasum-path hook t3h install
+refused t3h "shasum: a mismatched pin is refused" "checksum mismatch for $asset"
 
 # --- 4. unsupported platform: stub uname, and curl must not be called
 newcase t4

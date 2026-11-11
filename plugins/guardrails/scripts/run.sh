@@ -165,21 +165,35 @@ install_bin() (
 	esac
 	asset=guardrails_${os}_$arch.tar.gz want=$asset member=guardrails
 	command -v curl >/dev/null 2>&1 || fail "curl not found"
+	# Where the expected sha256 comes from. A release commit puts checksums.txt in the plugin
+	# directory ("# version X.Y.Z", then a line per archive), so it arrives with the git checkout
+	# and someone who can only replace the release's files cannot change it. When that file is
+	# there it is the only source: it must be for this version and list the archive, or nothing
+	# is installed. Only a plugin directory with no such file (a release cut by hand, or one from
+	# before this check) reads the release's own checksums.txt, which proves less: that the
+	# archive arrived whole, not who published it.
+	pins=$root/checksums.txt
+	if [ -f "$pins" ]; then
+		sums=$pins from="the plugin's checksums.txt"
+		grep -qxF "# version $ver" "$pins" || fail "$from is not for version $ver"
+	else
+		sums='' from="the release's checksums.txt"
+	fi
 	mkdir -p "$data/bin" && tmp=$(mktemp -d "$data/bin/.download.XXXXXX") || fail "cannot write $data"
 	trap 'rm -rf "$tmp"' EXIT
 	# A release made before the rename has only claude-tools_<os>_<arch>.tar.gz (see pick_dest).
 	{ curl -fsSL --max-time 60 -o "$tmp/$asset" "$base/v$ver/$asset" || {
 		asset=claude-tools_${os}_$arch.tar.gz member=claude-tools
 		curl -fsSL --max-time 60 -o "$tmp/$asset" "$base/v$ver/$asset"
-	}; } &&
-		curl -fsSL --max-time 30 -o "$tmp/checksums.txt" "$base/v$ver/checksums.txt" ||
-		fail "download of $want failed"
+	}; } && {
+		[ -n "$sums" ] || curl -fsSL --max-time 30 -o "$tmp/checksums.txt" "$base/v$ver/checksums.txt"
+	} || fail "download of $want failed"
 	if command -v sha256sum >/dev/null; then sum=sha256sum; else sum='shasum -a 256'; fi
 	# Pick the asset's line first: `$sum -c` on empty input exits 0 or errors depending on the
 	# shasum build, so an asset missing from checksums.txt is refused here, by name.
-	line=$(grep "  $asset\$" "$tmp/checksums.txt")
-	[ -n "$line" ] || fail "no checksum for $asset in checksums.txt"
-	(cd "$tmp" && printf '%s\n' "$line" | $sum -c - >/dev/null 2>&1) || fail "checksum mismatch"
+	line=$(grep "  $asset\$" "${sums:-$tmp/checksums.txt}")
+	[ -n "$line" ] || fail "no checksum for $asset in $from"
+	(cd "$tmp" && printf '%s\n' "$line" | $sum -c - >/dev/null 2>&1) || fail "checksum mismatch against $from"
 	tar -xzf "$tmp/$asset" -C "$tmp" "$member" || fail "unpack failed"
 	# What doctor compares the binary with later: the unpacked file's hash, taken after the
 	# archive passed the release checksum. It is written before the binary moves into place, so

@@ -85,21 +85,36 @@ install_bin() (
 	[ "$os" = darwin ] || command -v xz >/dev/null 2>&1 || fail "xz not found (install xz-utils)"
 	asset=memory_${os}_$arch.tar.xz
 	base=${MEMORY_RELEASE_URL:-https://github.com/jj-scoll/broodhall/releases/download}
+	# Where the expected sha256 comes from. A release commit puts checksums.txt in the plugin
+	# directory ("# version X.Y.Z", then a line per archive), so it arrives with the git checkout
+	# and someone who can only replace the release's files cannot change it. When that file is
+	# there it is the only source: it must be for this version and list the archive, or nothing
+	# is installed. Only a plugin directory with no such file (a release cut by hand, or one from
+	# before this check) reads the release's own checksums.txt, which proves less: that the
+	# archive arrived whole, not who published it.
+	pins=$root/checksums.txt
+	if [ -f "$pins" ]; then
+		sums=$pins from="the plugin's checksums.txt"
+		grep -qxF "# version $ver" "$pins" || fail "$from is not for version $ver"
+	else
+		sums='' from="the release's checksums.txt"
+	fi
 	if ! { mkdir -p "$data/bin" && tmp=$(mktemp -d "$data/bin/.download.XXXXXX"); }; then fail "cannot write $data"; fi
 	trap 'rm -rf "$tmp"' EXIT
 	# The install runs in the background (see bg_install), so a slow link only needs to finish
 	# within 10 minutes.
-	if ! { curl -fsSL --connect-timeout 5 --max-time 600 -o "$tmp/$asset" "$base/v$ver/$asset" &&
-		curl -fsSL --connect-timeout 5 --max-time 30 -o "$tmp/checksums.txt" "$base/v$ver/checksums.txt"; }; then
+	if ! { curl -fsSL --connect-timeout 5 --max-time 600 -o "$tmp/$asset" "$base/v$ver/$asset" && {
+		[ -n "$sums" ] || curl -fsSL --connect-timeout 5 --max-time 30 -o "$tmp/checksums.txt" "$base/v$ver/checksums.txt"
+	}; }; then
 		fail "download of $asset failed"
 	fi
 	if command -v sha256sum >/dev/null 2>&1; then sum=sha256sum; else sum='shasum -a 256'; fi
 	# Compare the hashes directly: macOS shasum -c exits 0 on empty input, so piping a missing
 	# checksums.txt line into it would pass an unlisted asset.
-	want=$(grep "  $asset\$" "$tmp/checksums.txt" | cut -d' ' -f1)
+	want=$(grep "  $asset\$" "${sums:-$tmp/checksums.txt}" | cut -d' ' -f1)
 	got=$($sum "$tmp/$asset" | cut -d' ' -f1)
-	[ "${#want}" -eq 64 ] || fail "checksums.txt has no entry for $asset"
-	[ "$got" = "$want" ] || fail "checksum mismatch for $asset"
+	[ "${#want}" -eq 64 ] || fail "$from has no entry for $asset"
+	[ "$got" = "$want" ] || fail "checksum mismatch for $asset against $from"
 	# The extensions go in first and the binary last, so an installed binary always has them.
 	tar -xJf "$tmp/$asset" -C "$tmp" memory ext >/dev/null 2>&1 || fail "unpack of $asset failed (it must hold memory and ext/)"
 	for e in fts httpfs quack; do
