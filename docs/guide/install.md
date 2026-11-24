@@ -124,8 +124,10 @@ branch, cannot get a different archive past the launcher.
 What it does not prove:
 
 - That the repository itself is sound. Someone who can push to `main`, or change what the
-  release workflow builds, controls both the archive and the hash. The hashes are not signed,
-  and the releases carry no build attestation.
+  release workflow builds, controls both the archive and the hash. The launcher checks no
+  signature. Newer releases also carry a signed build attestation, which you can check by
+  hand with `gh` ([Verify a release](../reference/release.md#verify-a-release)); it shows
+  which workflow run built the archive, not that the source was sound.
 - That your copy of the plugin is the repository's. The launcher trusts the plugin directory
   Claude Code fetched.
 - Anything, when the plugin has no `checksums.txt`. The release's own copy sits beside the

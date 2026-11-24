@@ -110,10 +110,61 @@ equal, then runs the tests and builds:
   eight). A launcher reads it, and only the line for its own archive, when its plugin
   directory has no `checksums.txt`; see [Checksums in git](#checksums-in-git).
 
+The publish job also signs one [artifact attestation](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
+(SLSA build provenance, `actions/attest`) naming all eight archives and `checksums.txt`, before
+it creates the release. If signing fails, no release is created. See
+[Verify a release](#verify-a-release).
+
 An installed plugin sees the new version on update. At the next session start its launcher
 downloads `v<version>/<archive>` from the release, checks the sha256 against the plugin
 directory's `checksums.txt`, and keeps the binary under the plugin's data directory. memory installs in the background and
 fails open; guardrails installs in the foreground.
+
+## Verify a release
+
+Every archive and `checksums.txt` in a release has a signed build provenance attestation.
+With the [GitHub CLI](https://cli.github.com/), download an asset and check it:
+
+```
+gh release download v<version> --repo jj-scoll/broodhall --pattern 'guardrails_linux_amd64.tar.gz'
+gh attestation verify guardrails_linux_amd64.tar.gz --repo jj-scoll/broodhall
+```
+
+To also require that the `release` workflow signed it, on a GitHub-hosted runner:
+
+```
+gh attestation verify guardrails_linux_amd64.tar.gz --repo jj-scoll/broodhall \
+  --signer-workflow jj-scoll/broodhall/.github/workflows/release.yml \
+  --deny-self-hosted-runners
+```
+
+Use the version you installed; releases from before the attestation step have none, and
+`gh` reports that no attestation was found. Verify the archive, not the binary unpacked from
+it: the attestation names the archive's sha256. Verifying `checksums.txt` and then running
+`sha256sum -c checksums.txt --ignore-missing` beside your archives covers the same ground.
+
+What a pass proves: the file's sha256 is named in an attestation signed with a short-lived
+Sigstore certificate that GitHub issued to a workflow run in `jj-scoll/broodhall` (with
+`--signer-workflow`, to `release.yml`), and recorded in the public Sigstore transparency
+log. The attestation's provenance names that run, its workflow and the commit that started
+it. For a tag push that is the tag's commit. For an automatic release it is the `main` commit
+that triggered `autorelease`, not the tag: the archives are built from the release commit
+made on top of it, and the tag points at the checksums commit after that. So do not pass
+`--source-ref refs/tags/v<version>` for an automatic release; it will not match.
+
+How it differs from the checksum check:
+
+| | Launcher checksum ([How a download is checked](../guide/install.md#how-a-download-is-checked)) | `gh attestation verify` |
+| --- | --- | --- |
+| Runs | automatically, at every install | by hand, when you choose |
+| Needs | `sha256sum` or `shasum` | `gh` |
+| Trusts | the `checksums.txt` that came with the plugin through git | GitHub's OIDC issuer and Sigstore |
+| Manual releases (no `checksums.txt` in git) | only shows the archive arrived whole | full check, as for any release |
+| Catches a swapped release asset | yes, when the plugin has `checksums.txt` | yes |
+
+Neither proves the source is sound. Someone who can push to `main` or change the release
+workflow can build a bad binary, and it is attested like any other. The launchers never call
+`gh`; installing does not depend on it.
 
 ## Pull requests
 
@@ -145,7 +196,10 @@ as they were; re-run it, or merge the next change.
 `main` must accept the `autorelease` push from `github-actions[bot]`. With branch protection
 or a ruleset that requires pull requests or status checks, add `github-actions` as a bypass
 actor, or the push is rejected. The default workflow permission can stay read-only: each job
-that writes declares `contents: write` itself.
+that writes declares `contents: write` itself. The `release` publish job also declares
+`id-token: write` and `attestations: write` for the attestation, and `autorelease` grants
+both to its `release` job, because a called workflow cannot hold more than its caller gives
+it. Attestations need a public repository (a private one needs GitHub Enterprise Cloud).
 
 ## Earlier memory releases
 
