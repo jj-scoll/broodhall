@@ -2,6 +2,7 @@
 #   guardrails_<os>_<arch>.tar.gz    (guardrails, CGO_ENABLED=0 cross-build; claude-tools_* in older releases)
 #   memory_<os>_<arch>.tar.xz        (memory, cgo + DuckDB, one native runner per platform)
 #   checksums.txt                    (sha256 of all eight; each run.sh picks its own asset's line)
+# and a signed SLSA build provenance attestation for all nine (actions/attest, publish job).
 # All three plugins share the version, so the tag is v<that version> for every one of them.
 # autorelease also commits the eight hashes into plugins/{guardrails,memory}/checksums.txt, and a
 # launcher whose plugin directory has that file checks against it instead of the release's copy.
@@ -144,8 +145,13 @@ jobs:
   publish:
     needs: [tools, memory]
     runs-on: ubuntu-latest
+    # id-token and attestations are for the provenance step only, and only this job has them:
+    # the build jobs, which run the tests and fetch DuckDB extensions, keep contents: read.
+    # A caller (autorelease) must grant both too; a called workflow cannot raise permissions.
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -166,6 +172,16 @@ jobs:
           # A commit that already pins hashes (a rebuild of an automatic release) only accepts
           # the same bytes; autorelease's commit pins none yet.
           .github/scripts/pin-checksums.sh check dist/checksums.txt
+      # SLSA build provenance for the exact bytes the release gets: one Sigstore-signed
+      # attestation naming all eight archives and checksums.txt, stored in this repo's
+      # attestations. If signing fails the job stops before the release exists.
+      # Verify with: gh attestation verify <file> --repo jj-scoll/broodhall
+      - uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.tar.xz
+            dist/checksums.txt
       # autorelease commits these hashes into plugins/*/checksums.txt before it pushes the tag.
       - uses: actions/upload-artifact@v7
         with:
