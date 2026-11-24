@@ -52,6 +52,9 @@ in a terminal and start a new session.
 
 Documentation: https://jj-scoll.github.io/broodhall/
 
+Threat model: [THREAT_MODEL.md](THREAT_MODEL.md) maps each guard to the OWASP Top 10 for LLM
+Applications and MITRE ATLAS, with an attack test for every threat.
+
 ## License
 
 MIT
