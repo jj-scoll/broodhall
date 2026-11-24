@@ -21,6 +21,11 @@ The guard looks at commands that send data off the machine:
   `forward`, `upload`, `comment`, `post`, `edit`, `transition`, `batch`, `draft`). The match
   is on any part of the name, so some read tools count as writes too, such as `list_drafts`
   (draft) and `get_address_book` (add).
+- `WebFetch`: the request goes to the URL's server, so the guard scans the URL, query string
+  included, for a secret, an outside email address or a phone number. The `prompt` argument
+  stays on your machine and is not scanned.
+- `WebSearch`: the query goes to a search provider. The guard scans it for a secret only;
+  an email address or phone number in a search is usually a lookup, not a leak.
 
 It scans what the call carries: the command text (heredoc bodies included) and the local
 files it uploads, such as a `--body-file`, `curl -d @file`, `-F key=@file`, `-T`,
@@ -53,7 +58,7 @@ ASK: this call sends data off the machine and uploads the directory /home/you/pr
 
 An MCP write tool gets the same kind of reply with its name in place of "the command text":
 `... and the mcp__mail__send_message input holds an outside email address (@acme-corp.test).`
-MCP tools reach this guard through the plugin's `mcp__.*` hook matcher.
+MCP tools, `WebFetch` and `WebSearch` reach this guard through the plugin's `WebFetch|WebSearch|mcp__.*` hook matcher.
 
 ## What passes
 

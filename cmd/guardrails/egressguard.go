@@ -405,10 +405,26 @@ func positionals(args []string, valueFlags ...string) []string {
 // egressToolVerb picks the MCP tools that send or store data elsewhere by their name's last part.
 var egressToolVerb = regexp.MustCompile(`(?i)send|create|update|add|reply|forward|upload|comment|post|edit|transition|batch|draft`)
 
-// egressToolDecision scans an MCP write tool's input: every string in it (nested included),
-// and any existing regular local file named under a key holding "path" or "file". ok=false
-// when the rule doesn't apply.
+// egressToolDecision scans what a tool sends off the machine. For WebFetch that is the url,
+// for WebSearch the query (secrets only). For an MCP write tool it is every string in the
+// input (nested included) and any existing regular local file named under a key holding
+// "path" or "file". ok=false when the rule doesn't apply.
 func egressToolDecision(tool string, input map[string]any, cwd string) (decision, bool) {
+	switch tool {
+	case "WebFetch":
+		// The URL goes to the site: a secret, outside address or phone number in it leaves
+		// the machine. The prompt stays local, so it is not scanned.
+		url, _ := input["url"].(string)
+		return egressScan(url, "the WebFetch url"), true
+	case "WebSearch":
+		// The query goes to a search provider. Only a secret counts: people search for
+		// names and addresses all the time, and a prompt on each would be noise.
+		q, _ := input["query"].(string)
+		if m := scanSecrets(q); len(m) > 0 {
+			return egressAsk("secret", "the WebSearch query holds a secret ("+m[0].Pattern+" "+m[0].Redacted+")."), true
+		}
+		return decision{}, true
+	}
 	i := strings.LastIndex(tool, "__")
 	if !strings.HasPrefix(tool, "mcp__") || i < 0 || !egressToolVerb.MatchString(tool[i+2:]) {
 		return decision{}, false

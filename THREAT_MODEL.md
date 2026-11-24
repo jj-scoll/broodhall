@@ -69,13 +69,14 @@ with secrets or personal values masked in what the agent sees), NOTE (the call r
 | T13 | Irreversible infrastructure change with no plan reviewed: `terraform apply`, `destroy` | LLM06:2025 | AML.T0101 | [Nudges](docs/guardrails/nudges.md): NOTE unless a plan ran in the same directory first | `TestThreatScenarios/T13`, `TestSlowOpNarrowedAndStateful`, `TestPreToolUsePlanStateAcrossProcesses` |
 | T14 | One agent sweeps another live session's uncommitted edits into its own commit, stash or reset | LLM06:2025 | AML.T0101 (accidental) | [Shared checkout](docs/guardrails/shared-tree.md): ASK, naming the other session and files | `TestThreatScenarios/T14`, `TestSweepAsksForAnotherSessionsChange`, `TestSweepEquivalentForms`, `TestSweepLinkedWorktreeIsAnotherCheckout` |
 | T15 | A tampered release binary, or a missing or crashing binary that leaves the guards off | LLM03:2025 Supply Chain | AML.T0010.005 Supply Chain Compromise: AI Agent Tool (Initial Access) | Install checks the sha256 against the plugin's pinned `checksums.txt` and installs nothing on a mismatch; [Doctor](docs/guardrails/doctor.md) re-checks at session start; every guard hook is `onFailure: block`, so no binary means BLOCK | `TestThreatScenarios/T15`, `TestShimInstallRejectsBadChecksum`, `TestCheckBinaryChecksum`, `TestShimNoBinaryFailsClosed`, `TestPluginGuardHooksFailClosed` |
+| T16 | A secret, outside email address or phone number put in a WebFetch URL (or a secret in a WebSearch query), so the request carries it to a server the agent chose | LLM02:2025, LLM01:2025 | AML.T0086 Exfiltration via AI Agent Tool Invocation | [Egress](docs/guardrails/egress.md): ASK, through the plugin's `WebFetch` and `WebSearch` hook matcher. WebFetch scans the URL for all three findings; WebSearch scans the query for secrets only. The prompt stays local and is not scanned. Same `egress` switch as T07; the secret ASK stays on in observe mode | `TestThreatScenarios/T16`, `TestEgressToolDecision`, `TestEgressWebFetchMessageHidesSecret` |
 
 ## OWASP LLM Top 10 coverage
 
 | OWASP 2025 | Coverage | Where | Why not more |
 | --- | --- | --- | --- |
 | LLM01:2025 Prompt Injection | Partial | T01, T04, T05, T07, T11 | Limits what an injection can do; does not detect injected text. |
-| LLM02:2025 Sensitive Information Disclosure | Covered | T06, T07, T08, T09 | Residual risks R04 and R05. |
+| LLM02:2025 Sensitive Information Disclosure | Covered | T06, T07, T08, T09, T16 | Residual risk R04. |
 | LLM03:2025 Supply Chain | Partial | T15 | Covers this plugin's own binary. Packages, plugins and MCP servers the agent installs are vetted only for the `curl \| sh` pattern (T04). |
 | LLM04:2025 Data and Model Poisoning | Not covered | | guardrails trains nothing and keeps no knowledge store. The memory plugin's stored notes are a poisoning surface (AML.T0080.000 AI Agent Context Poisoning: Memory) and need their own model. |
 | LLM05:2025 Improper Output Handling | Covered for shell execution | T09, T11 | Commands are model output passed to a shell. Every Bash guard parses them before they run. |
@@ -108,7 +109,6 @@ change, the day a guard closes one.
 | R02 | An encoded payload: `echo ... \| base64 -d \| sh` | The decoded text exists only when the command runs. | `TestThreatResidualRisks/R02` |
 | R03 | Destruction through an interpreter's own API: `python3 -c "shutil.rmtree(...)"` | The guards parse shell, not Python, Node or other languages. | `TestThreatResidualRisks/R03` |
 | R04 | A secret sent from an environment variable: `curl "...?k=$AWS_SECRET_ACCESS_KEY"` | The value is set only in the shell that runs the command; the hook sees the variable's name. | `TestThreatResidualRisks/R04` |
-| R05 | A secret in a WebFetch URL | No guardrails PreToolUse hook matches WebFetch, so its calls never reach the guards. | `TestThreatResidualRisks/R05` |
 
 Untested by design:
 
