@@ -105,8 +105,15 @@ func peelOne(w []string) (rest []string, ok bool) {
 	case "env":
 		return peelEnv(args), true
 	case "command":
-		if hasArg(args, "-v", "-V") {
-			return nil, false // only looks the name up
+		// Only command's own leading options count: a later -v is the wrapped command's
+		// (command rm -rf -v /, command docker run -v /dev:/dev).
+		for _, a := range args {
+			if a == "-v" || a == "-V" {
+				return nil, false // only looks the name up
+			}
+			if !strings.HasPrefix(a, "-") || a == "--" {
+				break
+			}
 		}
 	case "timeout":
 		args = skipOpts(args, valued)
