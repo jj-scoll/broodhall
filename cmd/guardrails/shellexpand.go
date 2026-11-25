@@ -19,6 +19,7 @@ package main
 import (
 	"encoding/base64"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -29,7 +30,12 @@ import (
 const (
 	maxBraceWords = 64 // a larger brace expansion stays as written
 	maxFuncDepth  = 4  // nested calls of the line's own functions
+	maxFuncCalls  = 64 // function bodies walked again per parse, against a fan-out
 )
+
+// printfWidth matches a printf conversion with a width or precision of 4+ digits, which
+// would build a huge string; such output is not worked out.
+var printfWidth = regexp.MustCompile(`%[-+ #0'*]*[0-9]*\.?[0-9]{4,}`)
 
 type shellCtx struct {
 	vars  map[string]string       // NAME -> value, unresolved expansions in it kept as written
@@ -37,22 +43,24 @@ type shellCtx struct {
 	pos   []string                // positional parameters inside a function call
 	inFn  bool                    // pos is meaningful
 	calls map[string]bool         // functions being expanded, against recursion
+	walks *int                    // function bodies walked so far in this parse
 }
 
 func newShellCtx() *shellCtx {
-	return &shellCtx{vars: map[string]string{}, funcs: map[string]*syntax.Stmt{}, calls: map[string]bool{}}
+	return &shellCtx{vars: map[string]string{}, funcs: map[string]*syntax.Stmt{}, calls: map[string]bool{}, walks: new(int)}
 }
 
 // call is the context inside a call of the line's function name with args.
 func (c *shellCtx) call(name string, args []string) (*shellCtx, bool) {
-	if c.calls[name] || len(c.calls) >= maxFuncDepth {
+	if c.calls[name] || len(c.calls) >= maxFuncDepth || *c.walks >= maxFuncCalls {
 		return nil, false
 	}
+	*c.walks++
 	calls := map[string]bool{name: true}
 	for k := range c.calls {
 		calls[k] = true
 	}
-	return &shellCtx{vars: c.vars, funcs: c.funcs, pos: args, inFn: true, calls: calls}, true
+	return &shellCtx{vars: c.vars, funcs: c.funcs, pos: args, inFn: true, calls: calls, walks: c.walks}, true
 }
 
 // assign records NAME=value assignments (plain or from export, declare, local, readonly).
@@ -374,7 +382,7 @@ func builtinOutput(args []string, stdin *string) (string, bool) {
 		if len(rest) > 0 && rest[0] == "--" {
 			rest = rest[1:]
 		}
-		if len(rest) == 0 || strings.HasPrefix(rest[0], "-") {
+		if len(rest) == 0 || strings.HasPrefix(rest[0], "-") || printfWidth.MatchString(rest[0]) {
 			return "", false
 		}
 		format, fargs := rest[0], rest[1:]

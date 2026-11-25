@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -196,5 +197,21 @@ func TestResolvedCommandNames(t *testing.T) {
 				t.Errorf("decide(%q) = %s, want %s", tt.cmd, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestResolveStaysCheap pins the limits on what parseShell expands: functions that call each
+// other in a fan-out, and a printf whose width would allocate a huge string, both answer at
+// once instead of hanging the hook.
+func TestResolveStaysCheap(t *testing.T) {
+	calls := func(name string) string { return strings.TrimSuffix(strings.Repeat(name+"; ", 60), " ") }
+	fanout := "a() { :; }; b() { " + calls("a") + " }; c() { " + calls("b") + " }; d() { " + calls("c") + " }; e() { " + calls("d") + " }; e"
+	for _, cmd := range []string{fanout, `printf '%0999999999d' 1 | sh`} {
+		env := &guardEnv{Now: time.Unix(1_800_000_000, 0), Session: "s", Cwd: "/work", Home: "/nohome/user", State: memState{}}
+		start := time.Now()
+		decide(env, cmd)
+		if d := time.Since(start); d > 2*time.Second {
+			t.Errorf("decide(%.40q...) took %v", cmd, d)
+		}
 	}
 }
