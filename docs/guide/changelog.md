@@ -5,6 +5,11 @@ guardrails, memory and context-guard share one version; see
 [jj-scoll/rtk](https://github.com/jj-scoll/rtk). Each release's full notes are on
 [GitHub Releases](https://github.com/jj-scoll/broodhall/releases).
 
+## 1.12.10
+
+- guardrails: masked secret-file reads now hide the password in `scheme://user:pass@host` and `scheme://:pass@host` URLs (shown as `[url-password:tag]`; scheme, user and host stay readable). A recursive `grep`, `rg` or `git grep` of a directory that holds a `.env`, `*.tfvars` or other file protected by name is now masked line by line for the lines that come from those files, instead of printing their values.
+- memory: a second memory daemon no longer shares the Quack port (9494) with a running one; if the port is already held, Quack is skipped with a "not serving: port ... already in use" log line and the daemon keeps running.
+
 ## 1.12.9
 
 - guardrails: a secret captured from a protected file with `T=$(...)` now asks before the variable is echoed, printed, written with `tee` or `cat`, or redirected to a file; passing it to the tool that uses it (`PGPASSWORD=$T psql`) still works, and the ASK hint no longer presents capture as an alternative to confirming.

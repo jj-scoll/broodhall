@@ -1,1 +1,0 @@
-- memory: a second memory daemon no longer shares the Quack port (9494) with a running one; if the port is already held, Quack is skipped with a "not serving: port ... already in use" log line and the daemon keeps running.
