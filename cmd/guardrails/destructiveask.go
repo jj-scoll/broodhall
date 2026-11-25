@@ -51,7 +51,7 @@ func argvDestructiveAsk(w []string) (rule, what string) {
 		}
 	case "aws":
 		if len(pos) >= 2 && pos[0] == "s3" {
-			if pos[1] == "rm" && hasArg(args, "--recursive") {
+			if pos[1] == "rm" && hasArg(args, "--recursive") && !hasArg(args, "--dryrun") {
 				return "s3-rm", "aws s3 rm --recursive deletes every object under the prefix; unversioned buckets keep no copy (try --dryrun first)"
 			}
 			if pos[1] == "rb" && hasArg(args, "--force") {

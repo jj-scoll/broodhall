@@ -202,6 +202,7 @@ allow	ask:s3-rm	aws --profile prod s3 rm --recursive s3://b/prefix
 allow	ask:s3-rm	aws s3 rb s3://b --force
 allow	allow	aws s3 ls s3://prod-backups --recursive
 allow	allow	aws s3 rm s3://b/one-key.txt
+allow	allow	aws s3 rm s3://b/prefix/ --recursive --dryrun
 allow	ask:find-delete	find ~/src -type f -delete
 allow	ask:find-delete	find . -name '*.tmp' -exec rm -f {} +
 allow	ask:find-delete	find . -execdir rm {} \;
