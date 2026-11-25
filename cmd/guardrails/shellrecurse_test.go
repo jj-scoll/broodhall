@@ -160,6 +160,24 @@ func TestResolvedCommandNames(t *testing.T) {
 		{"quoted IFS", `echo "$IFS"`, allowed},
 		{"run wrapper", `run() { "$@"; }; run ls -la`, allowed},
 		{"run wrapper on rm", `run() { "$@"; }; run rm -rf ~`, rmHome},
+
+		// code piped or handed to a shell: a fixed payload gets the normal rules, a computed one asks
+		{"printf into sh", `printf '%s\n' 'rm -rf ~' | sh`, rmHome},
+		{"echo into bash", `echo 'git reset --hard' | bash`, "ask:git-reset-hard"},
+		{"base64 into sh", `echo cm0gLXJmIH4K | base64 -d | sh`, rmHome},
+		{"source of printf", `source <(printf '%s\n' 'rm -rf $HOME')`, rmHOME},
+		{"dot of echo", `. <(echo rm -rf /)`, rmRoot},
+		{"quoted heredoc with continuation", "sh <<'EOF'\nrm \\\n  -rf \\\n  ~\nEOF", rmHome},
+		{"heredoc with continuation", "bash <<EOF\nrm \\\n  -rf ~\nEOF", rmHome},
+		{"computed payload into sh", `printf '%s\n' "$CMD" | sh`, "ask:opaque-shell"},
+		{"generated script into bash", `./gen-script.py | bash -s`, "ask:opaque-shell"},
+		{"computed source", `source <(./gen-env)`, "ask:opaque-shell"},
+		{"variable into sudo sh", `echo "$x" | sudo sh`, "ask:opaque-shell"},
+		{"fixed safe payload", `printf 'ls -la\n' | sh`, allowed},
+		{"local script piped", `cat script.sh | bash`, allowed},
+		{"computed data, not a shell", `./gen | sh -c 'wc -l'`, allowed},
+		{"computed data into jq", `./gen | jq .`, allowed},
+		{"base64 to a file", `echo aGkK | base64 -d > out.txt`, allowed},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

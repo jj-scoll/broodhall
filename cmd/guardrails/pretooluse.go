@@ -99,6 +99,10 @@ func decide(env *guardEnv, cmd string) decision {
 	if d := dynamicCommand(cmd, env.Home); d.Ask {
 		return d
 	}
+	// Computed code piped into a shell (./gen | sh): the user confirms.
+	if d := opaqueShell(cmd); d.Ask {
+		return d
+	}
 	// Python reading raw client data prints it unmasked: the user confirms.
 	if d := rawClientDataRule(cmd); d.Ask && !env.Off["raw-client-data"] && !env.observed(d) {
 		return d

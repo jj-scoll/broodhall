@@ -28,6 +28,9 @@ type simpleCmd struct {
 	// Env holds the NAME=value assignments the command runs with: VAR=x prefixes, those
 	// dropped from env/sudo, and the arguments of export.
 	Env []string
+	// Opaque names code a shell runs that the text does not fix ("a pipe into sh"): the
+	// output of a real program piped into a shell or sourced from <(...).
+	Opaque string
 }
 
 const maxShellDepth = 5
@@ -73,6 +76,21 @@ func parseShellDepth(cmd string, depth int, ms *container.MountSet) ([]simpleCmd
 			descend(ic.Words, nil, ms)
 		}
 	}
+	// shellPayload adds what a shell runs from producer: the commands of its output when the
+	// text fixes it, else an Opaque entry, unless the producer downloads (download-exec asks)
+	// or only cats files (the same as sh file, which passes).
+	var sx0 = newShellCtx()
+	shellPayload := func(producer *syntax.Stmt, how string) {
+		if text, fixed := sx0.stmtOutput(producer, nil); fixed {
+			inner, _ := parseShellDepth(text, depth+1, ms)
+			out = append(out, inner...)
+			return
+		}
+		if w, _ := cmdWords(producer); hasDownload(producer) || len(w) > 1 && w[0] == "cat" && !strings.HasPrefix(w[1], "-") {
+			return
+		}
+		out = append(out, simpleCmd{Opaque: how})
+	}
 	// walk adds the commands under node, resolving words with what sx knows (shellexpand.go);
 	// a call of a function the line defined walks its body again with the call's arguments.
 	var walk func(node syntax.Node, sx *shellCtx)
@@ -86,9 +104,26 @@ func parseShellDepth(cmd string, depth int, ms *container.MountSet) ([]simpleCmd
 				if n.Name != nil && n.Body != nil {
 					sx.funcs[n.Name.Value] = n.Body
 				}
+			case *syntax.BinaryCmd:
+				// producer | sh: the shell runs what the producer prints.
+				if n.Op == syntax.Pipe || n.Op == syntax.PipeAll {
+					if w, _ := cmdWords(n.Y); len(w) > 0 && shellNames[runnerName(w[0])] && readsStdinAsScript(w) {
+						shellPayload(n.X, "a pipe into "+path.Base(w[0]))
+					}
+				}
 			case *syntax.Stmt:
 				sc := simpleCmd{}
 				var ws []string
+				// source <(producer), sh <(producer): the same as a pipe.
+				if words, nodes := cmdWords(n); nodes != nil && len(words) > 0 {
+					if name := runnerName(words[0]); name == "source" || name == "." || shellNames[name] {
+						if _, idx, ok := firstOperand(words); ok && idx < len(nodes) && len(nodes[idx].Parts) == 1 {
+							if ps, isPS := nodes[idx].Parts[0].(*syntax.ProcSubst); isPS && ps.Op == syntax.CmdIn && len(ps.Stmts) == 1 {
+								shellPayload(ps.Stmts[0], name+" <(...)")
+							}
+						}
+					}
+				}
 				if call, isCall := n.Cmd.(*syntax.CallExpr); isCall {
 					for _, w := range call.Args {
 						ws = append(ws, sx.fields(w)...)
@@ -123,7 +158,7 @@ func parseShellDepth(cmd string, depth int, ms *container.MountSet) ([]simpleCmd
 					switch r.Op {
 					case syntax.Hdoc, syntax.DashHdoc:
 						if r.Hdoc != nil {
-							feeds = append(feeds, wordText(r.Hdoc))
+							feeds = append(feeds, heredocBody(r))
 						}
 					case syntax.WordHdoc:
 						feeds = append(feeds, sx.text(r.Word))
@@ -141,7 +176,7 @@ func parseShellDepth(cmd string, depth int, ms *container.MountSet) ([]simpleCmd
 			return true
 		})
 	}
-	walk(f, newShellCtx())
+	walk(f, sx0)
 	if !ok {
 		return nil, false
 	}
@@ -199,6 +234,33 @@ func nestedScripts(w []string, feeds []string) []nestedScript {
 // wordText is the word as the shell would pass it, except that expansions stay literal
 // ("$HOME", "$(cmd)"), which is what rules compare against.
 func wordText(w *syntax.Word) string { return (*shellCtx)(nil).text(w) }
+
+// heredocBody is the text a heredoc feeds. Under a quoted delimiter (<<'EOF') the body is
+// raw, backslashes and line continuations included, which the shell reading it then
+// interprets; unquoted, the parser has already joined continued lines.
+func heredocBody(r *syntax.Redirect) string {
+	quoted := false
+	for _, p := range r.Word.Parts {
+		switch p := p.(type) {
+		case *syntax.SglQuoted, *syntax.DblQuoted:
+			quoted = true
+		case *syntax.Lit:
+			quoted = quoted || strings.Contains(p.Value, `\`)
+		}
+	}
+	if !quoted {
+		return wordText(r.Hdoc)
+	}
+	var b strings.Builder
+	for _, p := range r.Hdoc.Parts {
+		if l, ok := p.(*syntax.Lit); ok {
+			b.WriteString(l.Value)
+		} else {
+			return wordText(r.Hdoc)
+		}
+	}
+	return b.String()
+}
 
 // unescapeLit drops the backslash of an escaped character; inside double quotes only \" \\
 // \$ and \` are escapes.

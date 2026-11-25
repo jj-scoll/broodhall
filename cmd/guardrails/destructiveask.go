@@ -111,3 +111,20 @@ func argvDestructive(w []string, home string) bool {
 	return path.Base(w[0]) == "rm" && rmArgsTarget(w[1:], home) != "" || gitPushForce(w) != "" || r != "" || rule != "" ||
 		ddRule(sc, home).Exit != 0 || chmodRule(sc, home).Exit != 0 || chownRule(sc, home).Exit != 0
 }
+
+// opaqueShell asks when a shell runs code the text does not fix: a program's output piped
+// into sh, bash or zsh, or sourced from <(...) (printf "$CMD" | sh, ./gen | bash, source
+// <(./gen)). A fixed payload (printf 'ls' | sh) was parsed and judged as itself instead.
+func opaqueShell(cmd string) decision {
+	cmds, ok := parseShell(cmd)
+	if !ok {
+		return decision{}
+	}
+	for _, c := range cmds {
+		if c.Opaque != "" {
+			return decision{Ask: true, Rule: "opaque-shell",
+				Msg: "ASK: this runs code through " + c.Opaque + " that is only known at run time, so the guard cannot check it. Write it to a file and read it first, or confirm with the user."}
+		}
+	}
+	return decision{}
+}
