@@ -31,6 +31,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jj-scoll/broodhall/cmd/guardrails/secretfiles"
 	"mvdan.cc/sh/v3/syntax"
@@ -233,9 +234,22 @@ func readerOK(name string, args []string) bool {
 	return true
 }
 
-// searchWalkCap bounds the directory walk of searchHoldsNamed. A tree larger than that is
-// taken to hold a protected file (fail closed), so the search is masked.
+// The walk of searchHoldsNamed is bounded by entries and by wall time; past either it
+// stops and reports "holds one" (fail closed: the search is masked). The budget is the
+// pre-tool-use latency a recursive search may pay: 15ms is below what a person notices next
+// to the shell and model round trip, and on a loaded machine it covers a few thousand
+// entries, so a repo-sized tree is fully checked and a home-sized one fails closed.
+// searchWalkNow is the clock, replaced in tests.
 const searchWalkCap = 50000
+
+var (
+	searchWalkBudget = 15 * time.Millisecond
+	searchWalkNow    = time.Now
+	// searchWalkSkip are dependency, vendor and tool-cache directories: large, rarely hold
+	// a project's own .env, and a hit there is a third party's file. A .env inside one is
+	// not masked by name.
+	searchWalkSkip = map[string]bool{".git": true, "node_modules": true, "vendor": true, ".direnv": true, ".terraform": true, ".venv": true}
+)
 
 // searchHoldsNamed reports whether a recursive search reaches a file protected by name
 // (.env, *.tfvars, ...): a directory among its words, or the cwd when it names none (rg,
@@ -256,22 +270,39 @@ func (g *secretGuard) searchHoldsNamed(words []string, gitGrep bool) bool {
 	if len(roots) == 0 {
 		roots = []string{g.cwd}
 	}
-	n, found := 0, false
 	for _, r := range roots {
-		filepath.WalkDir(r, func(p string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			if n++; n > searchWalkCap || secretNamed(d.Name()) && !d.IsDir() {
-				found = true
-				return filepath.SkipAll
-			}
-			if d.IsDir() && d.Name() == ".git" {
-				return filepath.SkipDir
-			}
-			return nil
-		})
+		if searchWalkMemo[r] || !searchWalkMemoHas(r) && g.walkHoldsNamed(r) {
+			return true
+		}
 	}
+	return false
+}
+
+// searchWalkMemo remembers each root's walk for the life of the process: pre-tool-use scans
+// a command twice (the rule, then the rewrite) and the answer cannot change in between, so
+// the budget is paid once per call. Tests reset it.
+var searchWalkMemo = map[string]bool{}
+
+func searchWalkMemoHas(r string) bool { _, ok := searchWalkMemo[r]; return ok }
+
+// walkHoldsNamed walks root within the entry and time budget and memoizes the answer.
+func (g *secretGuard) walkHoldsNamed(root string) bool {
+	n, found := 0, false
+	deadline := searchWalkNow().Add(searchWalkBudget)
+	filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if n++; n > searchWalkCap || secretNamed(d.Name()) && !d.IsDir() || n%16 == 0 && searchWalkNow().After(deadline) {
+			found = true
+			return filepath.SkipAll
+		}
+		if d.IsDir() && searchWalkSkip[d.Name()] {
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	searchWalkMemo[root] = found
 	return found
 }
 

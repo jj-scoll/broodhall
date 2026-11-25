@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -284,5 +285,49 @@ func TestRecursiveSearchIsMaskedByFile(t *testing.T) {
 	// Our own wrapper is not wrapped again.
 	if got, ok := secretRewrite(env, pre+"grep -rn STRIPE .", self); ok {
 		t.Errorf("rewrapped: %q", got)
+	}
+}
+
+// The walk that looks for a protected file is bounded by time and skips dependency dirs.
+func TestSearchWalkBudgetAndSkips(t *testing.T) {
+	env := secretEnv(t)
+	for i := 0; i < 200; i++ {
+		os.WriteFile(filepath.Join(env.Cwd, "f"+strconv.Itoa(i)+".go"), []byte("x\n"), 0o600)
+	}
+	const self = "/bin/guardrails"
+	g := newSecretGuard(env.Home, "", env.Cwd)
+	if g.searchHoldsNamed([]string{"-rn", "x", "."}, false) {
+		t.Fatal("a clean tree within the budget holds nothing")
+	}
+	reset := func() { clear(searchWalkMemo) }
+	reset()
+	// Dependency dirs are not walked.
+	for _, d := range []string{"node_modules", "vendor", ".direnv", ".git"} {
+		os.MkdirAll(filepath.Join(env.Cwd, d, "p"), 0o700)
+		os.WriteFile(filepath.Join(env.Cwd, d, "p", ".env"), []byte("x\n"), 0o600)
+	}
+	if g.searchHoldsNamed([]string{"-rn", "x", "."}, false) {
+		t.Error("a .env under node_modules, vendor, .direnv or .git was walked")
+	}
+	reset()
+	// Out of time: the tree is taken to hold a protected file, so the search is wrapped.
+	old, now := searchWalkNow, time.Unix(0, 0)
+	searchWalkNow = func() time.Time { now = now.Add(time.Hour); return now }
+	t.Cleanup(func() { searchWalkNow = old })
+	if !g.searchHoldsNamed([]string{"-rn", "x", "."}, false) {
+		t.Error("an exhausted budget must fail closed")
+	}
+	if got, ok := secretRewrite(env, "grep -rn x .", self); !ok || !strings.Contains(got, "--by-file") {
+		t.Errorf("exhausted budget not wrapped: %q %v", got, ok)
+	}
+	reset()
+	// A search that is not recursive never reads the clock, so never walks.
+	calls := 0
+	searchWalkNow = func() time.Time { calls++; return time.Unix(0, 0) }
+	for _, c := range []string{"grep -n x notes.md", "grep x f1.go f2.go", "cat f1.go", "ls -R"} {
+		secretRewrite(env, c, self)
+	}
+	if calls != 0 {
+		t.Errorf("non-recursive commands walked (%d clock reads)", calls)
 	}
 }
