@@ -10,6 +10,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 // freeQuackURI points memdQuackURI at a free loopback port for the test.
@@ -220,16 +222,13 @@ func openTestMemdNoFts(t *testing.T) (*sql.DB, string) {
 	return db, t.TempDir()
 }
 
-// soReusePort is the Linux SO_REUSEPORT value (syscall does not export it on every arch).
-const soReusePort = 0xf
-
 // reusePortListener holds a loopback port with SO_REUSEPORT set, as a second Quack daemon would.
 func reusePortListener(t *testing.T, addr string) net.Listener {
 	t.Helper()
 	lc := net.ListenConfig{Control: func(_, _ string, c syscall.RawConn) error {
 		var serr error
 		if err := c.Control(func(fd uintptr) {
-			serr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, soReusePort, 1)
+			serr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
 		}); err != nil {
 			return err
 		}
