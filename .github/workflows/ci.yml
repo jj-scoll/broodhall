@@ -59,6 +59,8 @@ jobs:
         run: bash .github/scripts/test/threat-model-page_test.sh
       - if: runner.os == 'Linux'
         run: bash .github/scripts/test/coverage-badge_test.sh
+      - if: runner.os == 'Linux'
+        run: bash .github/scripts/test/changelog_test.sh
 
   # govulncheck exits 3 when the code calls a known-vulnerable symbol, which fails the job;
   # imported-but-not-called findings are informational and exit 0. Go comes from go.mod's
