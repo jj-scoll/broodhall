@@ -142,8 +142,10 @@ built from variables gets past the check. So does a program that opens the file 
 `cat .env` is masked, but `python3 -c "print(open('.env').read())"` is not seen, because
 a file name alone in a script is not a reason to ask. A recursive `grep`, `rg` or `git grep` is
 masked for a directory that holds a protected file. The `.env` kind is found by a walk of
-the directory (50000 entries at most, `.git` skipped; a larger tree counts as holding one),
-and its lines are recognised by the file name at the front of each output line, so
+the directory (at most 50000 entries or 15 ms, skipping `.git`, `node_modules`, `vendor`,
+`.direnv`, `.terraform` and `.venv`; a tree too large for that counts as holding one, so the
+search is masked and loses rtk's compression, and a `.env` inside a skipped directory is not
+masked by name), and its lines are recognised by the file name at the front of each output line, so
 `grep -h`, `rg --no-filename`, `--heading` and `-Z` searches (no name to read) and files
 protected only by a line of your `secret-paths` list are not masked that way; name the file.
 
