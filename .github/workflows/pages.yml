@@ -56,7 +56,7 @@ jobs:
           MEMORY_EXT_DIR="$RUNNER_TEMP/ext" go test ./... -count=1 -timeout 20m -coverprofile="$RUNNER_TEMP/cover.out"
           go tool cover -func="$RUNNER_TEMP/cover.out" | .github/scripts/coverage-badge.sh > "$RUNNER_TEMP/coverage.json"
           cat "$RUNNER_TEMP/coverage.json"
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       - run: .github/scripts/threat-model-page.sh THREAT_MODEL.md docs/reference/threat-model.md
       - run: uvx zensical@0.0.74 build --strict
       # A failed measurement publishes nothing new: the badge keeps the last good number. With
