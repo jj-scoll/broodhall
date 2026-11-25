@@ -5,6 +5,10 @@ guardrails, memory and context-guard share one version; see
 [jj-scoll/rtk](https://github.com/jj-scoll/rtk). Each release's full notes are on
 [GitHub Releases](https://github.com/jj-scoll/broodhall/releases).
 
+## 1.12.4
+
+- No user-facing changes; see the [release notes](https://github.com/jj-scoll/broodhall/releases/tag/v1.12.4).
+
 ## 1.12.3
 
 - guardrails, memory: no change in behavior; the Python-compatible text helpers and the container-run parser both binaries carried as identical copies now live in `internal/pytext` and `internal/container`.

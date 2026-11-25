@@ -1,7 +1,0 @@
-# version 1.12.3
-# sha256 of this version's release archives. The release writes this file
-# (.github/scripts/pin-checksums.sh) and scripts/run.sh checks its download against it.
-14d9eb606921084d1a24a22692ad9170327f31f5c7edc76b9a162bba5e84dde4  memory_darwin_amd64.tar.xz
-de1224f6b1d3560c7a9bdd343c578d62d9d6c2212f9ed904e983160c92c23d0c  memory_darwin_arm64.tar.xz
-50cb813d3be2e8b87d47fa3d1df0b9cc8a76e7646f55be2d8fe1209b3b3b44b3  memory_linux_amd64.tar.xz
-ccdd60069d442803068a40ee234a5cdb18eccbfebd99ae6db8484419c9094c74  memory_linux_arm64.tar.xz
