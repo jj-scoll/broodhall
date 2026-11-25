@@ -65,7 +65,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.REF }}
       - name: Tag matches the shared plugin version
@@ -78,10 +78,10 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.REF }}
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - run: CGO_ENABLED=0 go test ./cmd/guardrails/...
@@ -94,7 +94,7 @@ jobs:
               -o "build/${os}_$arch/guardrails" ./cmd/guardrails
             mkdir -p dist && tar -czf "dist/guardrails_${os}_$arch.tar.gz" -C "build/${os}_$arch" guardrails
           done
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: guardrails
           path: dist/*.tar.gz
@@ -115,10 +115,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.REF }}
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - name: DuckDB extensions
@@ -136,7 +136,7 @@ jobs:
           file build/memory
           mkdir -p dist
           tar -cf "dist/memory_${{ matrix.os }}_${{ matrix.arch }}.tar" -C build memory ext
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: memory_${{ matrix.os }}_${{ matrix.arch }}
           path: dist/*.tar
@@ -153,14 +153,14 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.REF }}
           sparse-checkout: |
             .github/scripts
             plugins/guardrails
             plugins/memory
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
           merge-multiple: true
@@ -176,14 +176,14 @@ jobs:
       # attestation naming all eight archives and checksums.txt, stored in this repo's
       # attestations. If signing fails the job stops before the release exists.
       # Verify with: gh attestation verify <file> --repo jj-scoll/broodhall
-      - uses: actions/attest@v4
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: |
             dist/*.tar.gz
             dist/*.tar.xz
             dist/checksums.txt
       # autorelease commits these hashes into plugins/*/checksums.txt before it pushes the tag.
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: checksums
           path: dist/checksums.txt
