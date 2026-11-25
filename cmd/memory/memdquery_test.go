@@ -234,7 +234,7 @@ func TestMemdQueryTimeline(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(got, "**🎯 #S1** Harden the widget parser (Mar 2, 9:10 AM) <- **ANCHOR**") {
+		if !strings.Contains(got, "**🎯 #S1** Harden the widget parser (Mar 2, 2026, 9:10 AM) <- **ANCHOR**") {
 			t.Errorf("session anchor:\n%s", got)
 		}
 	})

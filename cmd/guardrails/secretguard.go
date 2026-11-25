@@ -386,16 +386,25 @@ func (g *secretGuard) scan(cmd string) secretScan {
 		}
 	}
 	// T=$(...): output captured into a variable is used, not shown.
+	// Variables holding a captured secret are tainted: they may feed a consumer, never a
+	// command that shows or copies them (G2).
 	var captured [][2]int
+	tainted := map[string]bool{}
 	syntax.Walk(f, func(n syntax.Node) bool {
-		if as, ok := n.(*syntax.Assign); ok && as.Value != nil {
+		if as, ok := n.(*syntax.Assign); ok && as.Value != nil && as.Name != nil {
 			for _, p := range as.Value.Parts {
 				if dq, ok := p.(*syntax.DblQuoted); ok && len(dq.Parts) == 1 {
 					p = dq.Parts[0]
 				}
 				if cs, ok := p.(*syntax.CmdSubst); ok {
 					captured = append(captured, [2]int{int(cs.Pos().Offset()), int(cs.End().Offset())})
+					if g.unaccounted(cmd[cs.Pos().Offset():cs.End().Offset()], nil) {
+						tainted[as.Name.Value] = true
+					}
 				}
+			}
+			if usesVar(as.Value, tainted) {
+				tainted[as.Name.Value] = true
 			}
 		}
 		return true
@@ -430,6 +439,15 @@ func (g *secretGuard) scan(cmd string) secretScan {
 			return true
 		}
 		ce, _ := st.Cmd.(*syntax.CallExpr)
+		if len(tainted) > 0 && ce != nil && len(ce.Args) > 0 && displayCmds[path.Base(wordText(ce.Args[0]))] {
+			shows := slices.ContainsFunc(ce.Args[1:], func(a *syntax.Word) bool { return usesVar(a, tainted) })
+			for _, r := range st.Redirs {
+				shows = shows || r.Hdoc != nil && usesVar(r.Hdoc, tainted) || r.Op == syntax.WordHdoc && usesVar(r.Word, tainted)
+			}
+			if shows {
+				askOnce("capture")
+			}
+		}
 		if ce == nil || len(ce.Args) == 0 {
 			if in || out {
 				askOnce("redirect")
@@ -488,6 +506,21 @@ func (g *secretGuard) scan(cmd string) secretScan {
 	return s
 }
 
+// displayCmds show or copy their arguments or stdin: a captured secret must not reach them.
+var displayCmds = map[string]bool{"echo": true, "printf": true, "tee": true, "cat": true, "print": true, "dd": true, "sponge": true}
+
+// usesVar reports whether w expands one of the named variables.
+func usesVar(w *syntax.Word, names map[string]bool) bool {
+	found := false
+	syntax.Walk(w, func(n syntax.Node) bool {
+		if pe, ok := n.(*syntax.ParamExp); ok && pe.Param != nil && names[pe.Param.Value] {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
 // unaccounted reports whether cmd spells a protected path (as written, from ~, $HOME or
 // $CLAUDE_CONFIG_DIR;
 // a glob up to its first wildcard) outside the covered byte ranges.
@@ -543,10 +576,15 @@ func secretFileRule(env *guardEnv, cmd string) decision {
 	g.self = env.Self
 	s := g.scan(cmd)
 	switch {
+	case s.ask == "capture":
+		return secretAsk("secret-file:capture", "a secret read from a protected file is captured into a variable that "+
+			"this command then echoes, prints or writes out, which defeats the mask. Pass the variable to the tool that uses it "+
+			`(PGPASSWORD=$T psql, curl -H "Authorization: $T"); to show or copy the value on purpose, ask the user first.`)
 	case s.ask != "":
 		return secretAsk("secret-file:"+s.ask, "it reads or writes a protected secret file in a way the mask cannot cover. "+
 			"Plain cat, head, tail, grep, rg, sed -n 'Np' and jq . reads are masked; ls, stat, test and wc pass; "+
-			`to use a value without showing it, capture it: T=$(sed -n 's/^password = "\(.*\)"$/\1/p' FILE).`)
+			`a value the command only passes to the tool that uses it can be captured, T=$(sed -n 's/^password = "\(.*\)"$/\1/p' FILE), `+
+			"but only the user can approve showing or copying it.")
 	case len(s.wrap)+len(s.byFile) > 0:
 		return decision{Rule: "secret-file:mask", Context: secretMaskNote}
 	}

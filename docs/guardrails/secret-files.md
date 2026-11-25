@@ -100,7 +100,7 @@ same file that is not wrapped is masked, or asks.
 ### Asks
 
 ```text
-ASK: it reads or writes a protected secret file in a way the mask cannot cover. Plain cat, head, tail, grep, rg, sed -n 'Np' and jq . reads are masked; ls, stat, test and wc pass; to use a value without showing it, capture it: T=$(sed -n 's/^password = "\(.*\)"$/\1/p' FILE). Confirm with the user before running it.
+ASK: it reads or writes a protected secret file in a way the mask cannot cover. Plain cat, head, tail, grep, rg, sed -n 'Np' and jq . reads are masked; ls, stat, test and wc pass; a value the command only passes to the tool that uses it can be captured, T=$(sed -n 's/^password = "\(.*\)"$/\1/p' FILE), but only the user can approve showing or copying it. Confirm with the user before running it.
 ```
 
 That is the reply to `base64 ~/.aws/credentials`, `cp ~/.aws/credentials /tmp/c`,
@@ -134,7 +134,10 @@ The block runs in the plugin's Read hook (`large-read-guard`), not in `pre-tool-
   no lines.
 - Output captured into a variable and not shown, such as
   `T=$(sed -n 's/^aws_secret_access_key = \(.*\)$/\1/p' ~/.aws/credentials)`. Masking
-  would break the value the command goes on to use.
+  would break the value the command goes on to use. The variable may feed a consumer
+  (`PGPASSWORD=$T psql ...`, `curl -H "Authorization: $T" ...`). A command that then
+  echoes, prints, `tee`s or `cat`s it, or redirects it to a file, asks with
+  `secret-file:capture`.
 - Reading any file that is not protected.
 
 This is a speed bump, not a wall. Claude runs as you, and a script written earlier or a path
