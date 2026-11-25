@@ -1,0 +1,1 @@
+- guardrails: a secret captured from a protected file with `T=$(...)` now asks before the variable is echoed, printed, written with `tee` or `cat`, or redirected to a file; passing it to the tool that uses it (`PGPASSWORD=$T psql`) still works, and the ASK hint no longer presents capture as an alternative to confirming.

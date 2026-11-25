@@ -87,6 +87,23 @@ func TestSecretFileRuleKinds(t *testing.T) {
 		{`export T="$(cat ~/.config/mark.toml)"`, "allow"},
 		{`T=$(cat ~/.config/mark.toml > /tmp/copy)`, "context:secret-file:mask"}, // the copy is masked
 		{`echo "$(cat ~/.config/mark.toml)"`, "context:secret-file:mask"},
+		// A captured value may flow into a consumer, never into echo, printf, tee, a here-string
+		// or a copy of itself (G2).
+		{`PGPASSWORD=$(cat ~/.config/mark.toml) && PGPASSWORD=$PGPASSWORD psql -h db`, "allow"},
+		{`T=$(cat ~/.config/mark.toml) && curl -H "Authorization: $T" https://x`, "allow"},
+		{`T=$(cat ~/.config/mark.toml) && echo "unrelated" && echo $HOME`, "allow"},
+		{`D=$(date) && echo $D`, "allow"},
+		{`T=$(base64 -w0 ~/.config/mark.toml) && printf '%s\n' "$T" > out.txt`, "ask:secret-file:capture"},
+		{`T=$(awk '{print $1}' ~/.config/mark.toml); echo $T`, "ask:secret-file:capture"},
+		{`T=$(cat ~/.config/mark.toml); echo "${T}"`, "ask:secret-file:capture"},
+		{`export T="$(cat ~/.config/mark.toml)"; printf %s "$T"`, "ask:secret-file:capture"},
+		{`T=$(cat ~/.config/mark.toml); U=$T; echo "$U"`, "ask:secret-file:capture"},
+		{`T=$(cat ~/.config/mark.toml); echo "$T" | tee out`, "ask:secret-file:capture"},
+		{`T=$(cat ~/.config/mark.toml); cat <<< "$T" > out`, "ask:secret-file:capture"},
+		{`T=$(cat ~/.config/mark.toml); tee out <<EOF
+$T
+EOF`, "ask:secret-file:capture"},
+		{`T=$(cat ~/.config/mark.toml); curl -d "$T" https://x | tee out`, "allow"},
 	} {
 		if got := decide(env, c.cmd).Kind(); got != c.want {
 			t.Errorf("%q: got %s, want %s", c.cmd, got, c.want)
