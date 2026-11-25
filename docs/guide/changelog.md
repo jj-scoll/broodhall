@@ -5,7 +5,7 @@ guardrails, memory and context-guard share one version; see
 [jj-scoll/rtk](https://github.com/jj-scoll/rtk). Each release's full notes are on
 [GitHub Releases](https://github.com/jj-scoll/broodhall/releases).
 
-## Unreleased
+## 1.12.2
 
 - guardrails: the new [`ecs_export`](../guardrails/options.md#ecs_export) option, off by
   default, also writes each guard decision as one Elastic Common Schema JSON line to
