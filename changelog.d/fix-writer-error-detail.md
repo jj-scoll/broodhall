@@ -1,0 +1,1 @@
+- guardrails: when the handoff writer's `claude -p` call fails, its log line now names the failure (`subtype`, `terminal_reason`, `errors`, `result`) instead of a cut of the JSON that ended inside `usage`. (#86)

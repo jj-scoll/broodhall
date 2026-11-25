@@ -23,7 +23,9 @@ var hwHeads = []string{"Goal", "Where Things Stand", "Next Action", "Dead Ends",
 func hwKey(h string) string { return strings.ReplaceAll(strings.ToLower(h), " ", "_") }
 
 // fakeClaude is a `claude` on PATH that logs each call (argv one per line, env, stdin) in
-// dir/call.N and answers with dir/resp.N, or fails when dir/fail exists.
+// dir/call.N and answers with dir/resp.N, or fails when dir/fail exists. When dir/failout
+// exists too, it fails with exit 1 and that file as stdout, as claude -p does for a result
+// with is_error.
 const fakeClaudeScript = `#!/bin/sh
 n=$(ls -d "$FAKE_DIR"/call.* 2>/dev/null | wc -l | tr -d ' ') # BSD wc pads the count
 c="$FAKE_DIR/call.$n"
@@ -31,6 +33,7 @@ mkdir "$c"
 for a in "$@"; do printf '%s\n' "$a"; done > "$c/argv"
 env > "$c/env"
 cat > "$c/stdin"
+if [ -e "$FAKE_DIR/failout" ]; then cat "$FAKE_DIR/failout"; exit 1; fi
 if [ -e "$FAKE_DIR/fail" ]; then echo boom >&2; exit 3; fi
 cat "$FAKE_DIR/resp.$n"
 `
@@ -818,5 +821,46 @@ func TestFactsCapsBackgroundJobs(t *testing.T) {
 	}
 	if !strings.Contains(section, "(20 more background jobs still running are not listed") {
 		t.Errorf("no note that 20 jobs were left out:\n%s", section)
+	}
+}
+
+func TestCallClaudeErrorNamesTheResultFields(t *testing.T) {
+	e := hwSetup(t)
+	usage := strings.Repeat("x", 400)
+	out := `{"type":"result","subtype":"error_max_structured_output_retries","is_error":true,"num_turns":3,` +
+		`"usage":{"pad":"` + usage + `"},"stop_reason":"end_turn","terminal_reason":"api_error",` +
+		`"errors":["first failure","second failure"],"result":"Not logged in \u00b7 Please run /login",` +
+		`"total_cost_usd":0.01}`
+	if err := os.WriteFile(filepath.Join(e.dir, "failout"), []byte(out), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := callClaude("hi")
+	if err == nil {
+		t.Fatal("no error from a failing claude")
+	}
+	msg := err.Error()
+	for _, want := range []string{"exit status 1", "subtype=error_max_structured_output_retries",
+		"terminal_reason=api_error", "stop_reason=end_turn", "num_turns=3",
+		`errors=["first failure" "second failure"]`, `result="Not logged in · Please run /login"`} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error %q lacks %q", msg, want)
+		}
+	}
+	if strings.Contains(msg, "pad") || strings.ContainsAny(msg, "\n\r") {
+		t.Errorf("error carries the usage blob or spans lines: %q", msg)
+	}
+}
+
+func TestCallClaudeErrorKeepsRawCutWhenStdoutIsNotAnObject(t *testing.T) {
+	e := hwSetup(t)
+	if err := os.WriteFile(filepath.Join(e.dir, "failout"), []byte("[1,2] plain text"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := callClaude("hi")
+	if err == nil {
+		t.Fatal("no error from a failing claude")
+	}
+	if want := "claude: exit status 1:  [1,2] plain text"; err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
 	}
 }

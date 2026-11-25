@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -346,6 +347,12 @@ func callClaude(prompt string, extra ...string) (*pytext.Obj, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
+		if d := failureDetail(stdout.Bytes()); d != "" {
+			if se := pytext.Cut(stderr.String(), 300); se != "" {
+				d += " stderr=" + strconv.Quote(se)
+			}
+			return nil, fmt.Errorf("claude: %v: %s", err, d)
+		}
 		return nil, fmt.Errorf("claude: %v: %s %s", err, pytext.Cut(stderr.String(), 300), pytext.Cut(stdout.String(), 300))
 	}
 	v, err := pytext.DecodeJSON(stdout.Bytes())
@@ -357,6 +364,37 @@ func callClaude(prompt string, extra ...string) (*pytext.Obj, error) {
 		return nil, errors.New("claude output is not a JSON object")
 	}
 	return res, nil
+}
+
+// failureDetail names the fields of a failed claude result that explain the failure, on one
+// line. claude puts usage first, so a cut of the raw JSON loses them. It is "" unless out is
+// a JSON object with at least one of them.
+func failureDetail(out []byte) string {
+	v, err := pytext.DecodeJSON(out)
+	if err != nil {
+		return ""
+	}
+	res, ok := v.(*pytext.Obj)
+	if !ok {
+		return ""
+	}
+	var parts []string
+	for _, k := range []string{"subtype", "terminal_reason", "stop_reason", "num_turns"} {
+		if v := res.Get(k); pytext.Truthy(v) {
+			parts = append(parts, k+"="+pytext.Cut(pytext.Str(v), 100))
+		}
+	}
+	if errs, _ := res.Get("errors").([]any); len(errs) > 0 {
+		q := make([]string, len(errs))
+		for i, e := range errs {
+			q[i] = strconv.Quote(pytext.Str(e))
+		}
+		parts = append(parts, "errors=["+pytext.Cut(strings.Join(q, " "), 500)+"]")
+	}
+	if r := res.GetStr("result"); r != "" {
+		parts = append(parts, "result="+strconv.Quote(pytext.Cut(r, 500)))
+	}
+	return strings.Join(parts, " ")
 }
 
 func costOf(res *pytext.Obj) float64 {
