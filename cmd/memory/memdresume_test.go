@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -252,7 +253,12 @@ func TestResumeCommand(t *testing.T) {
 
 // The printed command has to survive a real shell: run it with sh and check what claude saw.
 func TestResumeCommandRunsInAShell(t *testing.T) {
-	root := t.TempDir()
+	// Reach the session directory through a symlink, as macOS does for every temp dir
+	// (/var -> /private/var), so the test covers that case on every platform.
+	root := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(t.TempDir(), root); err != nil {
+		t.Fatal(err)
+	}
 	cwd := filepath.Join(root, "it's a $HOME dir")
 	if err := os.MkdirAll(cwd, 0o755); err != nil {
 		t.Fatal(err)
@@ -270,12 +276,14 @@ func TestResumeCommandRunsInAShell(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sh -c %q: %v", cmd, err)
 	}
-	want := cwd + "|" + cfg + "|--resume|sid-1"
-	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
-		want = resolved + "|" + cfg + "|--resume|sid-1"
+	// A shell's $PWD after `cd` may be the path as given or with symlinks resolved; both
+	// mean the command ran in the session directory.
+	want := []string{cwd + "|" + cfg + "|--resume|sid-1"}
+	if resolved, err := filepath.EvalSymlinks(cwd); err == nil && resolved != cwd {
+		want = append(want, resolved+"|"+cfg+"|--resume|sid-1")
 	}
-	if string(got) != want {
-		t.Errorf("shell saw %q, want %q", got, want)
+	if !slices.Contains(want, string(got)) {
+		t.Errorf("shell saw %q, want one of %q", got, want)
 	}
 }
 
