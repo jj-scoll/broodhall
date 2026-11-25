@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -216,4 +218,78 @@ func openTestMemdNoFts(t *testing.T) (*sql.DB, string) {
 	}
 	t.Cleanup(func() { db.Close() })
 	return db, t.TempDir()
+}
+
+// soReusePort is the Linux SO_REUSEPORT value (syscall does not export it on every arch).
+const soReusePort = 0xf
+
+// reusePortListener holds a loopback port with SO_REUSEPORT set, as a second Quack daemon would.
+func reusePortListener(t *testing.T, addr string) net.Listener {
+	t.Helper()
+	lc := net.ListenConfig{Control: func(_, _ string, c syscall.RawConn) error {
+		var serr error
+		if err := c.Control(func(fd uintptr) {
+			serr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, soReusePort, 1)
+		}); err != nil {
+			return err
+		}
+		return serr
+	}}
+	l, err := lc.Listen(context.Background(), "tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { l.Close() })
+	return l
+}
+
+// A port already held by another process (even one that set SO_REUSEPORT) must make startQuack
+// fail closed instead of sharing the port.
+func TestMemdQuackPortHeldFailsClosed(t *testing.T) {
+	db, dir := openTestMemd(t)
+	_, port := freeQuackURI(t)
+	reusePortListener(t, fmt.Sprintf("127.0.0.1:%d", port))
+	err := startQuack(db, dir)
+	if err == nil {
+		t.Cleanup(func() { db.Exec("SELECT * FROM quack_stop('" + memdQuackURI + "')") })
+		t.Fatal("startQuack succeeded on a port another process already holds")
+	}
+	if !strings.Contains(err.Error(), "already in use") {
+		t.Errorf("error does not say the port is in use: %v", err)
+	}
+}
+
+// A second daemon (second DuckDB instance) must not share the port with a running one.
+func TestMemdQuackSecondDaemonRefused(t *testing.T) {
+	db, dir := openTestMemd(t)
+	freeQuackURI(t)
+	if err := startQuack(db, dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Exec("SELECT * FROM quack_stop('" + memdQuackURI + "')") })
+	db2, dir2 := openTestMemd(t)
+	if err := startQuack(db2, dir2); err == nil {
+		t.Fatal("second startQuack on the same port succeeded")
+	}
+}
+
+// Restarting on the same port right after quack_stop must keep working (TIME_WAIT, SO_REUSEADDR),
+// including with a client connection having been made in between.
+func TestMemdQuackRestartAfterClientConnection(t *testing.T) {
+	db, dir := openTestMemd(t)
+	_, port := freeQuackURI(t)
+	if err := startQuack(db, dir); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(dir, "quack.token"))
+	client := quackClient(t)
+	if _, err := client.Exec(fmt.Sprintf("ATTACH 'quack:localhost:%d' AS q (TOKEN %s)", port, sqlQuote(strings.TrimSpace(string(raw))))); err != nil {
+		t.Fatal(err)
+	}
+	countOf(t, client, "SELECT count(*) FROM q.observations")
+	db.Exec("SELECT * FROM quack_stop('" + memdQuackURI + "')")
+	if err := startQuack(db, dir); err != nil {
+		t.Fatalf("restart on the same port: %v", err)
+	}
+	t.Cleanup(func() { db.Exec("SELECT * FROM quack_stop('" + memdQuackURI + "')") })
 }
