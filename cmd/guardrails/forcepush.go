@@ -16,7 +16,8 @@ var gitArgOpts = map[string]bool{"-C": true, "-c": true, "--git-dir": true, "--w
 // pushArgOpts are git push's long options that take a separate value.
 var pushArgOpts = map[string]bool{"--repo": true, "--receive-pack": true, "--exec": true, "--push-option": true}
 
-// forcePushFlag reports the force flag ("--force" or "-f") of the first force push in cmd.
+// forcePushFlag reports the force flag ("--force", "-f", or "+" for a +refspec) of the first
+// force push in cmd.
 func forcePushFlag(cmd string) string {
 	return shellFind(cmd, gitPushForce, func(cmd string) string {
 		// Cannot parse: as strict as the legacy substrings.
@@ -64,6 +65,8 @@ func gitPushForce(w []string) string {
 			return "--force"
 		case pushArgOpts[a]:
 			i++
+		case len(a) > 1 && a[0] == '+': // +main, +HEAD:main: a refspec that forces its update
+			return "+"
 		case strings.HasPrefix(a, "--") || a == "-":
 		case strings.HasPrefix(a, "-"):
 			for j, c := range a[1:] {

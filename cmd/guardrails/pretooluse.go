@@ -28,9 +28,9 @@ func decide(env *guardEnv, cmd string) decision {
 		return decision{Exit: 2, Rule: "dangerous:rm -rf " + t,
 			Msg: "BLOCKED: 'rm -rf " + t + "' is a high-risk destructive operation. Confirm with the user before attempting this."}
 	}
-	// Force pushes: a bare --force or -f blocks; --force-with-lease / --force-if-includes pass.
+	// Force pushes: a bare --force, -f or +refspec blocks; --force-with-lease / --force-if-includes pass.
 	if f := forcePushFlag(cmd); f != "" {
-		p := map[string]string{"--force": "git push --force", "-f": "git push -f "}[f]
+		p := map[string]string{"--force": "git push --force", "-f": "git push -f ", "+": "git push +refspec"}[f]
 		return decision{Exit: 2, Rule: "dangerous:" + p,
 			Msg: "BLOCKED: '" + p + "' is a high-risk destructive operation. Confirm with the user before attempting this."}
 	}

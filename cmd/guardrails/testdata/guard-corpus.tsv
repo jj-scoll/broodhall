@@ -65,7 +65,7 @@ block:dangerous:> /etc/	allow	echo "write > /etc/hosts is blocked"
 block:dangerous:> /etc/	allow	git commit -m "document > /etc/ handling"
 allow	allow	echo x > /etcetera/foo
 allow	allow	cat /etc/hosts
-block:dangerous:dd if=	block:dangerous:dd if=	cd x && dd if=a of=b
+block:dangerous:dd if=	allow	cd x && dd if=a of=b
 block:dangerous:dd if=	block:dangerous:dd if=	sudo dd if=/dev/zero of=/dev/sda
 block:dangerous:dd if=	allow	echo "dd if=/dev/zero is dangerous"
 block:dangerous:dd if=	allow	grep "dd if=" notes.md
@@ -75,7 +75,7 @@ block:dangerous::(){ :|:& };:	allow	echo ':(){ :|:& };:'
 block:dangerous:chmod -R 777 /	block:dangerous:chmod -R 777 /	chmod -R 777 /
 block:dangerous:chmod -R 777 /	allow	chmod -R 777 /var/www/html
 allow	block:dangerous:chmod -R 777 /	chmod -Rv 0777 /
-allow	allow	chmod -R 755 /
+allow	block:dangerous:chmod -R	chmod -R 755 /
 allow	allow	chmod 777 /
 block:dangerous:chmod -R 777 /	allow	echo "chmod -R 777 /"
 block:dangerous:chown -R	allow	sudo chown -R root /x
@@ -171,3 +171,22 @@ allow	allow	curl -s https://example.org/x | jq .
 allow	context:secret-file:mask	cat .env
 allow	context:secret-file:mask	grep KEY app/.env.local
 allow	allow	cat .env.example
+# mutation-test gaps in existing rules: a +refspec forces; any recursive chmod of a protected
+# target; dd blocks only an output under /dev/
+allow	block:dangerous:git push +refspec	git push origin +main
+allow	block:dangerous:git push +refspec	git push origin +main:main
+allow	block:dangerous:git push +refspec	git -C ../x push origin +HEAD:refs/heads/x
+allow	allow	git push origin main:main
+allow	block:dangerous:chmod -R	chmod -R 000 ~
+allow	block:dangerous:chmod -R	chmod --recursive 000 /nohome/user
+allow	block:dangerous:chmod -R	chmod 000 -R $HOME
+allow	block:dangerous:chmod -R	chmod -R go-rwx /
+allow	allow	chmod -R u+w ./build
+allow	allow	chmod 000 ~
+allow	allow	chmod -R go-w ~/src/x
+block:dangerous:dd if=	allow	dd if=/dev/zero of=/tmp/test.img bs=1M count=10
+allow	allow	dd of=/tmp/test.img bs=1M count=10 if=/dev/zero
+block:dangerous:dd if=	block:dangerous:dd if=	dd if=/dev/zero of=/dev/nvme0n1 bs=1M
+block:dangerous:dd if=	block:dangerous:dd if=	dd if=/dev/zero of=/dev/../dev/sda
+allow	block:dangerous:dd if=	cat disk.img | dd of=/dev/sda
+block:dangerous:dd if=	block:dangerous:dd if=	dd if=/dev/null of=/dev/null count=0

@@ -57,11 +57,13 @@ func etcWriteRule(c simpleCmd, _ string) decision {
 	return decision{}
 }
 
-// ddRule: dd reading an if= input.
+// ddRule: dd writing to a device, an of= under /dev/ (the cleaned path, so /dev/../dev/sda
+// counts). An image file is not a device: dd if=/dev/zero of=/tmp/x.img passes. The reply keeps
+// its legacy name; /dev/null is under /dev/ too, which the setup demo relies on.
 func ddRule(c simpleCmd, _ string) decision {
 	if argv0(c) == "dd" {
 		for _, a := range c.Words[1:] {
-			if strings.HasPrefix(a, "if=") {
+			if out, ok := strings.CutPrefix(a, "of="); ok && strings.HasPrefix(path.Clean(out), "/dev/") {
 				return dangerous("dd if=")
 			}
 		}
@@ -83,8 +85,11 @@ func recursiveFlag(a string) bool {
 
 var openMode = regexp.MustCompile(`^(0?777|(a|ugo)\+rwx)$`)
 
-// chmodRule: recursive world-writable mode on a protected target (/, ~, $HOME, /home, /nix,
-// /storage), the same targets as the rm rule. The old substring also hit /var/www/x.
+// chmodRule: recursive chmod of a protected target (/, ~, $HOME, /home, /nix, /storage), the
+// same targets as the rm rule, with any mode. It overwrites every file's mode below the target
+// and nothing records the old ones (which files were executable, setuid, private), so 000,
+// 755 or go-rwx is as lasting as 777, which keeps its own reply. A repository root is not a
+// target: git records the executable bit. The old substring also hit /var/www/x.
 func chmodRule(c simpleCmd, home string) decision {
 	if argv0(c) != "chmod" {
 		return decision{}
@@ -102,11 +107,15 @@ func chmodRule(c simpleCmd, home string) decision {
 			targets = append(targets, a)
 		}
 	}
-	if recursive && open {
+	if recursive {
 		for _, t := range targets {
-			if rootName(t, home) != "" {
+			if rootName(t, home) == "" {
+				continue
+			}
+			if open {
 				return dangerous("chmod -R 777 /")
 			}
+			return dangerous("chmod -R")
 		}
 	}
 	return decision{}
