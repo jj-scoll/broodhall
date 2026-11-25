@@ -2,7 +2,7 @@
 # is advertised before its assets exist (guardrails' hooks fail closed when the binary for the
 # plugin.json version cannot be downloaded):
 #   prepare   computes the next shared version (.github/scripts/next-version.sh), rewrites every
-#             plugin.json, renames the changelog's "## Unreleased" to "## X.Y.Z"
+#             plugin.json, turns the changelog.d/ entry files into the changelog's "## X.Y.Z"
 #             (.github/scripts/changelog.sh), removes the last release's plugins/*/checksums.txt, makes the commit
 #             "release vX.Y.Z [skip ci]" locally and pushes it only to a scratch branch, so the
 #             build jobs can fetch it. Main and the tags are untouched.
@@ -176,7 +176,7 @@ jobs:
           exit 1
 
   # finalize pushed the stamped changelog with GITHUB_TOKEN, which starts no push workflow, so
-  # without this the site would show "## Unreleased" until the next docs change.
+  # without this the site would not list the new version until the next docs change.
   docs:
     needs: finalize
     runs-on: ubuntu-latest

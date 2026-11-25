@@ -1,6 +1,7 @@
 # A pull request that changes shipped files cuts a release when it merges (autorelease.yml), so it
-# must add an entry under "## Unreleased" in docs/guide/changelog.md; the release renames that
-# heading to the version. The no-changelog label skips the check for changes no user would notice
+# must add its own entry file to changelog.d/; the release moves those files into
+# docs/guide/changelog.md under the version. A file per pull request, not a shared section, so
+# entries never conflict. The no-changelog label skips the check for changes no user would notice
 # (tests, internals). Its own workflow, so adding or removing the label re-runs only this.
 name: changelog
 
@@ -24,7 +25,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Entry under Unreleased
+      - name: Entry file in changelog.d
         env:
           BASE_REF: ${{ github.base_ref }}
         run: .github/scripts/changelog.sh check "origin/$BASE_REF"
