@@ -1,5 +1,7 @@
 # broodhall
 
+[![coverage](https://img.shields.io/endpoint?url=https://jj-scoll.github.io/broodhall/coverage.json)](https://jj-scoll.github.io/broodhall/reference/testing/)
+
 A Claude Code marketplace with four plugins.
 
 | Plugin | What it does | Needs | After install |
@@ -54,6 +56,83 @@ Documentation: https://jj-scoll.github.io/broodhall/
 
 Threat model: [THREAT_MODEL.md](THREAT_MODEL.md) maps each guard to the OWASP Top 10 for LLM
 Applications and MITRE ATLAS, with an attack test for every threat.
+
+## Architecture
+
+Claude Code fires hook events; each plugin's `hooks/hooks.json` sends them to its
+`scripts/run.sh` launcher, which checks the release binary's sha256 and runs it on the hook's
+JSON. The guardrails binary answers with a decision: BLOCK, ASK, MASK or NOTE.
+
+```mermaid
+flowchart TD
+    CC(["Claude Code session"])
+
+    subgraph EV["Hook events, wired in plugins/*/hooks/hooks.json"]
+        direction LR
+        SS["SessionStart"]
+        PRE["PreToolUse"]
+        POST["PostToolUse<br/>PostToolUseFailure"]
+        STOP["Stop<br/>PreCompact"]
+        CFG["ConfigChange"]
+    end
+
+    RUN["plugins/*/scripts/run.sh<br/>sha256-checked download<br/>runs the binary on stdin"]
+
+    subgraph GR["guardrails: static Go binary, one subcommand per hook"]
+        PTU["pre-tool-use"]
+        RD["read-dedup<br/>large-read-guard"]
+        CG["config-gate"]
+        PST["retry-breaker<br/>record-edit<br/>ask-outcome"]
+        GATE["gate · autoclear<br/>receipt · compact-guard"]
+        FAM["Bash core · Git<br/>Shared checkout<br/>Download and run<br/>Settings files<br/>Secret files · Egress<br/>PII · Session URLs<br/>Nudges"]
+        PTU --> FAM
+    end
+
+    subgraph MEM["memory: Go binary with cgo"]
+        MB["serve: tails transcripts<br/>mcp: search tools<br/>context · lookup"]
+        DB[("DuckDB<br/>local notes")]
+        MB --> DB
+    end
+
+    DEC{{"BLOCK · ASK · MASK · NOTE"}}
+    OUT(["to Claude Code<br/>exit 2 + reason<br/>permissionDecision: ask<br/>updatedInput<br/>additionalContext"])
+    RTK["rtk hook claude<br/>opt-in rewrite"]
+    CTX["context-guard<br/>hooks module"]
+
+    CC --> EV
+    EV --> RUN
+    RUN -->|"guards fail closed"| GR
+    RUN -->|"fails open"| MEM
+    GR --> DEC
+    DEC --> OUT
+    FAM -.->|"call allowed"| RTK
+    CTX -->|"run.sh autoclear"| GATE
+```
+
+More on each piece: [Architecture](https://jj-scoll.github.io/broodhall/reference/architecture/).
+
+## Tests
+
+`go test ./...` covered 85.1% of statements when this was written (guardrails 88.9%, memory
+82.1%), over 33,080 lines of Go and 26,003 lines of Go tests. The badge above has the current
+figure: it is re-measured on every docs deploy from `main`. Beyond unit tests there are:
+
+- hook end-to-end tests that feed Claude Code's JSON to a hook on stdin and check its exit
+  code, stdout and stderr;
+- a frozen corpus of commands and the decision each must get;
+- an attack test for every threat in [THREAT_MODEL.md](THREAT_MODEL.md), plus tests that pin
+  each admitted bypass as still open;
+- shell suites for the `run.sh` launchers: failed download, checksum mismatch, crashing or hung
+  binary.
+
+```sh
+CGO_ENABLED=0 go test ./cmd/guardrails/...                  # guardrails, no setup
+MEMORY_EXT_DIR=/path/to/ext go test ./... -coverprofile=cover.out
+bash plugins/guardrails/test/run_test.sh                    # launcher suites, as CI runs them
+```
+
+See [Tests and coverage](https://jj-scoll.github.io/broodhall/reference/testing/) for the
+per-package numbers and every suite CI runs.
 
 ## License
 

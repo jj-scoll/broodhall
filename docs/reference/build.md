@@ -39,3 +39,18 @@ The DuckDB version must match the one linked by `duckdb-go` in `go.mod`.
 Because of cgo, each platform is built on a native runner, not cross-compiled. To use a local
 build, set `MEMORY_BIN` to its path; the launcher then skips the download and the daemon
 uses its default extension directory unless you set `MEMORY_EXT_DIR`.
+
+## Docs site
+
+The site is built with [zensical](https://zensical.org/) from `mkdocs.yml` and `docs/`. Its
+[Threat model](threat-model.md) page is generated from `THREAT_MODEL.md` at the repository
+root, so generate it before a local build (the file is gitignored):
+
+```sh
+.github/scripts/threat-model-page.sh THREAT_MODEL.md docs/reference/threat-model.md
+uvx zensical@0.0.74 build --strict
+```
+
+The pages workflow does the same on every push to `main` that touches the docs, the threat
+model or the Go code, and adds the coverage badge's `coverage.json` (see
+[Tests and coverage](testing.md#how-the-badge-is-made)).

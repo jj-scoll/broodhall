@@ -28,7 +28,11 @@ extra_css:
 
 markdown_extensions:
   - admonition
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - toc:
       permalink: true
 
@@ -75,6 +79,9 @@ nav:
   - RTK:
       - Overview: rtk/index.md
   - Reference:
+      - Architecture: reference/architecture.md
+      - Tests and coverage: reference/testing.md
+      - Threat model: reference/threat-model.md
       - Build: reference/build.md
       - Release: reference/release.md
       - Hooks: reference/hooks.md
