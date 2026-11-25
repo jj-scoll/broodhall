@@ -5,6 +5,10 @@ guardrails, memory and context-guard share one version; see
 [jj-scoll/rtk](https://github.com/jj-scoll/rtk). Each release's full notes are on
 [GitHub Releases](https://github.com/jj-scoll/broodhall/releases).
 
+## 1.12.9
+
+- guardrails: a secret captured from a protected file with `T=$(...)` now asks before the variable is echoed, printed, written with `tee` or `cat`, or redirected to a file; passing it to the tool that uses it (`PGPASSWORD=$T psql`) still works, and the ASK hint no longer presents capture as an alternative to confirming.
+
 ## 1.12.8
 
 - memory: search hits, `read_session` headers, timeline entries and session summaries in the start-of-session context now show the year ("Mar 2, 2026, 9:10 AM"), so Claude no longer guesses the year of an older session. On the LoCoMo benchmark this raised accuracy on date questions from 64% to 76%.

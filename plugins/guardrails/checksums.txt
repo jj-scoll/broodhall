@@ -1,7 +1,0 @@
-# version 1.12.8
-# sha256 of this version's release archives. The release writes this file
-# (.github/scripts/pin-checksums.sh) and scripts/run.sh checks its download against it.
-d73f230dec066f0aea1202ecc3cde1d927650cd8e65d616e539fd416e616732d  guardrails_darwin_amd64.tar.gz
-5d14d8537a13e8f6c97d9be5eb44d07c1cff7c1a86541c83ca03a8eccd4a109f  guardrails_darwin_arm64.tar.gz
-00a2e64083fa2056e1293772f55d529252f88894e286433dd6c60de6bb5adb12  guardrails_linux_amd64.tar.gz
-341728f6c93130f26d1673bc7b68b32973d527f29acdc28aa9bc9223c00cceb2  guardrails_linux_arm64.tar.gz
