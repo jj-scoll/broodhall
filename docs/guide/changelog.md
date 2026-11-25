@@ -5,6 +5,84 @@ guardrails, memory and context-guard share one version; see
 [jj-scoll/rtk](https://github.com/jj-scoll/rtk). Each release's full notes are on
 [GitHub Releases](https://github.com/jj-scoll/broodhall/releases).
 
+## 1.12.1
+
+- guardrails: a [threat model](../reference/threat-model.md) maps threats T01 to T16 to the
+  OWASP Top 10 for LLM Applications (2025) and MITRE ATLAS, names the guard for each, and
+  lists the bypasses left open on purpose. Tests check the document against the code. (#72)
+- guardrails: the [egress guard](../guardrails/egress.md) also scans WebFetch URLs for
+  secrets, outside email addresses and phone numbers, and WebSearch queries for secrets.
+  (#72)
+- guardrails: a `-v` that belongs to the wrapped command, as in `command docker run -v …` or
+  `command rm -rf -v /`, no longer makes the line look like a `command -v` lookup, so the
+  guards check the command inside. A shell function declaration with no name no longer
+  crashes the parser. Fuzz tests found both. (#72)
+- Release: every release asset has a signed SLSA build provenance attestation. Check one with
+  `gh attestation verify <file> --repo jj-scoll/broodhall`; see
+  [Release](../reference/release.md). (#72)
+- Docs: an [architecture](../reference/architecture.md) diagram, a
+  [testing](../reference/testing.md) page and a coverage badge. (#72)
+
+## 1.12.0
+
+- memory: raw search over past sessions, with no tokens spent. Prompts, Claude's replies, tool
+  inputs and file paths are indexed. `search` takes `source: "raw"`, `branch` and `model`, and
+  falls back to raw search when no note matches. A new MCP tool, `read_session`, returns a
+  masked conversation in order. (#71)
+- memory: stricter capture rules. A call that reads a credential file or runs a credential
+  command (`gh auth token`, `kubectl get secret`, …) is kept without its output.
+  `capture_exclude_dirs` and `capture_tools=false` keep only the tool name. The rules apply
+  to what is stored and to what is sent to the observer; see [Options](../memory/options.md).
+  (#71)
+- memory: `memory resume` finds a session across every config directory and prints the
+  command to resume it (`--fork` to fork it). Forks are grouped under their original session
+  in the CLI and the UI. (#71)
+- memory: `memory import` reads past transcripts in the background through the same masking
+  and capture rules, without running `claude` or queueing summaries. Running it again adds only
+  what is new. (#71)
+
+## 1.11.1
+
+- guardrails: the gitleaks rules run from vendored data on a small built-in detector instead
+  of the gitleaks library. Detections are unchanged, `pre-tool-use` is back to about 5 ms p50
+  from about 27 ms, and the binary is 30% smaller. (#70)
+
+## 1.11.0
+
+- guardrails: `.env` and `.env.*` (except `.example`, `.sample` and `.template`), `.npmrc`,
+  `.pypirc`, `.git-credentials`, `*.tfvars` and `*.pem` are
+  [protected](../guardrails/secret-files.md) by name in any directory. `~/.kube/config` and
+  the gcloud credential files are added to the home list. (#69)
+- guardrails: secret-value detection also runs the gitleaks v8.30.1 default rules, except
+  `generic-api-key`. (#69)
+- guardrails: a re-issued masked read through guardrails' own `redact --secrets` wrapper no
+  longer asks. (#69)
+- memory: an older running daemon is asked to stop and the new one takes over after an
+  update. `memory gc` removes old version directories. After the first update to this version,
+  restart the old daemon once by hand. (#69)
+- memory: projects are keyed by their normalised `origin` URL, falling back to the directory
+  name. Notes under an old key are mapped to the new one when every recorded session sits
+  inside the repository. (#69)
+- Release: each release commits its assets' checksums into the plugins, and the launchers
+  refuse a download that does not match. (#69)
+
+## 1.10.8
+
+- The rtk plugin is pinned to a commit in the marketplace instead of following `develop`.
+  (#68)
+
+## 1.10.7
+
+- guardrails: the [PII guard](../guardrails/pii.md) runs `psql` with `--html`, so each result
+  is its own table and is masked under its own column names, even when two results have the
+  same number of columns. `-o`/`--output` keep the format the user asked for. (#67)
+
+## 1.10.6
+
+- guardrails: `psql` output with several results, or `\echo` and `\pset` lines, no longer
+  crashes the [PII guard](../guardrails/pii.md) and loses the output. Each result is masked by
+  its own header. (#65)
+
 ## 1.10.5
 
 - guardrails: the [secret-file](../guardrails/secret-files.md) and
