@@ -1,5 +1,7 @@
 # broodhall
 
+[![ci](https://github.com/jj-scoll/broodhall/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jj-scoll/broodhall/actions/workflows/ci.yml?query=branch%3Amain) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jj-scoll/broodhall/badge)](https://scorecard.dev/viewer/?uri=github.com/jj-scoll/broodhall)
+
 A Claude Code marketplace with four plugins.
 
 | Plugin | What it does | Needs | After install |
