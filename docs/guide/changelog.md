@@ -5,23 +5,17 @@ guardrails, memory and context-guard share one version; see
 [jj-scoll/rtk](https://github.com/jj-scoll/rtk). Each release's full notes are on
 [GitHub Releases](https://github.com/jj-scoll/broodhall/releases).
 
-## Unreleased
+## 1.12.5
 
-- guardrails: the Bash guards read a command as the shell will run it, so respelling no longer
-  slips past them. `\rm`, `r''m`, line continuations, `c=rm; "$c"`, `$'\x72\x6d'`,
-  `"$(printf ...)"`, `{rm,-rf,~}`, `${IFS}`, a function the line defines, code piped or
-  sourced into a shell (`printf ... | sh`, `base64 -d | sh`, `source <(...)`), the shell
-  commands of `python -c` and `perl -e` one-liners, and paths such as `/home/../home/you` or
-  `/hom[e]/you` all get the plain command's answer. A command name or piped code only known at
-  run time asks (`dynamic-command`, `opaque-shell`). See [Bash core](../guardrails/bash-core.md).
-- guardrails: `git push origin +main` blocks like `--force`; recursive `chmod` of a protected
-  target blocks with any mode, not only `777`; `dd` blocks only when it writes to a device
-  (`of=/dev/...`), so `dd if=/dev/zero of=disk.img` passes.
-- guardrails: new asks, with no switch: `terraform`/`tofu`/`terragrunt destroy` and
-  `apply -destroy` (`iac-destroy`, which replaces the plan note for a destroy),
-  `aws s3 rm --recursive` and `s3 rb --force` (`s3-rm`), `find -delete` and `find -exec rm`
-  (`find-delete`). `git push --delete` and `git push origin :branch` ask under the `git`
-  family (`git-push-delete`).
+- memory: a daemon that exits or fails to start no longer deletes the socket of another daemon
+  that has since bound the same path, which left a running daemon unreachable (every client got
+  "no such file"). The socket is removed on shutdown only while it is still the one that
+  daemon created, and a start-up dial that times out against a busy daemon is reported as "cannot
+  verify" instead of being treated as a stale socket and removed.
+- memory: `get_tool_uses` prints a nested object or list on the lines below its key, indented,
+  instead of running the first child onto the key's line.
+- memory: `get_tool_uses` shows a payload with text after its closing brace or bracket
+  (`{"a":1} extra`) as plain text, as it already did for trailing JSON.
 
 ## 1.12.4
 

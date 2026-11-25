@@ -372,3 +372,47 @@ func TestMemdQueryPathOnlyInObservationFiles(t *testing.T) {
 		t.Errorf("wildcard matched:\n%s", got)
 	}
 }
+
+// Nested objects and lists start on the line after their key, indented one level, matching the
+// depth indentation dE already applies to the children.
+func TestMemdDENestedLayout(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"flat", `{"a":1,"b":"x"}`, "a: 1\nb: x"},
+		{"nested object", `{"opts":{"n":1.5,"m":true},"z":2}`, "opts:\n  n: 1.5\n  m: true\nz: 2"},
+		{"nested list", `{"xs":["p","q"],"z":2}`, "xs:\n  1: p\n  2: q\nz: 2"},
+		{"list of objects", `[{"a":1}]`, "1:\n  a: 1"},
+		{"empty containers", `{"o":{},"l":[]}`, "o: (empty object)\nl: (empty list)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := dE(fE(tt.in), 0); got != tt.want {
+				t.Errorf("dE(%s) =\n%q\nwant\n%q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMemdFETrailingData(t *testing.T) {
+	isText := func(v any) bool { _, ok := v.(string); return ok }
+	for _, tt := range []struct {
+		name, in string
+		text     bool
+	}{
+		{"plain object", `{"a":1}`, false},
+		{"trailing whitespace", "{\"a\":1} \n\t", false},
+		{"trailing json", `{"a":1} [2]`, true},
+		{"trailing garbage", `{"a":1} extra`, true},
+		{"trailing brace", `{"a":1} }`, true},
+		{"array trailing garbage", `[1] x`, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := fE(tt.in); isText(got) != tt.text {
+				t.Errorf("fE(%q) = %#v, text=%v want %v", tt.in, got, isText(got), tt.text)
+			}
+		})
+	}
+}

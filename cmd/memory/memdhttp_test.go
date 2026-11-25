@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -253,5 +254,64 @@ func TestMemdHTTPBodyCap(t *testing.T) {
 	var n int
 	if err := db.QueryRow(`SELECT count(*) FROM observations`).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("oversize body stored something: n=%d err=%v", n, err)
+	}
+}
+
+// A closing listener must not unlink a path that another daemon has since bound.
+func TestMemdHTTPCloseKeepsReplacedSocket(t *testing.T) {
+	sock := filepath.Join(shortSockDir(t), "m.sock")
+	a, err := listenSocket(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(sock); err != nil {
+		t.Fatal(err)
+	}
+	b, err := listenSocket(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	a.Close()
+	c, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatalf("closing the first listener removed the second one's socket: %v", err)
+	}
+	c.Close()
+}
+
+// A listener's own Close still removes its socket.
+func TestMemdHTTPCloseRemovesOwnSocket(t *testing.T) {
+	sock := filepath.Join(shortSockDir(t), "m.sock")
+	ln, err := listenSocket(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln.Close()
+	if _, err := os.Lstat(sock); !os.IsNotExist(err) {
+		t.Fatalf("own socket left behind after Close: %v", err)
+	}
+}
+
+// A dial that fails for any reason other than "nobody listening" is not proof of a stale socket.
+func TestMemdHTTPListenSocketUnverifiable(t *testing.T) {
+	sock := filepath.Join(shortSockDir(t), "m.sock")
+	l, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.(*net.UnixListener).SetUnlinkOnClose(false)
+	l.Close()
+	orig := socketDial
+	defer func() { socketDial = orig }()
+	socketDial = func(string, string, time.Duration) (net.Conn, error) {
+		return nil, &net.OpError{Op: "dial", Net: "unix", Err: os.ErrDeadlineExceeded}
+	}
+	if ln, err := listenSocket(sock); err == nil {
+		ln.Close()
+		t.Fatal("listenSocket replaced a socket it could not verify as stale")
+	}
+	if _, err := os.Lstat(sock); err != nil {
+		t.Fatalf("unverifiable socket was removed: %v", err)
 	}
 }

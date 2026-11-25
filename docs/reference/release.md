@@ -12,8 +12,9 @@ A push to `main` that changes shipped files (`plugins/` except `test/` and `test
 `.github`-only changes do not. The workflow:
 
 1. computes the next version with `.github/scripts/next-version.sh`, rewrites every
-   `plugin.json`, renames the [changelog](../guide/changelog.md)'s `## Unreleased` heading to
-   `## X.Y.Z` (see [Pull requests](#pull-requests)), removes the previous release's
+   `plugin.json`, moves the `changelog.d/` entry files into the
+   [changelog](../guide/changelog.md) as `## X.Y.Z` (see [Pull requests](#pull-requests)),
+   removes the previous release's
    `plugins/*/checksums.txt` and makes the
    `release vX.Y.Z [skip ci]` commit locally, pushing it only to a scratch branch
    (`autorelease-candidate`), so nothing is advertised yet,
@@ -176,20 +177,24 @@ A pull request must not bump one plugin alone. `ci` runs `.github/scripts/check-
 and the Go test `TestPluginVersionsShared`; both fail unless the three versions are equal
 semver. Do not bump versions by hand in a PR: the release does it.
 
-A pull request that changes shipped files must add its user-facing changes to
-`docs/guide/changelog.md`, under a `## Unreleased` heading at the top of the list (create
-the heading if it is not there):
+A pull request that changes shipped files must add a new file to `changelog.d/`, named after
+its branch (`changelog.d/fix-memory-socket.md`), holding one bullet per user-facing change:
 
 ```markdown
-## Unreleased
-
 - guardrails: what a user notices, in their terms. (#NN)
 ```
 
-The `changelog` workflow fails the pull request otherwise. For a change no user would notice,
-such as a test fix or a refactor, add the `no-changelog` label instead; that release is listed
-with a one-line pointer to its GitHub release notes. Write no version number: the release
-renames `## Unreleased` to the version it cuts (`.github/scripts/changelog.sh stamp`).
+Do not edit `docs/guide/changelog.md` itself. The `changelog` workflow fails the pull request
+unless it adds such a file. For a change no user would notice, such as a test fix or a
+refactor, add the `no-changelog` label instead; that release is listed with a one-line pointer
+to its GitHub release notes. Write no version number: the release moves every entry file into
+the changelog under the version it cuts, in file-name order, and deletes the files
+(`.github/scripts/changelog.sh stamp`).
+
+Each pull request gets its own file, not a shared `## Unreleased` section, because every
+release rewrites the top of the changelog: a shared section conflicted with each release and
+with every other open pull request, and resolving that conflict in favour of `main` silently
+dropped the entry (#83). Separate files never touch the same lines.
 
 ## Manual release
 
