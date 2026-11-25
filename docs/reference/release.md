@@ -12,7 +12,9 @@ A push to `main` that changes shipped files (`plugins/` except `test/` and `test
 `.github`-only changes do not. The workflow:
 
 1. computes the next version with `.github/scripts/next-version.sh`, rewrites every
-   `plugin.json`, removes the previous release's `plugins/*/checksums.txt` and makes the
+   `plugin.json`, renames the [changelog](../guide/changelog.md)'s `## Unreleased` heading to
+   `## X.Y.Z` (see [Pull requests](#pull-requests)), removes the previous release's
+   `plugins/*/checksums.txt` and makes the
    `release vX.Y.Z [skip ci]` commit locally, pushing it only to a scratch branch
    (`autorelease-candidate`), so nothing is advertised yet,
 2. calls the `release` workflow on that commit, which runs the tests, builds every asset and
@@ -24,7 +26,9 @@ A push to `main` that changes shipped files (`plugins/` except `test/` and `test
    atomic push, then publishes the draft. If `main` moved meanwhile, it rebases when only
    docs, tests or `.github` changed; if shipped files changed, it releases nothing, because
    the run queued for that merge does,
-5. deletes the scratch branch. A draft left over from a failed run is published if its tag
+5. starts the `pages` workflow, so the site shows the changelog under the new version (pushes
+   made with the workflow's own token start no workflow by themselves),
+6. deletes the scratch branch. A draft left over from a failed run is published if its tag
    reached `main`, and deleted only if the tag is not on the remote.
 
 Guardrails' hooks fail closed when the binary for the `plugin.json` version cannot be
@@ -171,6 +175,21 @@ workflow can build a bad binary, and it is attested like any other. The launcher
 A pull request must not bump one plugin alone. `ci` runs `.github/scripts/check-versions.sh`
 and the Go test `TestPluginVersionsShared`; both fail unless the three versions are equal
 semver. Do not bump versions by hand in a PR: the release does it.
+
+A pull request that changes shipped files must add its user-facing changes to
+`docs/guide/changelog.md`, under a `## Unreleased` heading at the top of the list (create
+the heading if it is not there):
+
+```markdown
+## Unreleased
+
+- guardrails: what a user notices, in their terms. (#NN)
+```
+
+The `changelog` workflow fails the pull request otherwise. For a change no user would notice,
+such as a test fix or a refactor, add the `no-changelog` label instead; that release is listed
+with a one-line pointer to its GitHub release notes. Write no version number: the release
+renames `## Unreleased` to the version it cuts (`.github/scripts/changelog.sh stamp`).
 
 ## Manual release
 
