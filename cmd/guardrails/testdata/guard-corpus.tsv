@@ -37,7 +37,7 @@ block:dangerous:chown -R	allow	chown -R user /srv
 block:privileged-container	block:privileged-container	docker run -d --privileged ubuntu
 allow	allow	docker run -v /nohome/user/dev:/src ubuntu
 warn:slow-op	context:plan-before-apply	terraform apply
-warn:slow-op	context:plan-before-apply	terraform destroy -auto-approve
+warn:slow-op	ask:iac-destroy	terraform destroy -auto-approve
 allow	context:plan-before-apply	terragrunt run-all apply
 warn:slow-op	allow	terraform plan && terraform apply
 warn:slow-op	context:slow-op	docker build -t x .
@@ -190,3 +190,25 @@ block:dangerous:dd if=	block:dangerous:dd if=	dd if=/dev/zero of=/dev/nvme0n1 bs
 block:dangerous:dd if=	block:dangerous:dd if=	dd if=/dev/zero of=/dev/../dev/sda
 allow	block:dangerous:dd if=	cat disk.img | dd of=/dev/sda
 block:dangerous:dd if=	block:dangerous:dd if=	dd if=/dev/null of=/dev/null count=0
+# mutation-test gaps with no rule: these ask, as destructive git verbs do
+allow	ask:iac-destroy	tofu destroy -auto-approve
+warn:slow-op	ask:iac-destroy	terraform apply -destroy -auto-approve
+allow	ask:iac-destroy	terraform -chdir=infra destroy
+allow	ask:iac-destroy	terragrunt run-all destroy
+allow	allow	terraform plan -destroy
+allow	allow	tofu plan
+allow	ask:s3-rm	aws s3 rm s3://prod-backups --recursive
+allow	ask:s3-rm	aws --profile prod s3 rm --recursive s3://b/prefix
+allow	ask:s3-rm	aws s3 rb s3://b --force
+allow	allow	aws s3 ls s3://prod-backups --recursive
+allow	allow	aws s3 rm s3://b/one-key.txt
+allow	ask:find-delete	find ~/src -type f -delete
+allow	ask:find-delete	find . -name '*.tmp' -exec rm -f {} +
+allow	ask:find-delete	find . -execdir rm {} \;
+allow	allow	find ~/src -type f -name '*.go'
+allow	allow	find . -exec ls -l {} \;
+allow	ask:git-push-delete	git push origin --delete main
+allow	ask:git-push-delete	git push origin -d main
+allow	ask:git-push-delete	git push origin :main
+allow	ask:git-push-delete	git push --delete origin feature/x
+allow	allow	git fetch origin --prune
