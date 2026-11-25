@@ -79,6 +79,9 @@ setting OBSERVE OBSERVE
 setting RTK RTK
 setting RTK_CMD RTK_COMMAND
 setting FAIL_OPEN FAIL_OPEN
+# The opt-in ECS JSON-lines copy of guard decisions, for a log shipper (docs/guardrails/options.md).
+setting ECS_EXPORT ECS_EXPORT
+setting ECS_EXPORT_PATH ECS_EXPORT_PATH
 # Per-session guard state stays with this user's plugin data, not in a shared /tmp dir.
 export HANDOFF_STATE_DIR="${HANDOFF_STATE_DIR-$data}"
 

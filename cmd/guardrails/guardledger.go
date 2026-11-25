@@ -27,6 +27,7 @@ func logGuardEvent(session, kind, rule string) {
 		return
 	}
 	rule, _, _ = strings.Cut(rule, " ")
+	exportECSEvent(session, kind, rule) // opt-in copy for a log shipper (ecsexport.go)
 	if os.MkdirAll(stateDir(), 0o755) != nil {
 		return
 	}
