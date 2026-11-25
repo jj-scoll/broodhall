@@ -28,9 +28,9 @@ func decide(env *guardEnv, cmd string) decision {
 		return decision{Exit: 2, Rule: "dangerous:rm -rf " + t,
 			Msg: "BLOCKED: 'rm -rf " + t + "' is a high-risk destructive operation. Confirm with the user before attempting this."}
 	}
-	// Force pushes: a bare --force or -f blocks; --force-with-lease / --force-if-includes pass.
+	// Force pushes: a bare --force, -f or +refspec blocks; --force-with-lease / --force-if-includes pass.
 	if f := forcePushFlag(cmd); f != "" {
-		p := map[string]string{"--force": "git push --force", "-f": "git push -f "}[f]
+		p := map[string]string{"--force": "git push --force", "-f": "git push -f ", "+": "git push +refspec"}[f]
 		return decision{Exit: 2, Rule: "dangerous:" + p,
 			Msg: "BLOCKED: '" + p + "' is a high-risk destructive operation. Confirm with the user before attempting this."}
 	}
@@ -89,6 +89,18 @@ func decide(env *guardEnv, cmd string) decision {
 	}
 	// Code that comes off the network and runs unread: the user confirms (downloadexec.go).
 	if d := downloadExecRule(cmd); d.Ask {
+		return d
+	}
+	// terraform destroy, aws s3 rm --recursive, find -delete: the user confirms (destructiveask.go).
+	if d := destructiveAsk(cmd, env.Home); d.Ask {
+		return d
+	}
+	// A computed command name with destructive arguments ("$c" -rf ~): the user confirms.
+	if d := dynamicCommand(cmd, env.Home); d.Ask {
+		return d
+	}
+	// Computed code piped into a shell (./gen | sh): the user confirms.
+	if d := opaqueShell(cmd); d.Ask {
 		return d
 	}
 	// Python reading raw client data prints it unmasked: the user confirms.

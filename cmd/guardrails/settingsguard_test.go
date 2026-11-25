@@ -33,6 +33,13 @@ func TestSettingsGuardAsksOnWrites(t *testing.T) {
 		`python3 -c "open('/work/.claude/settings.json','w').write('{}')"`,
 		"ln -sf /tmp/x ~/.claude/settings.json",
 		"rm -rf ~/.claude",
+		// the spellings the rm -rf ~ rule already reads through: the shell's own argv
+		`\rm -rf ~/.claude`,
+		`r''m -rf ~/.claude`,
+		`r\m -rf ~/.claude`,
+		"rm \\\n  -rf \\\n  ~/.claude",
+		`"rm" -rf ~/.claude`,
+		`echo cm0gLXJmIH4vLmNsYXVkZQo= | base64 -d | sh`, // rm -rf ~/.claude, encoded
 		"find ~/.claude -name settings.json -delete",
 		`find ~/.claude -name 'settings*.json' -exec rm {} \;`,
 		`find ~/.claude -maxdepth 1 -exec sed -i 's/a/b/' {} +`,

@@ -16,7 +16,8 @@ var gitArgOpts = map[string]bool{"-C": true, "-c": true, "--git-dir": true, "--w
 // pushArgOpts are git push's long options that take a separate value.
 var pushArgOpts = map[string]bool{"--repo": true, "--receive-pack": true, "--exec": true, "--push-option": true}
 
-// forcePushFlag reports the force flag ("--force" or "-f") of the first force push in cmd.
+// forcePushFlag reports the force flag ("--force", "-f", or "+" for a +refspec) of the first
+// force push in cmd.
 func forcePushFlag(cmd string) string {
 	return shellFind(cmd, gitPushForce, func(cmd string) string {
 		// Cannot parse: as strict as the legacy substrings.
@@ -49,9 +50,43 @@ func gitSub(w []string) (sub string, args []string) {
 	return args[0], args[1:]
 }
 
+// pushDryRun reports whether the arguments of a git push make it a dry run: --dry-run or a
+// short cluster holding n, the last of --dry-run and --no-dry-run winning. A dry run sends and
+// deletes nothing whatever the refspecs say, so the force and delete rules pass it.
+func pushDryRun(args []string) bool {
+	dry := false
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+			return dry
+		case a == "--dry-run":
+			dry = true
+		case a == "--no-dry-run":
+			dry = false
+		case pushArgOpts[a]:
+			i++
+		case strings.HasPrefix(a, "--") || a == "-" || !strings.HasPrefix(a, "-"):
+		default:
+			for j, c := range a[1:] {
+				if c == 'n' {
+					dry = true
+				}
+				if c == 'o' { // -o takes the rest of the cluster, or the next word
+					if j == len(a)-2 {
+						i++
+					}
+					break
+				}
+			}
+		}
+	}
+	return dry
+}
+
 func gitPushForce(w []string) string {
 	sub, rest := gitSub(w)
-	if sub != "push" {
+	if sub != "push" || pushDryRun(rest) {
 		return ""
 	}
 	args := append([]string{sub}, rest...)
@@ -64,6 +99,8 @@ func gitPushForce(w []string) string {
 			return "--force"
 		case pushArgOpts[a]:
 			i++
+		case len(a) > 1 && a[0] == '+': // +main, +HEAD:main: a refspec that forces its update
+			return "+"
 		case strings.HasPrefix(a, "--") || a == "-":
 		case strings.HasPrefix(a, "-"):
 			for j, c := range a[1:] {

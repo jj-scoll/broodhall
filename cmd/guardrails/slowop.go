@@ -99,6 +99,9 @@ func slowOpRule(env *guardEnv, cmd string) decision {
 			}
 		case "terraform", "terragrunt":
 			sub, pos, wdir := tfArgs(args, dir, env.Home)
+			if path.Base(seg[0]) == "terraform" && helpFlag(args) {
+				break // prints the subcommand's help; applies nothing
+			}
 			switch sub {
 			case "plan":
 				env.mark("plan:" + wdir)

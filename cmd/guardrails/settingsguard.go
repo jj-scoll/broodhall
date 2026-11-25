@@ -317,8 +317,21 @@ func settingsGuard(env *guardEnv, cmd string) decision {
 	if cfg := claudeConfigEnv(env.Home); cfg != "" {
 		quick = append(quick, "CLAUDE_CONFIG_DIR", filepath.Base(cfg), filepath.Base(resolveForCompare(cfg, "/")))
 	}
-	if !slices.ContainsFunc(quick, func(q string) bool { return strings.Contains(cmd, q) }) {
-		return decision{}
+	mentions := func(s string) bool {
+		return slices.ContainsFunc(quick, func(q string) bool { return strings.Contains(s, q) })
+	}
+	if !mentions(cmd) {
+		// The text may spell the path another way ($'...', base64 | sh): read what runs.
+		cmds, _ := parseShell(cmd)
+		if !slices.ContainsFunc(cmds, func(c simpleCmd) bool {
+			seg := strings.Join(c.Words, " ")
+			for _, r := range c.Redirs {
+				seg += " " + r.Target
+			}
+			return mentions(seg)
+		}) {
+			return decision{}
+		}
 	}
 	cwd, lost := env.Cwd, false
 	expand := func(tok string) string {
@@ -378,6 +391,24 @@ func settingsGuard(env *guardEnv, cmd string) decision {
 		case op == "", op == "rmdir", op == "find" && !findWrites(seg):
 		default:
 			return settingsAsk(op)
+		}
+	}
+	// The same test on each command's argv as the shell passes it (parseShell), the words the
+	// rm -rf ~ rule reads: \rm, r''m and a line-continued rm are rm here. Relative paths are
+	// read from the session cwd, and also under ~ from the first cd on.
+	if cmds, ok := parseShell(cmd); ok {
+		cwd, lost = env.Cwd, false
+		for _, c := range cmds {
+			seg := strings.Join(c.Words, " ")
+			for _, r := range c.Redirs {
+				seg += " " + r.Op + " " + r.Target
+			}
+			lost = lost || cdWordRE.MatchString(seg)
+			switch op := fileWriteOp(seg, isFile, isDir); {
+			case op == "", op == "rmdir", op == "find" && !findWrites(seg):
+			default:
+				return settingsAsk(op)
+			}
 		}
 	}
 	return decision{}

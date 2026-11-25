@@ -25,7 +25,7 @@ func TestSlowOpNarrowedAndStateful(t *testing.T) {
 		steps []step
 	}{
 		{"apply with no plan nudges", []step{{0, "/infra", "terraform apply", "context:plan-before-apply"}}},
-		{"destroy with no plan nudges", []step{{0, "/infra", "terraform destroy -auto-approve", "context:plan-before-apply"}}},
+		{"destroy asks, plan or not", []step{{0, "/infra", "terraform destroy -auto-approve", "ask:iac-destroy"}}},
 		{"terragrunt run-all apply nudges", []step{{0, "/infra", "terragrunt run-all apply", "context:plan-before-apply"}}},
 		{"plan then apply same dir is quiet", []step{
 			{0, "/infra", "terraform plan", "allow"},
@@ -41,7 +41,8 @@ func TestSlowOpNarrowedAndStateful(t *testing.T) {
 			{31 * time.Minute, "/infra", "terragrunt apply", "context:plan-before-apply"}}},
 		{"plan -destroy is a plan", []step{
 			{0, "/infra", "terraform plan -destroy", "allow"},
-			{time.Minute, "/infra", "terraform destroy", "allow"}}},
+			{time.Minute, "/infra", "terraform apply", "allow"},
+			{time.Minute, "/infra", "terraform destroy", "ask:iac-destroy"}}},
 		{"plan and apply in one command", []step{
 			{0, "/", "cd infra && terraform plan && terraform apply", "allow"}}},
 		{"cd to a different dir than the plan", []step{

@@ -37,7 +37,7 @@ block:dangerous:chown -R	allow	chown -R user /srv
 block:privileged-container	block:privileged-container	docker run -d --privileged ubuntu
 allow	allow	docker run -v /nohome/user/dev:/src ubuntu
 warn:slow-op	context:plan-before-apply	terraform apply
-warn:slow-op	context:plan-before-apply	terraform destroy -auto-approve
+warn:slow-op	ask:iac-destroy	terraform destroy -auto-approve
 allow	context:plan-before-apply	terragrunt run-all apply
 warn:slow-op	allow	terraform plan && terraform apply
 warn:slow-op	context:slow-op	docker build -t x .
@@ -65,7 +65,7 @@ block:dangerous:> /etc/	allow	echo "write > /etc/hosts is blocked"
 block:dangerous:> /etc/	allow	git commit -m "document > /etc/ handling"
 allow	allow	echo x > /etcetera/foo
 allow	allow	cat /etc/hosts
-block:dangerous:dd if=	block:dangerous:dd if=	cd x && dd if=a of=b
+block:dangerous:dd if=	allow	cd x && dd if=a of=b
 block:dangerous:dd if=	block:dangerous:dd if=	sudo dd if=/dev/zero of=/dev/sda
 block:dangerous:dd if=	allow	echo "dd if=/dev/zero is dangerous"
 block:dangerous:dd if=	allow	grep "dd if=" notes.md
@@ -75,7 +75,7 @@ block:dangerous::(){ :|:& };:	allow	echo ':(){ :|:& };:'
 block:dangerous:chmod -R 777 /	block:dangerous:chmod -R 777 /	chmod -R 777 /
 block:dangerous:chmod -R 777 /	allow	chmod -R 777 /var/www/html
 allow	block:dangerous:chmod -R 777 /	chmod -Rv 0777 /
-allow	allow	chmod -R 755 /
+allow	block:dangerous:chmod -R	chmod -R 755 /
 allow	allow	chmod 777 /
 block:dangerous:chmod -R 777 /	allow	echo "chmod -R 777 /"
 block:dangerous:chown -R	allow	sudo chown -R root /x
@@ -171,3 +171,53 @@ allow	allow	curl -s https://example.org/x | jq .
 allow	context:secret-file:mask	cat .env
 allow	context:secret-file:mask	grep KEY app/.env.local
 allow	allow	cat .env.example
+# mutation-test gaps in existing rules: a +refspec forces; any recursive chmod of a protected
+# target; dd blocks only an output under /dev/
+allow	block:dangerous:git push +refspec	git push origin +main
+allow	block:dangerous:git push +refspec	git push origin +main:main
+allow	block:dangerous:git push +refspec	git -C ../x push origin +HEAD:refs/heads/x
+allow	allow	git push origin main:main
+allow	block:dangerous:chmod -R	chmod -R 000 ~
+allow	block:dangerous:chmod -R	chmod --recursive 000 /nohome/user
+allow	block:dangerous:chmod -R	chmod 000 -R $HOME
+allow	block:dangerous:chmod -R	chmod -R go-rwx /
+allow	allow	chmod -R u+w ./build
+allow	allow	chmod 000 ~
+allow	allow	chmod -R go-w ~/src/x
+block:dangerous:dd if=	allow	dd if=/dev/zero of=/tmp/test.img bs=1M count=10
+allow	allow	dd of=/tmp/test.img bs=1M count=10 if=/dev/zero
+block:dangerous:dd if=	block:dangerous:dd if=	dd if=/dev/zero of=/dev/nvme0n1 bs=1M
+block:dangerous:dd if=	block:dangerous:dd if=	dd if=/dev/zero of=/dev/../dev/sda
+allow	block:dangerous:dd if=	cat disk.img | dd of=/dev/sda
+block:dangerous:dd if=	block:dangerous:dd if=	dd if=/dev/null of=/dev/null count=0
+# mutation-test gaps with no rule: these ask, as destructive git verbs do
+allow	ask:iac-destroy	tofu destroy -auto-approve
+warn:slow-op	ask:iac-destroy	terraform apply -destroy -auto-approve
+allow	ask:iac-destroy	terraform -chdir=infra destroy
+allow	ask:iac-destroy	terragrunt run-all destroy
+allow	allow	terraform plan -destroy
+allow	allow	tofu plan
+allow	ask:s3-rm	aws s3 rm s3://prod-backups --recursive
+allow	ask:s3-rm	aws --profile prod s3 rm --recursive s3://b/prefix
+allow	ask:s3-rm	aws s3 rb s3://b --force
+allow	allow	aws s3 ls s3://prod-backups --recursive
+allow	allow	aws s3 rm s3://b/one-key.txt
+allow	allow	aws s3 rm s3://b/prefix/ --recursive --dryrun
+allow	allow	find ~/src -type f -delete
+allow	allow	find . -name '*.tmp' -exec rm -f {} +
+allow	allow	find . -execdir rm {} \;
+allow	ask:find-delete	find ~ -type f -delete
+allow	ask:find-delete	find / -name '*.tmp' -exec rm -f {} +
+allow	allow	find ~/src -type f -name '*.go'
+allow	allow	find . -exec ls -l {} \;
+allow	ask:git-push-delete	git push origin --delete main
+allow	ask:git-push-delete	git push origin -d main
+allow	ask:git-push-delete	git push origin :main
+allow	ask:git-push-delete	git push --delete origin feature/x
+allow	allow	git fetch origin --prune
+# mutation-test gaps: protected targets are compared after resolving the path
+block:dangerous:rm -rf /	block:dangerous:rm -rf ~	rm -rf /nohome/../nohome/user
+block:dangerous:chown -R	block:dangerous:chown -R	chown -R x /nohome/../nohome/user
+allow	block:dangerous:chmod -R	chmod -R 000 /hom[e]
+allow	block:dangerous:rm -rf ~	cd x && T=~ && rm -rf "$T"
+block:dangerous:rm -rf /	allow	rm -rf /tmp/../tmp/x

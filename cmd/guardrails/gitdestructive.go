@@ -2,7 +2,7 @@ package main
 
 // Destructive git verbs that throw away work git cannot bring back (the CLAUDE.md
 // destructive-command policy): branch -D, stash (bare, drop, clear), reset --hard,
-// checkout/restore of ".", clean -f. They answer with PreToolUse "ask", so the user confirms each
+// checkout/restore of ".", clean -f, push --delete. They answer with PreToolUse "ask", so the user confirms each
 // one; they never block and never pass silently. Commands the shell parser rejects are read
 // as loose words instead (gitDestructiveText).
 
@@ -103,6 +103,19 @@ func gitDestructiveArgs(sub string, args []string) (rule, what string) {
 	case "clean":
 		if (hasArg(args, "--force") || strings.Contains(flags, "f")) && !hasArg(args, "--dry-run") && !strings.Contains(flags, "n") {
 			return "git-clean-f", "git clean -f deletes untracked files for good"
+		}
+	case "push":
+		// --delete, -d, or a refspec with an empty source (:branch) deletes the remote ref;
+		// a dry run deletes nothing.
+		if pushDryRun(args) {
+			break
+		}
+		del := hasArg(args, "--delete") || strings.Contains(flags, "d")
+		for _, a := range args {
+			del = del || len(a) > 1 && a[0] == ':'
+		}
+		if del {
+			return "git-push-delete", "git push --delete deletes the branch or tag on the remote, and with it any commits only it holds"
 		}
 	}
 	return "", ""

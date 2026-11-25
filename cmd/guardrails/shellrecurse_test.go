@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -108,5 +109,109 @@ func TestInnerShellStatefulRulesStayOuter(t *testing.T) {
 	decide(env, `docker run img terraform plan`)
 	if len(st) != 0 {
 		t.Errorf("a plan inside a container marked state: %v", st)
+	}
+}
+
+// TestResolvedCommandNames pins that a command name the shell computes gets the same decision
+// as the plain name when the guard can work it out (an assignment earlier in the line, ANSI-C
+// quoting, a static $(printf ...), brace expansion, a function, $IFS), and asks when it cannot
+// but the arguments would be destructive under some name.
+func TestResolvedCommandNames(t *testing.T) {
+	const (
+		rmRoot  = "block:dangerous:rm -rf /"
+		rmHome  = "block:dangerous:rm -rf ~"
+		rmHOME  = "block:dangerous:rm -rf $HOME"
+		dynamic = "ask:dynamic-command"
+		allowed = "allow"
+	)
+	tests := []struct {
+		name string
+		cmd  string
+		want string
+	}{
+		{"assigned name", `c=rm; "$c" -rf ~`, rmHome},
+		{"assigned git", `c=git; "$c" clean -fdx`, "ask:git-clean-f"},
+		{"ansi-c name", `$'\x72\x6d' -rf ~`, rmHome},
+		{"ansi-c octal", `$'\162\155' -rf /`, rmRoot},
+		{"ansi-c behind nohup", `nohup $'\x67\x69\x74' stash clear`, "ask:git-stash"},
+		{"ansi-c in a function", `cleanup() { $'\x67\x69\x74' stash clear; }; cleanup`, "ask:git-stash"},
+		{"printf name", `"$(printf '\162\155')" -rf --no-preserve-root /`, rmRoot},
+		{"backquoted printf", "`printf rm` -rf ~", rmHome},
+		{"echo name", `$(echo rm) -rf ~`, rmHome},
+		{"brace expansion", `{rm,-rf,~}`, rmHome},
+		{"brace expansion HOME", `{rm,-rf,$HOME}`, rmHOME},
+		{"shadowing function", `r() { rm "$@"; }; r -rf $HOME`, rmHOME},
+		{"function with positional", `del() { rm -rf "$1"; }; del ~`, rmHome},
+		{"function keyword", `function r { git reset --hard "$@"; }; r HEAD~3`, "ask:git-reset-hard"},
+		{"IFS as space", `rm${IFS}-rf${IFS}$HOME`, rmHOME},
+		{"unquoted value splits", `c="rm -rf"; $c ~`, rmHome},
+		{"unknown name, rm args", `"$c" -rf ~`, dynamic},
+		{"unknown name, git args", `$GIT reset --hard`, dynamic},
+		{"unknown subst, push args", `$(which git) push --force origin main`, dynamic},
+
+		{"editor variable", `"$EDITOR" notes.md`, allowed},
+		{"python variable", `$PYTHON x.py`, allowed},
+		{"default value", `${GO:-go} build ./...`, allowed},
+		{"assigned ls", `c=ls; "$c" -la`, allowed},
+		{"ansi-c ls", `$'\x6c\x73' -la`, allowed},
+		{"brace in args", `cp main.go{,.bak}`, allowed},
+		{"brace in echo", `echo {a,b}`, allowed},
+		{"function body alone", `r() { rm "$@"; }`, allowed},
+		{"function on a safe path", `r() { rm "$@"; }; r -rf /tmp/build`, allowed},
+		{"quoted IFS", `echo "$IFS"`, allowed},
+		{"run wrapper", `run() { "$@"; }; run ls -la`, allowed},
+		{"run wrapper on rm", `run() { "$@"; }; run rm -rf ~`, rmHome},
+
+		// code piped or handed to a shell: a fixed payload gets the normal rules, a computed one asks
+		{"printf into sh", `printf '%s\n' 'rm -rf ~' | sh`, rmHome},
+		{"echo into bash", `echo 'git reset --hard' | bash`, "ask:git-reset-hard"},
+		{"base64 into sh", `echo cm0gLXJmIH4K | base64 -d | sh`, rmHome},
+		{"source of printf", `source <(printf '%s\n' 'rm -rf $HOME')`, rmHOME},
+		{"dot of echo", `. <(echo rm -rf /)`, rmRoot},
+		{"quoted heredoc with continuation", "sh <<'EOF'\nrm \\\n  -rf \\\n  ~\nEOF", rmHome},
+		{"heredoc with continuation", "bash <<EOF\nrm \\\n  -rf ~\nEOF", rmHome},
+		{"computed payload into sh", `printf '%s\n' "$CMD" | sh`, "ask:opaque-shell"},
+		{"generated script into bash", `./gen-script.py | bash -s`, "ask:opaque-shell"},
+		{"computed source", `source <(./gen-env)`, "ask:opaque-shell"},
+		{"variable into sudo sh", `echo "$x" | sudo sh`, "ask:opaque-shell"},
+		{"fixed safe payload", `printf 'ls -la\n' | sh`, allowed},
+		{"local script piped", `cat script.sh | bash`, allowed},
+		{"computed data, not a shell", `./gen | sh -c 'wc -l'`, allowed},
+		{"computed data into jq", `./gen | jq .`, allowed},
+		{"base64 to a file", `echo aGkK | base64 -d > out.txt`, allowed},
+
+		// shell commands an interpreter one-liner runs
+		{"python os.system", `python3 -c 'import os; os.system("rm -rf ~")'`, rmHome},
+		{"python subprocess shell", `python3 -c "import subprocess; subprocess.run('git reset --hard', shell=True)"`, "ask:git-reset-hard"},
+		{"python subprocess list", `python3 -c "import subprocess; subprocess.check_call(['rm', '-rf', '/'])"`, rmRoot},
+		{"perl system sh -c ARGV", `perl -e 'system("sh", "-c", $ARGV[0])' 'rm -rf $HOME'`, rmHOME},
+		{"perl system string", `perl -e 'system("git clean -fdx")'`, "ask:git-clean-f"},
+		{"python print", `python3 -c 'print("rm -rf ~")'`, allowed},
+		{"python safe system", `python3 -c 'import os; os.system("ls -la")'`, allowed},
+		{"perl print", `perl -e 'print "rm -rf ~\n"'`, allowed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := &guardEnv{Now: time.Unix(1_800_000_000, 0), Session: "s", Cwd: "/work", Home: "/nohome/user", State: memState{}}
+			if got := decide(env, tt.cmd).Kind(); got != tt.want {
+				t.Errorf("decide(%q) = %s, want %s", tt.cmd, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestResolveStaysCheap pins the limits on what parseShell expands: functions that call each
+// other in a fan-out, and a printf whose width would allocate a huge string, both answer at
+// once instead of hanging the hook.
+func TestResolveStaysCheap(t *testing.T) {
+	calls := func(name string) string { return strings.TrimSuffix(strings.Repeat(name+"; ", 60), " ") }
+	fanout := "a() { :; }; b() { " + calls("a") + " }; c() { " + calls("b") + " }; d() { " + calls("c") + " }; e() { " + calls("d") + " }; e"
+	for _, cmd := range []string{fanout, `printf '%0999999999d' 1 | sh`} {
+		env := &guardEnv{Now: time.Unix(1_800_000_000, 0), Session: "s", Cwd: "/work", Home: "/nohome/user", State: memState{}}
+		start := time.Now()
+		decide(env, cmd)
+		if d := time.Since(start); d > 2*time.Second {
+			t.Errorf("decide(%.40q...) took %v", cmd, d)
+		}
 	}
 }

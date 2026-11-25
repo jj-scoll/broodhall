@@ -1,0 +1,173 @@
+package main
+
+// Destructive commands outside git that delete what no undo brings back: terraform, tofu or
+// terragrunt destroy (and apply -destroy), aws s3 rm --recursive and aws s3 rb --force, and
+// find -delete or find -exec rm. They ask, as the destructive git verbs do (gitdestructive.go),
+// and have no switch, like download-exec.
+
+import (
+	"path"
+	"strings"
+)
+
+func destructiveAsk(cmd, home string) decision {
+	cmds, ok := parseShell(cmd)
+	if !ok {
+		return decision{}
+	}
+	for _, c := range cmds {
+		if rule, what := argvDestructiveAsk(c.Words, home); rule != "" {
+			return decision{Ask: true, Rule: rule, Msg: "ASK: " + what + ". Confirm with the user before running it."}
+		}
+	}
+	return decision{}
+}
+
+// awsArgOpts are the aws CLI's global options that take a separate value.
+var awsArgOpts = map[string]bool{"--profile": true, "--region": true, "--output": true, "--endpoint-url": true,
+	"--query": true, "--color": true, "--ca-bundle": true, "--cli-read-timeout": true, "--cli-connect-timeout": true,
+	"--cli-binary-format": true}
+
+// argvDestructiveAsk names the rule one argv (wrappers peeled) breaks and what it loses.
+func argvDestructiveAsk(w []string, home string) (rule, what string) {
+	if len(w) == 0 {
+		return "", ""
+	}
+	name, args := path.Base(w[0]), w[1:]
+	var pos []string // the words that are not options
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case name == "aws" && awsArgOpts[a]:
+			i++
+		case !strings.HasPrefix(a, "-"):
+			pos = append(pos, a)
+		}
+	}
+	switch name {
+	case "terraform", "tofu", "terragrunt":
+		// destroy, or apply -destroy; terragrunt also as run-all destroy / run --all destroy.
+		// terraform and tofu print the subcommand's help for -help or --help, whatever else
+		// is on the line, and run nothing; terragrunt may init first, so it still asks.
+		if name != "terragrunt" && helpFlag(args) {
+			return "", ""
+		}
+		if hasArg(pos, "destroy") || hasArg(pos, "apply") && hasArg(args, "-destroy", "--destroy") {
+			return "iac-destroy", name + " destroy deletes every resource the configuration manages; run " + name + " plan -destroy first and show the user what goes"
+		}
+	case "aws":
+		if len(pos) >= 2 && pos[0] == "s3" {
+			if pos[1] == "rm" && hasArg(args, "--recursive") && !hasArg(args, "--dryrun") {
+				return "s3-rm", "aws s3 rm --recursive deletes every object under the prefix; unversioned buckets keep no copy (try --dryrun first)"
+			}
+			if pos[1] == "rb" && hasArg(args, "--force") {
+				return "s3-rm", "aws s3 rb --force deletes every object in the bucket, then the bucket"
+			}
+		}
+	case "find":
+		// The rm rule's policy: find reaches only its start paths, so it asks where
+		// rm -rf <start path> blocks (a protected root) and passes ./dist, /tmp, no path.
+		del := hasArg(args, "-delete")
+		rmRoot := false
+		for _, ea := range execArgs(w) {
+			if e := peelWrappers(ea); len(e) > 0 && path.Base(e[0]) == "rm" {
+				del = true
+				rmRoot = rmRoot || rmArgsTarget(e[1:], home) != ""
+			}
+		}
+		if del && (rmRoot || findStartsProtected(args, home)) {
+			return "find-delete", "find -delete (or -exec rm) removes every file the expression matches, with no undo; run the same find without it first to see the list"
+		}
+	}
+	return "", ""
+}
+
+// dynamicNames are the commands whose arguments the guard can judge on their own.
+var dynamicNames = []string{"rm", "git", "chmod", "chown", "dd", "find", "terraform", "tofu", "terragrunt", "aws"}
+
+// dynamicCommand asks when a command's name is only known at run time ("$c", $GIT,
+// $(which git)) and its arguments would be destructive behind one of dynamicNames, or as a
+// command of their own (the name expanding to a wrapper or to nothing). Names the line
+// resolves itself were substituted by parseShell; "$EDITOR" file or ${GO:-go} build pass.
+func dynamicCommand(cmd, home string) decision {
+	cmds, ok := parseShell(cmd)
+	if !ok {
+		return decision{}
+	}
+	for _, c := range cmds {
+		if len(c.Words) == 0 || !strings.ContainsAny(path.Base(c.Words[0]), "$`") {
+			continue
+		}
+		cands := [][]string{c.Words[1:]}
+		for _, name := range dynamicNames {
+			cands = append(cands, append([]string{name}, c.Words[1:]...))
+		}
+		for _, w := range cands {
+			if len(w) > 0 && argvDestructive(w, home) {
+				return decision{Ask: true, Rule: "dynamic-command",
+					Msg: "ASK: the command name is only known at run time, and with these arguments it could be " + path.Base(w[0]) + " deleting or overwriting what cannot be restored. Confirm with the user before running it."}
+			}
+		}
+	}
+	return decision{}
+}
+
+// argvDestructive reports whether any block or ask rule that reads one argv fires on w.
+func argvDestructive(w []string, home string) bool {
+	sc := simpleCmd{Words: w}
+	sub, args := gitSub(w)
+	r, _ := gitDestructiveArgs(sub, args)
+	rule, _ := argvDestructiveAsk(w, home)
+	return path.Base(w[0]) == "rm" && rmArgsTarget(w[1:], home) != "" || gitPushForce(w) != "" || r != "" || rule != "" ||
+		ddRule(sc, home).Exit != 0 || chmodRule(sc, home).Exit != 0 || chownRule(sc, home).Exit != 0
+}
+
+// opaqueShell asks when a shell runs code the text does not fix: a program's output piped
+// into sh, bash or zsh, or sourced from <(...) (printf "$CMD" | sh, ./gen | bash, source
+// <(./gen)). A fixed payload (printf 'ls' | sh) was parsed and judged as itself instead.
+func opaqueShell(cmd string) decision {
+	cmds, ok := parseShell(cmd)
+	if !ok {
+		return decision{}
+	}
+	for _, c := range cmds {
+		if c.Opaque != "" {
+			return decision{Ask: true, Rule: "opaque-shell",
+				Msg: "ASK: this runs code through " + c.Opaque + " that is only known at run time, so the guard cannot check it. Write it to a file and read it first, or confirm with the user."}
+		}
+	}
+	return decision{}
+}
+
+// helpFlag reports -h, -help or --help before any "--": the terraform and tofu CLIs print the
+// subcommand's help for each of them wherever it stands among the arguments (checked with
+// terraform and tofu destroy; neither has another -h option).
+func helpFlag(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if a == "-h" || a == "-help" || a == "--help" {
+			return true
+		}
+	}
+	return false
+}
+
+// findStartsProtected reports whether any start path of a find (the words before its first
+// expression, after the -H -L -P -D -O options) is a protected target of the rm rule. A find
+// with no start path searches ".".
+func findStartsProtected(args []string, home string) bool {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-D":
+			i++
+		case a == "-H" || a == "-L" || a == "-P" || strings.HasPrefix(a, "-O") || strings.HasPrefix(a, "-D"):
+		case strings.HasPrefix(a, "-") && a != "-" || a == "(" || a == "!" || a == "\\(":
+			return false
+		case rootName(a, home) != "":
+			return true
+		}
+	}
+	return false
+}
