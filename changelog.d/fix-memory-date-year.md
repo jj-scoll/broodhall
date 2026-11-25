@@ -1,1 +1,0 @@
-- memory: search hits, `read_session` headers, timeline entries and session summaries in the start-of-session context now show the year ("Mar 2, 2026, 9:10 AM"), so Claude no longer guesses the year of an older session. On the LoCoMo benchmark this raised accuracy on date questions from 64% to 76%.
