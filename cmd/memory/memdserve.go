@@ -99,7 +99,6 @@ func memdServe(ctx context.Context, dir string, roots map[string]string) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(sock)
 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		ln.Close()

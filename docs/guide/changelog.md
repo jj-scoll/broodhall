@@ -5,6 +5,18 @@ guardrails, memory and context-guard share one version; see
 [jj-scoll/rtk](https://github.com/jj-scoll/rtk). Each release's full notes are on
 [GitHub Releases](https://github.com/jj-scoll/broodhall/releases).
 
+## Unreleased
+
+- memory: a daemon that exits or fails to start no longer deletes the socket of another daemon
+  that has since bound the same path, which left a running daemon unreachable (every client got
+  "no such file"). The socket is removed on shutdown only while it is still the one that
+  daemon created, and a start-up dial that times out against a busy daemon is reported as "cannot
+  verify" instead of being treated as a stale socket and removed.
+- memory: `get_tool_uses` prints a nested object or list on the lines below its key, indented,
+  instead of running the first child onto the key's line.
+- memory: `get_tool_uses` shows a payload with text after its closing brace or bracket
+  (`{"a":1} extra`) as plain text, as it already did for trailing JSON.
+
 ## 1.12.4
 
 - No user-facing changes; see the [release notes](https://github.com/jj-scoll/broodhall/releases/tag/v1.12.4).
