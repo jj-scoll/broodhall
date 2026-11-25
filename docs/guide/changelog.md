@@ -5,6 +5,10 @@ guardrails, memory and context-guard share one version; see
 [jj-scoll/rtk](https://github.com/jj-scoll/rtk). Each release's full notes are on
 [GitHub Releases](https://github.com/jj-scoll/broodhall/releases).
 
+## 1.12.7
+
+- guardrails: when the handoff writer's `claude -p` call fails, its log line now names the failure (`subtype`, `terminal_reason`, `errors`, `result`) instead of a cut of the JSON that ended inside `usage`. (#86)
+
 ## 1.12.6
 
 - guardrails: the Bash guards read a command as the shell will run it, so respelling no longer
