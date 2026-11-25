@@ -19,6 +19,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/jj-scoll/broodhall/internal/pytext"
 )
 
 const (
@@ -85,7 +87,7 @@ var runClaude = func(ctx context.Context, argv []string, stdin []byte) ([]byte, 
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
 		// A signed-out CLI exits 1; stdout (if any) still goes back so callers see the reason.
-		return stdout.Bytes(), fmt.Errorf("claude: %w: %s", err, cut(stderr.String(), 300))
+		return stdout.Bytes(), fmt.Errorf("claude: %w: %s", err, pytext.Cut(stderr.String(), 300))
 	}
 	return stdout.Bytes(), nil
 }

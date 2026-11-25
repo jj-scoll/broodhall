@@ -20,6 +20,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/jj-scoll/broodhall/internal/pytext"
 )
 
 // memdUsage is one API response's token counts (see api_usage). C5m and C1h are nil when the
@@ -39,17 +41,17 @@ const memdUsageBackfillVersion = 1
 // usageFromLine inspects one decoded transcript line. A /clear or compaction marker sets
 // st.Reset, which the next main-thread response takes. An assistant line with a usage object
 // and a message id gives a row; synthetic messages (no API call) and everything else give nil.
-func usageFromLine(path string, d *obj, st *memdFileState) *memdUsage {
-	switch d.get("type") {
+func usageFromLine(path string, d *pytext.Obj, st *memdFileState) *memdUsage {
+	switch d.Get("type") {
 	case "system":
-		if d.getStr("subtype") == "compact_boundary" {
+		if d.GetStr("subtype") == "compact_boundary" {
 			st.Reset = "compact"
 		}
 		return nil
 	case "user":
-		if truthy(d.get("isCompactSummary")) {
+		if pytext.Truthy(d.Get("isCompactSummary")) {
 			st.Reset = "compact"
-		} else if s, ok := d.getObj("message").get("content").(string); ok && strings.Contains(s, "<command-name>/clear</command-name>") {
+		} else if s, ok := d.GetObj("message").Get("content").(string); ok && strings.Contains(s, "<command-name>/clear</command-name>") {
 			st.Reset = "clear"
 		}
 		return nil
@@ -57,17 +59,17 @@ func usageFromLine(path string, d *obj, st *memdFileState) *memdUsage {
 	default:
 		return nil
 	}
-	msg := d.getObj("message")
-	u := msg.getObj("usage")
-	id, model := msg.getStr("id"), msg.getStr("model")
+	msg := d.GetObj("message")
+	u := msg.GetObj("usage")
+	id, model := msg.GetStr("id"), msg.GetStr("model")
 	if u == nil || id == "" || model == "<synthetic>" {
 		return nil
 	}
 	row := &memdUsage{
-		MessageID: id, RequestID: d.getStr("requestId"), SessionID: d.getStr("sessionId"),
-		Cwd: d.getStr("cwd"), Model: model, AgentID: d.getStr("agentId"),
-		ServiceTier: u.getStr("service_tier"),
-		Sidechain:   truthy(d.get("isSidechain")) || strings.Contains(path, "/subagents/"),
+		MessageID: id, RequestID: d.GetStr("requestId"), SessionID: d.GetStr("sessionId"),
+		Cwd: d.GetStr("cwd"), Model: model, AgentID: d.GetStr("agentId"),
+		ServiceTier: u.GetStr("service_tier"),
+		Sidechain:   pytext.Truthy(d.Get("isSidechain")) || strings.Contains(path, "/subagents/"),
 		Observer:    st.Observer,
 		In:          numField(u, "input_tokens"), Out: numField(u, "output_tokens"),
 		CacheCreate: numField(u, "cache_creation_input_tokens"), CacheRead: numField(u, "cache_read_input_tokens"),
@@ -77,13 +79,13 @@ func usageFromLine(path string, d *obj, st *memdFileState) *memdUsage {
 		row.SessionID = strings.TrimSuffix(name, filepath.Ext(name))
 	}
 	row.Project = projectKey(row.Cwd)
-	if ts := d.getStr("timestamp"); ts != "" {
+	if ts := d.GetStr("timestamp"); ts != "" {
 		row.At, _ = time.Parse(time.RFC3339Nano, ts)
 	}
 	if row.At.IsZero() {
 		row.At = time.Unix(0, 0).UTC()
 	}
-	if cc := u.getObj("cache_creation"); cc != nil {
+	if cc := u.GetObj("cache_creation"); cc != nil {
 		a, b := numField(cc, "ephemeral_5m_input_tokens"), numField(cc, "ephemeral_1h_input_tokens")
 		row.C5m, row.C1h = &a, &b
 	}
@@ -99,8 +101,8 @@ const numFieldMax = 1 << 40
 
 // numField reads a non-negative integer field; anything else, or a value above
 // numFieldMax, is 0.
-func numField(o *obj, k string) int64 {
-	n, ok := o.get(k).(json.Number)
+func numField(o *pytext.Obj, k string) int64 {
+	n, ok := o.Get(k).(json.Number)
 	if !ok {
 		return 0
 	}
@@ -217,15 +219,15 @@ func parseUsageLines(path string, lines [][]byte, st *memdFileState) []memdUsage
 			!bytes.Contains(raw, []byte("<command-name>/clear")) {
 			continue
 		}
-		v, err := decodeJSON(raw)
+		v, err := pytext.DecodeJSON(raw)
 		if err != nil {
 			continue
 		}
-		d, ok := v.(*obj)
+		d, ok := v.(*pytext.Obj)
 		if !ok {
 			continue
 		}
-		if strings.HasPrefix(d.getStr("entrypoint"), "sdk") {
+		if strings.HasPrefix(d.GetStr("entrypoint"), "sdk") {
 			st.Observer = true
 		}
 		if u := usageFromLine(path, d, st); u != nil {

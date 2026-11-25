@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	"github.com/jj-scoll/broodhall/internal/pytext"
 )
 
 // memdEvent is one captured event. Input, Output and PromptText are redacted.
@@ -55,75 +57,75 @@ func parseMemdLines(path, account string, lines [][]byte, st *memdFileState) (ev
 	st.Observer = st.Observer || strings.Contains(path, "memory-observer-cwd")
 	st.Sub = st.Sub || strings.Contains(path, "/subagents/")
 	for _, raw := range lines {
-		v, err := decodeJSON(raw)
+		v, err := pytext.DecodeJSON(raw)
 		if err != nil {
 			continue
 		}
-		d, ok := v.(*obj)
+		d, ok := v.(*pytext.Obj)
 		if !ok {
 			continue
 		}
 		noteForkFacts(d, st)
-		if strings.HasPrefix(d.getStr("entrypoint"), "sdk") {
+		if strings.HasPrefix(d.GetStr("entrypoint"), "sdk") {
 			st.Observer = true
 		}
-		if truthy(d.get("isSidechain")) {
+		if pytext.Truthy(d.Get("isSidechain")) {
 			st.Sub = true
 		}
 		if u := usageFromLine(path, d, st); u != nil {
 			events = append(events, memdEvent{Kind: "usage", SessionID: u.SessionID, At: u.At, Usage: u})
 		}
-		msg := d.getObj("message")
+		msg := d.GetObj("message")
 		if msg == nil {
 			continue
 		}
 		base := memdEvent{
-			SessionID: d.getStr("sessionId"),
+			SessionID: d.GetStr("sessionId"),
 			Account:   account,
-			Cwd:       d.getStr("cwd"),
-			GitBranch: d.getStr("gitBranch"),
+			Cwd:       d.GetStr("cwd"),
+			GitBranch: d.GetStr("gitBranch"),
 		}
 		if base.SessionID == "" {
 			base.SessionID = transcriptSessionID(path)
 		}
 		base.Project = projectKey(base.Cwd)
-		if ts := d.getStr("timestamp"); ts != "" {
+		if ts := d.GetStr("timestamp"); ts != "" {
 			base.At, _ = time.Parse(time.RFC3339Nano, ts)
 		}
-		content, _ := msg.get("content").([]any)
-		switch d.get("type") {
+		content, _ := msg.Get("content").([]any)
+		switch d.Get("type") {
 		case "assistant":
-			if m := msg.getStr("model"); m != "<synthetic>" {
+			if m := msg.GetStr("model"); m != "<synthetic>" {
 				base.Model = m
 			}
 			for i, x := range content {
-				b, ok := x.(*obj)
-				if ok && b.get("type") == "text" {
+				b, ok := x.(*pytext.Obj)
+				if ok && b.Get("type") == "text" {
 					if e, ok := replyEvent(base, d, msg, i, b, st); ok {
 						events = append(events, e)
 					}
 					continue
 				}
-				if !ok || b.get("type") != "tool_use" {
+				if !ok || b.Get("type") != "tool_use" {
 					continue
 				}
-				id := b.getStr("id")
+				id := b.GetStr("id")
 				if id == "" {
 					continue
 				}
 				e := base
-				e.Kind, e.ToolUseID, e.ToolName = "tool_use", id, b.getStr("name")
-				if in := b.getObj("input"); in != nil {
-					if cmd, ok := in.vals["command"].(string); ok && e.ToolName == "Bash" {
-						in.vals["command"] = cmdNorm(cmd)
+				e.Kind, e.ToolUseID, e.ToolName = "tool_use", id, b.GetStr("name")
+				if in := b.GetObj("input"); in != nil {
+					if cmd, ok := in.Vals["command"].(string); ok && e.ToolName == "Bash" {
+						in.Vals["command"] = cmdNorm(cmd)
 					}
 				}
-				raw := memdJSON(b.get("input"))
+				raw := memdJSON(b.Get("input"))
 				e.cap = captureFor(captureCfg, base.Cwd, e.ToolName, raw)
 				e.Input = e.cap.input(memdRedact(raw))
 				pending[id] = &e
 			}
-			if msg.get("stop_reason") == "end_turn" {
+			if msg.Get("stop_reason") == "end_turn" {
 				e := base
 				e.Observer, e.Sub = st.Observer, st.Sub
 				e.Kind = "turn_end"
@@ -131,13 +133,13 @@ func parseMemdLines(path, account string, lines [][]byte, st *memdFileState) (ev
 			}
 		case "user":
 			for _, x := range content {
-				b, ok := x.(*obj)
-				if !ok || b.get("type") != "tool_result" {
+				b, ok := x.(*pytext.Obj)
+				if !ok || b.Get("type") != "tool_result" {
 					continue
 				}
-				id := b.getStr("tool_use_id")
+				id := b.GetStr("tool_use_id")
 				if e, ok := pending[id]; ok {
-					e.Output = e.cap.output(memdRedact(textOf(b.get("content"))), truthy(b.get("is_error")))
+					e.Output = e.cap.output(memdRedact(textOf(b.Get("content"))), pytext.Truthy(b.Get("is_error")))
 					e.Observer, e.Sub = st.Observer, st.Sub
 					events = append(events, *e)
 					delete(pending, id)
@@ -168,15 +170,15 @@ func memdJSON(v any) string {
 	}
 	enc = func(v any) {
 		switch t := v.(type) {
-		case *obj:
+		case *pytext.Obj:
 			b.WriteByte('{')
-			for i, k := range t.keys {
+			for i, k := range t.Keys {
 				if i > 0 {
 					b.WriteByte(',')
 				}
 				str(k)
 				b.WriteByte(':')
-				enc(t.vals[k])
+				enc(t.Vals[k])
 			}
 			b.WriteByte('}')
 		case []any:

@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/jj-scoll/broodhall/internal/pytext"
 )
 
 // memdMigrateFork adds the fork columns to sessions. forked_from is the session this one was
@@ -91,21 +93,21 @@ WHERE root_uuid = ? AND session_id <> ? AND (forked_from = '' OR forked_from IS 
 
 // noteForkFacts latches the first message uuid, the first timestamp and any forkedFrom
 // session id seen in a transcript line.
-func noteForkFacts(d *obj, st *memdFileState) {
+func noteForkFacts(d *pytext.Obj, st *memdFileState) {
 	if st.forkKnown {
 		return
 	}
 	if st.RootUUID == "" {
-		st.RootUUID = d.getStr("uuid")
+		st.RootUUID = d.GetStr("uuid")
 	}
 	if st.OpenedAt.IsZero() {
-		if ts := d.getStr("timestamp"); ts != "" {
+		if ts := d.GetStr("timestamp"); ts != "" {
 			st.OpenedAt, _ = time.Parse(time.RFC3339Nano, ts)
 		}
 	}
 	if st.ForkedFrom == "" {
-		if ff := d.getObj("forkedFrom"); ff != nil {
-			st.ForkedFrom = ff.getStr("sessionId")
+		if ff := d.GetObj("forkedFrom"); ff != nil {
+			st.ForkedFrom = ff.GetStr("sessionId")
 		}
 	}
 }
