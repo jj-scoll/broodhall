@@ -70,6 +70,18 @@
       "title": "RTK command or path",
       "description": "The rtk executable to run when the rtk option is on. Empty means `rtk` from PATH.",
       "default": ""
+    },
+    "ecs_export": {
+      "type": "boolean",
+      "title": "Export guard decisions as ECS JSON lines",
+      "description": "Off by default. When on, each guard decision (mask, ask, block, nudge, would-ask, would-block) is also appended as one Elastic Common Schema JSON object per line to ~/.local/state/guardrails/events.ecs.jsonl, for a log shipper such as the Wazuh agent. Events hold the rule id, session id, host and user, never command text, paths or values.",
+      "default": false
+    },
+    "ecs_export_path": {
+      "type": "string",
+      "title": "ECS export file",
+      "description": "Where the ecs_export option writes, as an absolute path or ~/path. Empty means $XDG_STATE_HOME/guardrails/events.ecs.jsonl (~/.local/state/guardrails/events.ecs.jsonl). A relative path writes nothing.",
+      "default": ""
     }
   }
 }

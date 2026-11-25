@@ -5,6 +5,15 @@ guardrails, memory and context-guard share one version; see
 [jj-scoll/rtk](https://github.com/jj-scoll/rtk). Each release's full notes are on
 [GitHub Releases](https://github.com/jj-scoll/broodhall/releases).
 
+## Unreleased
+
+- guardrails: the new [`ecs_export`](../guardrails/options.md#ecs_export) option, off by
+  default, also writes each guard decision as one Elastic Common Schema JSON line to
+  `~/.local/state/guardrails/events.ecs.jsonl` (or
+  [`ecs_export_path`](../guardrails/options.md#ecs_export_path)), so a SIEM agent such as
+  Wazuh can ship it. An event holds the kind, the rule id, the session id, the host, the user
+  and the binary version. It never holds command text, paths or values. (#77)
+
 ## 1.12.1
 
 - guardrails: a [threat model](../reference/threat-model.md) maps threats T01 to T16 to the

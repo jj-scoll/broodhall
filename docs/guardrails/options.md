@@ -1,6 +1,6 @@
 # Options
 
-Ten plugin options, two files under `~/.config/guardrails/`, and two environment variables
+Twelve plugin options, two files under `~/.config/guardrails/`, and two environment variables
 that are not plugin options and have a section here (`HANDOFF_AUTOCLEAR` and
 `GUARDRAILS_BIN`). The older `claude-tools` names still work; see [Older names](#older-names).
 
@@ -239,6 +239,82 @@ Outside the plugin, set `GUARDRAILS_RTK=1`.
 
 Use this when rtk is not on the PATH that Claude Code's hooks see, for example
 `/opt/tools/bin/rtk`. Outside the plugin it is read from `GUARDRAILS_RTK_CMD`.
+
+## `ecs_export`
+
+| | |
+| --- | --- |
+| Title | Export guard decisions as ECS JSON lines |
+| Default | off |
+| Description | Off by default. When on, each guard decision (mask, ask, block, nudge, would-ask, would-block) is also appended as one Elastic Common Schema JSON object per line to ~/.local/state/guardrails/events.ecs.jsonl, for a log shipper such as the Wazuh agent. Events hold the rule id, session id, host and user, never command text, paths or values. |
+
+This is for a SIEM or log shipper. Every entry the guard ledger gets (the one the
+[receipt](receipt.md) and `guardrails guard-report` read) is also written to one file that
+all sessions share. Ask outcomes (`ran`, `not-run`) are not decisions, so they are not
+written. Each line is one JSON object:
+
+```json
+{"@timestamp":"2026-11-25T01:02:03Z","event":{"kind":"event","category":["intrusion_detection"],"provider":"guardrails","dataset":"guardrails.decisions","action":"block"},"rule":{"name":"download-exec","ruleset":"guardrails"},"observer":{"product":"guardrails","vendor":"broodhall","version":"1.12.1"},"host":{"name":"workstation"},"user":{"name":"you"},"labels":{"session_id":"0b6f3c1e-…"}}
+```
+
+| Field | Value |
+| --- | --- |
+| `@timestamp` | UTC time of the decision, to the second. |
+| `event.action` | The ledger kind: `mask`, `ask`, `block`, `nudge`, `would-ask` or `would-block` (the last two are from [observe mode](#observe)). |
+| `rule.name` | The rule id, the same one the receipt and `guard-report` show, such as `download-exec`, `dangerous:git` or `egress:pii`. |
+| `observer.version` | The guardrails binary's release, or its commit for an untagged build. |
+| `host.name`, `user.name` | The machine's hostname and the user running Claude Code. Each one is left out when it cannot be looked up. |
+| `labels.session_id` | The Claude Code session id. |
+
+The other fields are always the same. The field names and values are a contract that
+detection rules depend on, so a change to them is called out in the [changelog](../guide/changelog.md).
+
+**Privacy.** An event holds only the fields above. It has no command text, file paths,
+arguments, matched values or tool output. It holds what the ledger holds plus the session id,
+host, user and version, so the file cannot leak what a guard masked. Only the part of a rule
+id before its first space is kept, as in the ledger. Most rule ids are fixed names. A few end
+in the tool or the kind of write (`settings:Edit`, `pii-rules:sed`), and one ends in the name
+of the program that touched a secret file (`secret-file:python3`), but never in its arguments.
+The JSON is written by an encoder, so a rule id cannot add fields.
+
+**Failure.** A write that fails (a missing directory that cannot be created, a read-only
+file, a full disk) is ignored. It never changes or delays a guard's decision. Each event is
+one append to the file, so lines from concurrent sessions never mix. The file is created
+with mode `0600` and its directory with `0700`.
+
+The file is never rotated or trimmed. Each event opens the file again, so rotating it by
+renaming (logrotate's default) is safe.
+
+Outside the plugin, set `GUARDRAILS_ECS_EXPORT=1`; `true` and `yes` also turn it on. A set
+plugin option wins over it.
+
+### Example: Wazuh agent
+
+To have a Wazuh agent ship the events, add a `localfile` block to the agent's `ossec.conf`.
+Change the location to your home directory, or to your
+[`ecs_export_path`](#ecs_export_path):
+
+```xml
+<localfile>
+  <log_format>json</log_format>
+  <location>/home/you/.local/state/guardrails/events.ecs.jsonl</location>
+</localfile>
+```
+
+The file is mode `0600`, so the shipper must run as you or as root.
+
+## `ecs_export_path`
+
+| | |
+| --- | --- |
+| Title | ECS export file |
+| Default | empty |
+| Description | Where the ecs_export option writes, as an absolute path or ~/path. Empty means $XDG_STATE_HOME/guardrails/events.ecs.jsonl (~/.local/state/guardrails/events.ecs.jsonl). A relative path writes nothing. |
+
+It has no effect unless [`ecs_export`](#ecs_export) is on. A leading `~/` is your home
+directory. A missing directory is created. A relative path writes nothing, because it would
+point to a different place for each project. Outside the plugin it is read from
+`GUARDRAILS_ECS_EXPORT_PATH`.
 
 ## `HANDOFF_AUTOCLEAR`
 
