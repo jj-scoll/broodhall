@@ -2,7 +2,7 @@ module github.com/jj-scoll/broodhall
 
 go 1.27
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	github.com/dlclark/regexp2 v1.12.0
