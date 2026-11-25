@@ -5,7 +5,7 @@ guardrails, memory and context-guard share one version; see
 [jj-scoll/rtk](https://github.com/jj-scoll/rtk). Each release's full notes are on
 [GitHub Releases](https://github.com/jj-scoll/broodhall/releases).
 
-## Unreleased
+## 1.12.5
 
 - memory: a daemon that exits or fails to start no longer deletes the socket of another daemon
   that has since bound the same path, which left a running daemon unreachable (every client got
