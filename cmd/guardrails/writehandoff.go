@@ -9,6 +9,7 @@ package main
 //
 // The calls run `claude -p` on the user's own Claude Code login; an inherited
 // ANTHROPIC_API_KEY is dropped from the child's environment so it cannot bill an API account.
+// GUARDRAILS_WRITER_CONFIG_DIR, when set, picks the account (config dir) the calls run as.
 //
 //	guardrails write-handoff <transcript.jsonl> <next-steps file> <cwd> <session id>
 //
@@ -30,6 +31,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -302,13 +304,24 @@ func splitNext(text, session string) (name, next string) {
 }
 
 // childEnv is the environment for `claude -p`: the parent's, without ANTHROPIC_API_KEY, so the
-// call runs on the user's Claude Code login and a stray key bills nothing.
+// call runs on the user's Claude Code login and a stray key bills nothing. A non-empty
+// GUARDRAILS_WRITER_CONFIG_DIR is the config dir (account) every call runs as, whichever
+// account the session is on; the session's env-level tokens go too, since they would win
+// over that dir's login.
 func childEnv() []string {
+	drop := []string{"ANTHROPIC_API_KEY="}
+	cfg := os.Getenv("GUARDRAILS_WRITER_CONFIG_DIR")
+	if cfg != "" {
+		drop = append(drop, "CLAUDE_CONFIG_DIR=", "CLAUDE_CODE_OAUTH_TOKEN=", "ANTHROPIC_AUTH_TOKEN=")
+	}
 	env := []string{}
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "ANTHROPIC_API_KEY=") {
+		if !slices.ContainsFunc(drop, func(p string) bool { return strings.HasPrefix(kv, p) }) {
 			env = append(env, kv)
 		}
+	}
+	if cfg != "" {
+		env = append(env, "CLAUDE_CONFIG_DIR="+cfg)
 	}
 	return env
 }

@@ -214,6 +214,41 @@ func TestWriteHandoffRunsOneIsolatedHaikuCall(t *testing.T) {
 	}
 }
 
+func TestWriteHandoffWriterConfigDirPicksTheAccount(t *testing.T) {
+	for _, tc := range []struct {
+		name, writerDir string
+		wantDir         string
+		wantTokens      bool
+	}{
+		{"unset keeps the session's account", "", "/home/dev/.claude-work", true},
+		{"set runs as that account", "/home/dev/.claude-api", "/home/dev/.claude-api", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := hwSetup(t)
+			t.Setenv("CLAUDE_CONFIG_DIR", "/home/dev/.claude-work")
+			t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-session-token")
+			t.Setenv("ANTHROPIC_AUTH_TOKEN", "session-bearer-token")
+			t.Setenv("GUARDRAILS_WRITER_CONFIG_DIR", tc.writerDir)
+			if _, err := e.run(); err != nil {
+				t.Fatal(err)
+			}
+			for i, c := range e.calls() {
+				if got := c.env["CLAUDE_CONFIG_DIR"]; got != tc.wantDir {
+					t.Errorf("call %d: CLAUDE_CONFIG_DIR = %q, want %q", i, got, tc.wantDir)
+				}
+				for _, k := range []string{"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"} {
+					if _, ok := c.env[k]; ok != tc.wantTokens {
+						t.Errorf("call %d: %s present = %v, want %v", i, k, ok, tc.wantTokens)
+					}
+				}
+				if _, ok := c.env["ANTHROPIC_API_KEY"]; ok {
+					t.Errorf("call %d: child env has ANTHROPIC_API_KEY", i)
+				}
+			}
+		})
+	}
+}
+
 func TestWriteHandoffDropsTheAPIKeyFromTheChildEnv(t *testing.T) {
 	for _, auth := range []string{"", "api", "subscription"} {
 		t.Run("auth="+auth, func(t *testing.T) {
