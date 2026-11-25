@@ -24,7 +24,8 @@ the working directory, a `cd` earlier in the command, or `-chdir=`,
 You are about to run `terraform apply` in /home/you/infra and this session has run no `plan` there in the last 30 minutes. Run `terraform plan` first and check the diff, or apply a saved plan file; if a plan is genuinely unnecessary, say why.
 ```
 
-`terragrunt destroy` gets the same note with `terragrunt destroy` and `terragrunt plan` in it.
+`terragrunt apply` gets the same note with `terragrunt plan` in it. A `destroy` (and `apply -destroy`)
+asks instead, plan or not: see [Bash core](bash-core.md#asks).
 
 ### docker build
 

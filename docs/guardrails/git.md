@@ -27,6 +27,8 @@ BLOCKED: 'git push --force' is a high-risk destructive operation. Confirm with t
 ```
 
 A short `-f` answers `BLOCKED: 'git push -f ' is a high-risk destructive operation. ...`.
+A refspec with a leading `+` (`git push origin +main`, `+HEAD:main`) forces that update the
+same way and answers `BLOCKED: 'git push +refspec' is ...`.
 The force-push block is a core block and has no switch.
 
 ### Destructive local commands: ASK
@@ -41,6 +43,7 @@ silently.
 | `git clean -f` (`-fd`, `--force`) | deletes untracked files for good |
 | `git branch -D`, or `-d` with `-f` | force-deletes a branch, even one with unmerged commits |
 | `git stash` (bare, or with a flag), `git stash drop`, `git stash clear` | moves uncommitted changes out of the working tree, or deletes saved stashes for good |
+| `git push --delete`, `-d`, or a refspec with no source (`origin :branch`) | deletes the branch or tag on the remote, and with it any commits only it holds |
 
 ```text
 ASK: git reset --hard discards uncommitted changes and moves the branch. Confirm with the user before running it; prefer a reversible step (git stash push, a backup branch, git status first).
