@@ -92,7 +92,7 @@ func decide(env *guardEnv, cmd string) decision {
 		return d
 	}
 	// terraform destroy, aws s3 rm --recursive, find -delete: the user confirms (destructiveask.go).
-	if d := destructiveAsk(cmd); d.Ask {
+	if d := destructiveAsk(cmd, env.Home); d.Ask {
 		return d
 	}
 	// A computed command name with destructive arguments ("$c" -rf ~): the user confirms.

@@ -81,6 +81,10 @@ Only the exact targets above block. These all run:
   that is not an invocation is not read as one.
 - `dd if=/dev/zero of=out.img` (a file, not a device), `cat /etc/hosts` (a read), `chmod -R 777 /var/www/html`,
   `chown -R user /srv`, `docker run -v /home/user/dev:/src ubuntu`.
+- Commands that only print or only parse: `chmod`, `chown` or `rm` with `--help` or `--version` before the
+  operands (`chmod` and `chown` after them too, on Linux, unless `POSIXLY_CORRECT` is set on the command),
+  `bash -n`, `sh -n` and `zsh -n` (`bash -n -c 'rm -rf ~'`), and `git push --dry-run` (`-n`) with any
+  `+ref`, `--force`, `--delete` or `:ref`. `dd` and `rm -rf ~ --help` are still judged.
 
 ## Asks
 
@@ -89,9 +93,9 @@ you approve or refuse. They have no switch.
 
 | Rule | Asks before |
 | --- | --- |
-| `iac-destroy` | `terraform`, `tofu` or `terragrunt` `destroy`, and `apply -destroy`. `plan -destroy` passes. |
+| `iac-destroy` | `terraform`, `tofu` or `terragrunt` `destroy`, and `apply -destroy`. `plan -destroy` passes, and so does `terraform destroy -help` (`-h`, `--help`), or the same with `tofu`: they print help and run nothing. |
 | `s3-rm` | `aws s3 rm --recursive` and `aws s3 rb --force`. A single-key `rm` passes. |
-| `find-delete` | `find ... -delete`, and `find -exec` or `-execdir` running `rm`. |
+| `find-delete` | `find ... -delete`, and `find -exec` or `-execdir` running `rm`, when a start path is one the `rm` rule blocks (`/`, `~`, `/home`, `/nix`, `/storage`). `find ./dist -delete` passes like `rm -rf ./dist`. |
 | `dynamic-command` | A command whose name is only known when it runs (`"$c"`, `$GIT`, `$(which git)`), when its arguments would be destructive for `rm`, `git`, `chmod`, `chown`, `dd`, `find`, `terraform` or `aws`. `"$EDITOR" notes.md` and `${GO:-go} build` pass. |
 | `opaque-shell` | A program's output piped into `sh`, `bash` or `zsh`, or sourced from `<(...)` (`./gen \| sh`, `printf '%s' "$CMD" \| sh`, `source <(./gen)`). A fixed payload is read as itself, a download asks as [Download and run](download-exec.md), and `cat script.sh \| bash` passes like `bash script.sh`. |
 

@@ -219,7 +219,18 @@ func rmRootTarget(cmd, home string) (string, bool) {
 	return t, t != ""
 }
 
+// rmArgsTarget returns the protected target of a recursive, forced rm. rm --help and --version
+// among the leading options print and remove nothing, with any getopt; one after the first
+// operand is not trusted, since BSD rm would take it for a file.
 func rmArgsTarget(args []string, home string) string {
+	for _, a := range args {
+		if a == "--help" || a == "--version" {
+			return ""
+		}
+		if !strings.HasPrefix(a, "-") || a == "-" || a == "--" {
+			break
+		}
+	}
 	var recursive, force, endFlags bool
 	var targets []string
 	for _, a := range args {

@@ -10,13 +10,13 @@ import (
 	"strings"
 )
 
-func destructiveAsk(cmd string) decision {
+func destructiveAsk(cmd, home string) decision {
 	cmds, ok := parseShell(cmd)
 	if !ok {
 		return decision{}
 	}
 	for _, c := range cmds {
-		if rule, what := argvDestructiveAsk(c.Words); rule != "" {
+		if rule, what := argvDestructiveAsk(c.Words, home); rule != "" {
 			return decision{Ask: true, Rule: rule, Msg: "ASK: " + what + ". Confirm with the user before running it."}
 		}
 	}
@@ -29,7 +29,7 @@ var awsArgOpts = map[string]bool{"--profile": true, "--region": true, "--output"
 	"--cli-binary-format": true}
 
 // argvDestructiveAsk names the rule one argv (wrappers peeled) breaks and what it loses.
-func argvDestructiveAsk(w []string) (rule, what string) {
+func argvDestructiveAsk(w []string, home string) (rule, what string) {
 	if len(w) == 0 {
 		return "", ""
 	}
@@ -46,6 +46,11 @@ func argvDestructiveAsk(w []string) (rule, what string) {
 	switch name {
 	case "terraform", "tofu", "terragrunt":
 		// destroy, or apply -destroy; terragrunt also as run-all destroy / run --all destroy.
+		// terraform and tofu print the subcommand's help for -help or --help, whatever else
+		// is on the line, and run nothing; terragrunt may init first, so it still asks.
+		if name != "terragrunt" && helpFlag(args) {
+			return "", ""
+		}
 		if hasArg(pos, "destroy") || hasArg(pos, "apply") && hasArg(args, "-destroy", "--destroy") {
 			return "iac-destroy", name + " destroy deletes every resource the configuration manages; run " + name + " plan -destroy first and show the user what goes"
 		}
@@ -59,13 +64,17 @@ func argvDestructiveAsk(w []string) (rule, what string) {
 			}
 		}
 	case "find":
+		// The rm rule's policy: find reaches only its start paths, so it asks where
+		// rm -rf <start path> blocks (a protected root) and passes ./dist, /tmp, no path.
 		del := hasArg(args, "-delete")
+		rmRoot := false
 		for _, ea := range execArgs(w) {
 			if e := peelWrappers(ea); len(e) > 0 && path.Base(e[0]) == "rm" {
 				del = true
+				rmRoot = rmRoot || rmArgsTarget(e[1:], home) != ""
 			}
 		}
-		if del {
+		if del && (rmRoot || findStartsProtected(args, home)) {
 			return "find-delete", "find -delete (or -exec rm) removes every file the expression matches, with no undo; run the same find without it first to see the list"
 		}
 	}
@@ -107,7 +116,7 @@ func argvDestructive(w []string, home string) bool {
 	sc := simpleCmd{Words: w}
 	sub, args := gitSub(w)
 	r, _ := gitDestructiveArgs(sub, args)
-	rule, _ := argvDestructiveAsk(w)
+	rule, _ := argvDestructiveAsk(w, home)
 	return path.Base(w[0]) == "rm" && rmArgsTarget(w[1:], home) != "" || gitPushForce(w) != "" || r != "" || rule != "" ||
 		ddRule(sc, home).Exit != 0 || chmodRule(sc, home).Exit != 0 || chownRule(sc, home).Exit != 0
 }
@@ -127,4 +136,38 @@ func opaqueShell(cmd string) decision {
 		}
 	}
 	return decision{}
+}
+
+// helpFlag reports -h, -help or --help before any "--": the terraform and tofu CLIs print the
+// subcommand's help for each of them wherever it stands among the arguments (checked with
+// terraform and tofu destroy; neither has another -h option).
+func helpFlag(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if a == "-h" || a == "-help" || a == "--help" {
+			return true
+		}
+	}
+	return false
+}
+
+// findStartsProtected reports whether any start path of a find (the words before its first
+// expression, after the -H -L -P -D -O options) is a protected target of the rm rule. A find
+// with no start path searches ".".
+func findStartsProtected(args []string, home string) bool {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-D":
+			i++
+		case a == "-H" || a == "-L" || a == "-P" || strings.HasPrefix(a, "-O") || strings.HasPrefix(a, "-D"):
+		case strings.HasPrefix(a, "-") && a != "-" || a == "(" || a == "!" || a == "\\(":
+			return false
+		case rootName(a, home) != "":
+			return true
+		}
+	}
+	return false
 }

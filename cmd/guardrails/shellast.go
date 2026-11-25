@@ -183,6 +183,21 @@ func parseShellDepth(cmd string, depth int, ms *container.MountSet) ([]simpleCmd
 	return out, true
 }
 
+// noExec reports whether a shell's options hold -n (noexec): it parses its script, -c string
+// or heredoc and runs nothing. Only the options before the first operand count; later words
+// are the script's arguments (bash -c 'rm -rf ~' -n runs it, with $0 set to -n).
+func noExec(args []string) bool {
+	for _, a := range args {
+		if a == "--" || !strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "+") {
+			return false
+		}
+		if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "n") {
+			return true
+		}
+	}
+	return false
+}
+
 type nestedScript struct {
 	text    string
 	lenient bool // a failed parse is not a failure of the whole command (ssh argument guesses)
@@ -198,6 +213,9 @@ func nestedScripts(w []string, feeds []string) []nestedScript {
 	args := w[1:]
 	switch path.Base(w[0]) {
 	case "bash", "sh", "zsh", "dash", "ksh":
+		if noExec(args) {
+			return nil // reads the script and runs none of it
+		}
 		if script := dashC(args); script != "" {
 			out = append(out, nestedScript{text: script})
 		}

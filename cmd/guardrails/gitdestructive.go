@@ -105,7 +105,11 @@ func gitDestructiveArgs(sub string, args []string) (rule, what string) {
 			return "git-clean-f", "git clean -f deletes untracked files for good"
 		}
 	case "push":
-		// --delete, -d, or a refspec with an empty source (:branch) deletes the remote ref.
+		// --delete, -d, or a refspec with an empty source (:branch) deletes the remote ref;
+		// a dry run deletes nothing.
+		if pushDryRun(args) {
+			break
+		}
 		del := hasArg(args, "--delete") || strings.Contains(flags, "d")
 		for _, a := range args {
 			del = del || len(a) > 1 && a[0] == ':'

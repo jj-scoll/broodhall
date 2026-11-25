@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/jj-scoll/broodhall/internal/container"
@@ -78,6 +79,38 @@ func forkBombRule(c simpleCmd, _ string) decision {
 	return decision{}
 }
 
+// gnuGetopt is whether option parsing finds --help after the operands (chmod -R 000 ~ --help):
+// glibc and musl permute the arguments, BSD getopt stops at the first operand and would treat
+// --help as one more file.
+var gnuGetopt = runtime.GOOS == "linux"
+
+// infoOnly reports whether a GNU coreutils command (chmod, chown, rm) only prints its help or
+// version: --help or --version before any "--", seen while the options are parsed, ahead of
+// any change. After the first operand it counts only where getopt permutes and
+// POSIXLY_CORRECT is not in the command's environment (which stops the permuting).
+func infoOnly(c simpleCmd, args []string) bool {
+	operands := false
+	for _, a := range args {
+		switch {
+		case a == "--":
+			return false
+		case a == "--help" || a == "--version":
+			if !operands {
+				return true
+			}
+			for _, e := range c.Env {
+				if strings.HasPrefix(e, "POSIXLY_CORRECT=") {
+					return false
+				}
+			}
+			return gnuGetopt
+		case !strings.HasPrefix(a, "-") || a == "-":
+			operands = true
+		}
+	}
+	return false
+}
+
 // recursiveFlag reports -R, --recursive or a short cluster holding R (-Rv, -hR).
 func recursiveFlag(a string) bool {
 	return a == "--recursive" || strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "R")
@@ -91,7 +124,7 @@ var openMode = regexp.MustCompile(`^(0?777|(a|ugo)\+rwx)$`)
 // 755 or go-rwx is as lasting as 777, which keeps its own reply. A repository root is not a
 // target: git records the executable bit. The old substring also hit /var/www/x.
 func chmodRule(c simpleCmd, home string) decision {
-	if argv0(c) != "chmod" {
+	if argv0(c) != "chmod" || infoOnly(c, c.Words[1:]) {
 		return decision{}
 	}
 	var recursive, open bool
@@ -124,7 +157,7 @@ func chmodRule(c simpleCmd, home string) decision {
 // chownRule: recursive chown of a protected target, the same targets as the rm and chmod
 // rules. The old substring blocked every chown -R, scratch dirs and containers' own files too.
 func chownRule(c simpleCmd, home string) decision {
-	if argv0(c) != "chown" {
+	if argv0(c) != "chown" || infoOnly(c, c.Words[1:]) {
 		return decision{}
 	}
 	var recursive bool

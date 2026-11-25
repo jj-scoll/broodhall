@@ -13,3 +13,8 @@
   `aws s3 rm --recursive` and `s3 rb --force` (`s3-rm`), `find -delete` and `find -exec rm`
   (`find-delete`). `git push --delete` and `git push origin :branch` ask under the `git`
   family (`git-push-delete`). (#85)
+- guardrails: commands that only look destructive pass. `git push --dry-run` (`-n`) with `+ref`,
+  `--force`, `--delete` or `:ref`; `--help` or `--version` on `chmod`, `chown` and `rm`, and
+  `-h`, `-help` or `--help` on `terraform` and `tofu` `destroy`; `bash -n`, `sh -n` and `zsh -n`, which
+  parse and run nothing; and `find ... -delete` or `-exec rm` on a start path the `rm` rule
+  allows (`find ./dist -delete`), which asks only where `rm -rf` of that path blocks. (#85)
