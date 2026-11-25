@@ -24,6 +24,9 @@ const (
 	socketDialBudget = 500 * time.Millisecond
 )
 
+// socketDial dials the daemon socket; a variable so tests can simulate a dial timeout.
+var socketDial = net.DialTimeout
+
 // memdTools are the MCP tools served over POST /tool/{name}: the twelve memory tools minus smart_*.
 var memdTools = map[string]func(db *sql.DB, args map[string]any) (string, error){
 	"search":           memSearch,
@@ -252,21 +255,48 @@ func byFileCtx(ctx context.Context, db *sql.DB, path, project string) (string, e
 	return s, nil
 }
 
+// socketListener is a unix listener that removes its socket path on Close only while the
+// path is still the socket it bound. net's own unlink-on-close is off: it unlinks by name,
+// which would delete a newer daemon's socket if this path has been rebound since.
+type socketListener struct {
+	*net.UnixListener
+	path string
+	fi   os.FileInfo // the socket as bound, for os.SameFile
+}
+
+func (l *socketListener) Close() error {
+	err := l.UnixListener.Close()
+	if fi, serr := os.Lstat(l.path); serr == nil && os.SameFile(fi, l.fi) {
+		os.Remove(l.path)
+	}
+	return err
+}
+
 // listenSocket listens on a unix socket at path with mode 0600 from creation (umask 0177
 // around bind; the umask is process-wide, so call it at daemon start, not concurrently with
-// file creation). A leftover socket is removed only when dialing it fails; a live listener
-// yields an error and its socket is left alone.
+// file creation). A leftover socket is removed only when dialing it is refused (nobody
+// listening); a live listener, or one that cannot be verified (dial timeout, other error),
+// yields an error and its socket is left alone. The returned listener's Close removes the
+// path only if it is still the socket this call created.
 func listenSocket(path string) (net.Listener, error) {
 	if fi, err := os.Lstat(path); err == nil {
 		if fi.Mode()&os.ModeSocket == 0 {
 			return nil, fmt.Errorf("%s exists and is not a socket", path)
 		}
-		if c, err := net.DialTimeout("unix", path, socketDialBudget); err == nil {
+		c, err := socketDial("unix", path, socketDialBudget)
+		switch {
+		case err == nil:
 			c.Close()
 			return nil, fmt.Errorf("%s: already in use by a running daemon", path)
-		}
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			return nil, fmt.Errorf("remove stale socket: %w", err)
+		case errors.Is(err, syscall.ECONNREFUSED):
+			// Nobody listening: stale.
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return nil, fmt.Errorf("remove stale socket: %w", err)
+			}
+		case errors.Is(err, os.ErrNotExist):
+			// Vanished since the Lstat.
+		default:
+			return nil, fmt.Errorf("%s: cannot verify the socket is stale (a busy daemon may own it): %w", path, err)
 		}
 	}
 	old := syscall.Umask(0o177)
@@ -275,9 +305,18 @@ func listenSocket(path string) (net.Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listen %s: %w", path, err)
 	}
+	ul := ln.(*net.UnixListener)
+	ul.SetUnlinkOnClose(false)
+	sl := &socketListener{UnixListener: ul, path: path}
+	fi, err := os.Lstat(path)
+	if err != nil {
+		ul.Close()
+		return nil, fmt.Errorf("stat socket: %w", err)
+	}
+	sl.fi = fi
 	if err := os.Chmod(path, 0o600); err != nil {
-		ln.Close()
+		sl.Close()
 		return nil, fmt.Errorf("chmod socket: %w", err)
 	}
-	return ln, nil
+	return sl, nil
 }
