@@ -216,6 +216,9 @@ func unescapeLit(b *strings.Builder, s string, dquote bool) {
 
 // selfPipeBomb matches the fork bomb shape: f() { f | f & }.
 func selfPipeBomb(fn *syntax.FuncDecl) bool {
+	if fn.Name == nil || fn.Body == nil { // "()0" parses as a FuncDecl with no name
+		return false
+	}
 	name := fn.Name.Value
 	calls := func(s *syntax.Stmt) bool {
 		c, ok := s.Cmd.(*syntax.CallExpr)

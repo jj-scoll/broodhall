@@ -108,8 +108,12 @@ jobs:
       tag: ${{ needs.prepare.outputs.tag }}
       ref: ${{ needs.prepare.outputs.sha }}
       draft: true
+    # A called workflow gets at most these; release.yml's publish job signs the build
+    # provenance attestation with id-token and stores it with attestations.
     permissions:
       contents: write
+      id-token: write
+      attestations: write
 
   finalize:
     needs: [prepare, release]

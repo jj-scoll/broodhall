@@ -32,7 +32,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*",
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|WebFetch|WebSearch|mcp__.*",
         "hooks": [
           { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run.sh\" pre-tool-use", "onFailure": "block" }
         ]
@@ -60,7 +60,7 @@
       }
 ,
       {
-        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*",
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|WebFetch|WebSearch|mcp__.*",
         "hooks": [
           { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run.sh\" ask-outcome" }
         ]
@@ -75,7 +75,7 @@
       }
 ,
       {
-        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*",
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|WebFetch|WebSearch|mcp__.*",
         "hooks": [
           { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run.sh\" ask-outcome" }
         ]

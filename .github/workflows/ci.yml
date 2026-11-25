@@ -55,6 +55,24 @@ jobs:
         run: bash .github/scripts/test/pin-checksums_test.sh
       - if: runner.os == 'Linux'
         run: bash .github/scripts/test/draft-release_test.sh
+      - if: runner.os == 'Linux'
+        run: bash .github/scripts/test/threat-model-page_test.sh
+      - if: runner.os == 'Linux'
+        run: bash .github/scripts/test/coverage-badge_test.sh
+
+  # govulncheck exits 3 when the code calls a known-vulnerable symbol, which fails the job;
+  # imported-but-not-called findings are informational and exit 0. Go comes from go.mod's
+  # toolchain line (not "stable", golang/govulncheck-action's default), so the standard
+  # library it checks is the one release builds use. The vulnerability DB is fetched live.
+  govulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
 
   # context-guard is a hooks module (hooks/context-guard.mjs); `claude plugin test` runs its
   # tests/*.test.ts in Claude Code's own test host, offline and without a login. Keep the
@@ -81,7 +99,7 @@ jobs:
     timeout-minutes: 30
     env:
       CGO_ENABLED: "1"
-      # Keep in step with release.yml.
+      # Keep in step with release.yml and pages.yml.
       DUCKDB_VERSION: v2.0.0
     steps:
       - uses: actions/checkout@v7

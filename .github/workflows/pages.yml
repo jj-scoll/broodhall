@@ -1,6 +1,7 @@
-# Builds the docs site with the generator version site-check.sh pins, then
-# deploys it to GitHub Pages (repository setting: Pages source is
-# "GitHub Actions").
+# Builds the docs site with the pinned generator version, then deploys it to GitHub Pages
+# (repository setting: Pages source is "GitHub Actions"). The site also serves coverage.json, the
+# shields.io endpoint behind the README's coverage badge, and the threat model generated from
+# THREAT_MODEL.md, so Go and threat-model changes redeploy it too.
 name: pages
 
 on:
@@ -9,13 +10,19 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
+      - "THREAT_MODEL.md"
+      - "cmd/**"
+      - "tools/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/scripts/threat-model-page.sh"
+      - ".github/scripts/coverage-badge.sh"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
+# The build job runs the test suite, so only the deploy job may write to Pages.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -24,10 +31,48 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # memory's tests need cgo and the signed DuckDB extensions. Keep in step with ci.yml.
+      CGO_ENABLED: "1"
+      DUCKDB_VERSION: v2.0.0
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # The badge never holds back the docs: a failed download, test or measurement leaves the
+      # step failed but the job going, and the deploy below republishes the last badge.
+      - name: Coverage
+        id: coverage
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/ext"
+          for e in fts httpfs quack; do
+            curl -fsSL --retry 3 "https://extensions.duckdb.org/$DUCKDB_VERSION/linux_amd64/$e.duckdb_extension.gz" |
+              gunzip > "$RUNNER_TEMP/ext/$e.duckdb_extension"
+          done
+          MEMORY_EXT_DIR="$RUNNER_TEMP/ext" go test ./... -count=1 -timeout 20m -coverprofile="$RUNNER_TEMP/cover.out"
+          go tool cover -func="$RUNNER_TEMP/cover.out" | .github/scripts/coverage-badge.sh > "$RUNNER_TEMP/coverage.json"
+          cat "$RUNNER_TEMP/coverage.json"
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: .github/scripts/threat-model-page.sh THREAT_MODEL.md docs/reference/threat-model.md
       - run: uvx zensical@0.0.74 build --strict
+      # A failed measurement publishes nothing new: the badge keeps the last good number. With
+      # no badge on the live site either, the deploy goes ahead without one.
+      - name: Coverage badge
+        env:
+          OUTCOME: ${{ steps.coverage.outcome }}
+        run: |
+          if [ "$OUTCOME" = success ]; then
+            cp "$RUNNER_TEMP/coverage.json" site/coverage.json
+          elif curl -fsSL --retry 3 -o site/coverage.json https://jj-scoll.github.io/broodhall/coverage.json; then
+            echo "::warning::coverage not measured; republishing the last badge: $(cat site/coverage.json)"
+          else
+            rm -f site/coverage.json
+            echo "::warning::coverage not measured and no earlier badge; deploying without one"
+          fi
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
@@ -35,6 +80,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
