@@ -7,9 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 )
 
 // memdQuackURI is where quack_serve listens: loopback only. Tests point it at a free port.
@@ -35,6 +38,9 @@ func startQuack(db *sql.DB, dir string) (err error) {
 			return fmt.Errorf("quack setup %q: %w", s, err)
 		}
 	}
+	if err := checkQuackPortFree(memdQuackURI); err != nil {
+		return err
+	}
 	token, err := quackToken(dir)
 	if err != nil {
 		return err
@@ -48,6 +54,27 @@ func startQuack(db *sql.DB, dir string) (err error) {
 	}
 	workerLogf("memory quack: serving %s (token in %s)", uri, filepath.Join(dir, "quack.token"))
 	return nil
+}
+
+// checkQuackPortFree fails unless nothing listens on the Quack address. The quack extension
+// binds with SO_REUSEPORT (native code, so Go cannot change it), which lets a second daemon share
+// the port silently and split the first one's connections. A connect probe finds any listener
+// regardless of its socket options, while connections lingering from a stopped server (TIME_WAIT,
+// FIN_WAIT2) do not answer it, so an in-place restart still works. A bind probe would refuse that
+// restart: the old connections' sockets lack SO_REUSEADDR. Only ECONNREFUSED counts as free; a
+// timeout or any other error means something is there. A probe connection is opened and closed,
+// which a live daemon sees as one empty client. The window before quack_serve binds is accepted.
+func checkQuackPortFree(uri string) error {
+	addr := strings.TrimPrefix(uri, "quack:")
+	c, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err == nil {
+		c.Close()
+		return fmt.Errorf("port %s already in use, not starting quack", addr)
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return nil
+	}
+	return fmt.Errorf("port %s already in use or unreachable, not starting quack: %w", addr, err)
 }
 
 // quackToken returns the token stored in dir/quack.token, creating the file with mode 0600
