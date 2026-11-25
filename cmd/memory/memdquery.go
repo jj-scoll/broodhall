@@ -205,7 +205,7 @@ func clipBytes(s string, n int) string {
 
 func fmtDay(t time.Time) string      { return t.In(memdQueryTZ).Format("Jan 2, 2006") }
 func fmtClock(t time.Time) string    { return t.In(memdQueryTZ).Format("3:04 PM") }
-func fmtDayClock(t time.Time) string { return t.In(memdQueryTZ).Format("Jan 2, 3:04 PM") }
+func fmtDayClock(t time.Time) string { return t.In(memdQueryTZ).Format("Jan 2, 2006, 3:04 PM") }
 
 // ---- row types and loading ----
 
