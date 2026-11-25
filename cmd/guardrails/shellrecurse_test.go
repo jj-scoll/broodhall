@@ -110,3 +110,63 @@ func TestInnerShellStatefulRulesStayOuter(t *testing.T) {
 		t.Errorf("a plan inside a container marked state: %v", st)
 	}
 }
+
+// TestResolvedCommandNames pins that a command name the shell computes gets the same decision
+// as the plain name when the guard can work it out (an assignment earlier in the line, ANSI-C
+// quoting, a static $(printf ...), brace expansion, a function, $IFS), and asks when it cannot
+// but the arguments would be destructive under some name.
+func TestResolvedCommandNames(t *testing.T) {
+	const (
+		rmRoot  = "block:dangerous:rm -rf /"
+		rmHome  = "block:dangerous:rm -rf ~"
+		rmHOME  = "block:dangerous:rm -rf $HOME"
+		dynamic = "ask:dynamic-command"
+		allowed = "allow"
+	)
+	tests := []struct {
+		name string
+		cmd  string
+		want string
+	}{
+		{"assigned name", `c=rm; "$c" -rf ~`, rmHome},
+		{"assigned git", `c=git; "$c" clean -fdx`, "ask:git-clean-f"},
+		{"ansi-c name", `$'\x72\x6d' -rf ~`, rmHome},
+		{"ansi-c octal", `$'\162\155' -rf /`, rmRoot},
+		{"ansi-c behind nohup", `nohup $'\x67\x69\x74' stash clear`, "ask:git-stash"},
+		{"ansi-c in a function", `cleanup() { $'\x67\x69\x74' stash clear; }; cleanup`, "ask:git-stash"},
+		{"printf name", `"$(printf '\162\155')" -rf --no-preserve-root /`, rmRoot},
+		{"backquoted printf", "`printf rm` -rf ~", rmHome},
+		{"echo name", `$(echo rm) -rf ~`, rmHome},
+		{"brace expansion", `{rm,-rf,~}`, rmHome},
+		{"brace expansion HOME", `{rm,-rf,$HOME}`, rmHOME},
+		{"shadowing function", `r() { rm "$@"; }; r -rf $HOME`, rmHOME},
+		{"function with positional", `del() { rm -rf "$1"; }; del ~`, rmHome},
+		{"function keyword", `function r { git reset --hard "$@"; }; r HEAD~3`, "ask:git-reset-hard"},
+		{"IFS as space", `rm${IFS}-rf${IFS}$HOME`, rmHOME},
+		{"unquoted value splits", `c="rm -rf"; $c ~`, rmHome},
+		{"unknown name, rm args", `"$c" -rf ~`, dynamic},
+		{"unknown name, git args", `$GIT reset --hard`, dynamic},
+		{"unknown subst, push args", `$(which git) push --force origin main`, dynamic},
+
+		{"editor variable", `"$EDITOR" notes.md`, allowed},
+		{"python variable", `$PYTHON x.py`, allowed},
+		{"default value", `${GO:-go} build ./...`, allowed},
+		{"assigned ls", `c=ls; "$c" -la`, allowed},
+		{"ansi-c ls", `$'\x6c\x73' -la`, allowed},
+		{"brace in args", `cp main.go{,.bak}`, allowed},
+		{"brace in echo", `echo {a,b}`, allowed},
+		{"function body alone", `r() { rm "$@"; }`, allowed},
+		{"function on a safe path", `r() { rm "$@"; }; r -rf /tmp/build`, allowed},
+		{"quoted IFS", `echo "$IFS"`, allowed},
+		{"run wrapper", `run() { "$@"; }; run ls -la`, allowed},
+		{"run wrapper on rm", `run() { "$@"; }; run rm -rf ~`, rmHome},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := &guardEnv{Now: time.Unix(1_800_000_000, 0), Session: "s", Cwd: "/work", Home: "/nohome/user", State: memState{}}
+			if got := decide(env, tt.cmd).Kind(); got != tt.want {
+				t.Errorf("decide(%q) = %s, want %s", tt.cmd, got, tt.want)
+			}
+		})
+	}
+}

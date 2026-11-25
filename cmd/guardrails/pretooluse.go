@@ -95,6 +95,10 @@ func decide(env *guardEnv, cmd string) decision {
 	if d := destructiveAsk(cmd); d.Ask {
 		return d
 	}
+	// A computed command name with destructive arguments ("$c" -rf ~): the user confirms.
+	if d := dynamicCommand(cmd, env.Home); d.Ask {
+		return d
+	}
 	// Python reading raw client data prints it unmasked: the user confirms.
 	if d := rawClientDataRule(cmd); d.Ask && !env.Off["raw-client-data"] && !env.observed(d) {
 		return d

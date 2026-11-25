@@ -71,3 +71,43 @@ func argvDestructiveAsk(w []string) (rule, what string) {
 	}
 	return "", ""
 }
+
+// dynamicNames are the commands whose arguments the guard can judge on their own.
+var dynamicNames = []string{"rm", "git", "chmod", "chown", "dd", "find", "terraform", "tofu", "terragrunt", "aws"}
+
+// dynamicCommand asks when a command's name is only known at run time ("$c", $GIT,
+// $(which git)) and its arguments would be destructive behind one of dynamicNames, or as a
+// command of their own (the name expanding to a wrapper or to nothing). Names the line
+// resolves itself were substituted by parseShell; "$EDITOR" file or ${GO:-go} build pass.
+func dynamicCommand(cmd, home string) decision {
+	cmds, ok := parseShell(cmd)
+	if !ok {
+		return decision{}
+	}
+	for _, c := range cmds {
+		if len(c.Words) == 0 || !strings.ContainsAny(path.Base(c.Words[0]), "$`") {
+			continue
+		}
+		cands := [][]string{c.Words[1:]}
+		for _, name := range dynamicNames {
+			cands = append(cands, append([]string{name}, c.Words[1:]...))
+		}
+		for _, w := range cands {
+			if len(w) > 0 && argvDestructive(w, home) {
+				return decision{Ask: true, Rule: "dynamic-command",
+					Msg: "ASK: the command name is only known at run time, and with these arguments it could be " + path.Base(w[0]) + " deleting or overwriting what cannot be restored. Confirm with the user before running it."}
+			}
+		}
+	}
+	return decision{}
+}
+
+// argvDestructive reports whether any block or ask rule that reads one argv fires on w.
+func argvDestructive(w []string, home string) bool {
+	sc := simpleCmd{Words: w}
+	sub, args := gitSub(w)
+	r, _ := gitDestructiveArgs(sub, args)
+	rule, _ := argvDestructiveAsk(w)
+	return path.Base(w[0]) == "rm" && rmArgsTarget(w[1:], home) != "" || gitPushForce(w) != "" || r != "" || rule != "" ||
+		ddRule(sc, home).Exit != 0 || chmodRule(sc, home).Exit != 0 || chownRule(sc, home).Exit != 0
+}
