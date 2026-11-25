@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -1545,10 +1546,21 @@ func fE(s string) any {
 	if err != nil {
 		return s
 	}
-	if _, err := dec.Token(); err == nil {
-		return s // trailing data
+	if _, err := dec.Token(); err != io.EOF {
+		return s // trailing data: more JSON (err == nil) or a syntax error from other text
 	}
 	return v
+}
+
+// nestedNonEmpty reports whether v renders as a multi-line outline (a non-empty list or object).
+func nestedNonEmpty(v any) bool {
+	switch x := v.(type) {
+	case []any:
+		return len(x) > 0
+	case *orderedObj:
+		return len(x.keys) > 0
+	}
+	return false
 }
 
 // dE renders a tool payload as a bounded, indented outline.
@@ -1598,7 +1610,11 @@ func dE(v any, depth int) string {
 	}
 	lines := make([]string, len(keys))
 	for i := range keys {
-		lines[i] = strings.Repeat("  ", depth) + eeLine(keys[i], 80) + ": " + dE(vals[i], depth+1)
+		sep := ": "
+		if nestedNonEmpty(vals[i]) && depth+1 < 4 {
+			sep = ":\n" // children carry their own indentation
+		}
+		lines[i] = strings.Repeat("  ", depth) + eeLine(keys[i], 80) + sep + dE(vals[i], depth+1)
 	}
 	out := strings.Join(lines, "\n")
 	if total > len(keys) {
