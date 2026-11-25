@@ -36,6 +36,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/jj-scoll/broodhall/internal/pytext"
 )
 
 var errImportRunning = errors.New("an import is already running")
@@ -270,8 +272,8 @@ func peekOpened(path string) time.Time {
 	var st memdFileState
 	for i := 0; i < importPeekLines && st.OpenedAt.IsZero(); i++ {
 		line, err := br.ReadBytes('\n')
-		if v, derr := decodeJSON(line); derr == nil {
-			if d, ok := v.(*obj); ok {
+		if v, derr := pytext.DecodeJSON(line); derr == nil {
+			if d, ok := v.(*pytext.Obj); ok {
 				noteForkFacts(d, &st)
 			}
 		}

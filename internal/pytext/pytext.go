@@ -1,4 +1,6 @@
-package main
+// Package pytext reproduces the Python text, JSON and regex behavior the handoff writer
+// and memory transcript readers were measured against.
+package pytext
 
 // Python-compatible text handling for the handoff writer port. Its prompts were measured as
 // ~/.claude/hooks/handoff_writer.py built them, so each helper here reproduces one Python
@@ -21,36 +23,38 @@ import (
 	"github.com/dlclark/regexp2"
 )
 
-// obj is a JSON object with its keys in source order, as json.loads builds a dict: a
+// Obj is a JSON object with its keys in source order, as json.loads builds a dict: a
 // repeated key keeps its first position and takes the last value.
-type obj struct {
-	keys []string
-	vals map[string]any
+type Obj struct {
+	Keys []string
+	Vals map[string]any
 }
 
-func (o *obj) get(k string) any {
+// Get is dict.get(k): nil for a missing key or a nil object.
+func (o *Obj) Get(k string) any {
 	if o == nil {
 		return nil
 	}
-	return o.vals[k]
+	return o.Vals[k]
 }
 
-// lookup is dict.get(k, default) when the default matters: ok is false if k is absent.
-func (o *obj) lookup(k string) (v any, ok bool) {
+// Lookup is dict.get(k, default) when the default matters: ok is false if k is absent.
+func (o *Obj) Lookup(k string) (v any, ok bool) {
 	if o == nil {
 		return nil, false
 	}
-	v, ok = o.vals[k]
+	v, ok = o.Vals[k]
 	return v, ok
 }
 
-func (o *obj) getObj(k string) *obj { v, _ := o.get(k).(*obj); return v }
+// GetObj is the object at k, nil when k is absent or not an object.
+func (o *Obj) GetObj(k string) *Obj { v, _ := o.Get(k).(*Obj); return v }
 
-// getStr is o.get(k) when only a string value is usable; anything else gives "".
-func (o *obj) getStr(k string) string { v, _ := o.get(k).(string); return v }
+// GetStr is o.Get(k) when only a string value is usable; anything else gives "".
+func (o *Obj) GetStr(k string) string { v, _ := o.Get(k).(string); return v }
 
-// decodeJSON parses one JSON text as json.loads does, keeping key order and number literals.
-func decodeJSON(data []byte) (any, error) {
+// DecodeJSON parses one JSON text as json.loads does, keeping key order and number literals.
+func DecodeJSON(data []byte) (any, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
 	v, err := decodeValue(dec)
@@ -74,7 +78,7 @@ func decodeValue(dec *json.Decoder) (any, error) {
 	}
 	switch d {
 	case '{':
-		o := &obj{vals: map[string]any{}}
+		o := &Obj{Vals: map[string]any{}}
 		for dec.More() {
 			kt, err := dec.Token()
 			if err != nil {
@@ -85,10 +89,10 @@ func decodeValue(dec *json.Decoder) (any, error) {
 			if err != nil {
 				return nil, err
 			}
-			if _, seen := o.vals[k]; !seen {
-				o.keys = append(o.keys, k)
+			if _, seen := o.Vals[k]; !seen {
+				o.Keys = append(o.Keys, k)
 			}
-			o.vals[k] = v
+			o.Vals[k] = v
 		}
 		_, err = dec.Token()
 		return o, err
@@ -107,9 +111,9 @@ func decodeValue(dec *json.Decoder) (any, error) {
 	return nil, errors.New("unexpected delimiter")
 }
 
-// readPyText reads a file as Python's open(path[, errors="replace"]).read() does: UTF-8,
+// ReadText reads a file as Python's open(path[, errors="replace"]).read() does: UTF-8,
 // invalid bytes replaced (replace) or an error, then \r\n and \r turned into \n.
-func readPyText(path string, replace bool) (string, error) {
+func ReadText(path string, replace bool) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
@@ -170,8 +174,8 @@ func pyReplaceInvalid(b []byte) string {
 	return out.String()
 }
 
-// truthy is Python's bool() of a json.loads value.
-func truthy(v any) bool {
+// Truthy is Python's bool() of a json.loads value.
+func Truthy(v any) bool {
 	switch v := v.(type) {
 	case nil:
 		return false
@@ -184,19 +188,19 @@ func truthy(v any) bool {
 		return f != 0
 	case []any:
 		return len(v) > 0
-	case *obj:
-		return v != nil && len(v.keys) > 0
+	case *Obj:
+		return v != nil && len(v.Keys) > 0
 	}
 	return false
 }
 
 func isPySpace(r rune) bool { return unicode.IsSpace(r) || r >= 0x1c && r <= 0x1f }
 
-// pyStrip is str.strip(): Python's whitespace also has \x1c-\x1f, which Go's lacks.
-func pyStrip(s string) string { return strings.TrimFunc(s, isPySpace) }
+// Strip is str.strip(): Python's whitespace also has \x1c-\x1f, which Go's lacks.
+func Strip(s string) string { return strings.TrimFunc(s, isPySpace) }
 
-// cut is s[:n] on code points.
-func cut(s string, n int) string {
+// Cut is s[:n] on code points.
+func Cut(s string, n int) string {
 	i := 0
 	for j := range s {
 		if i == n {
@@ -207,23 +211,25 @@ func cut(s string, n int) string {
 	return s
 }
 
-func runeLen(s string) int { return utf8.RuneCountInString(s) }
+// RuneLen is len(s) on code points.
+func RuneLen(s string) int { return utf8.RuneCountInString(s) }
 
-// pyLower is str.lower() except the context-dependent final sigma (Python lowers a final
+// Lower is str.lower() except the context-dependent final sigma (Python lowers a final
 // capital sigma to ς, this to σ); only the verify check uses it.
-func pyLower(s string) string {
+func Lower(s string) string {
 	return strings.ToLower(strings.ReplaceAll(s, "İ", "i̇"))
 }
 
-// pyStr is str() of a json.loads value.
-func pyStr(v any) string {
+// Str is str() of a json.loads value.
+func Str(v any) string {
 	if s, ok := v.(string); ok {
 		return s
 	}
-	return pyRepr(v)
+	return Repr(v)
 }
 
-func pyRepr(v any) string {
+// Repr is repr() of a json.loads value.
+func Repr(v any) string {
 	switch v := v.(type) {
 	case nil:
 		return "None"
@@ -233,26 +239,27 @@ func pyRepr(v any) string {
 		}
 		return "False"
 	case string:
-		return pyReprStr(v)
+		return ReprStr(v)
 	case json.Number:
 		return pyNum(v, false)
 	case []any:
 		parts := make([]string, len(v))
 		for i, x := range v {
-			parts[i] = pyRepr(x)
+			parts[i] = Repr(x)
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
-	case *obj:
-		parts := make([]string, len(v.keys))
-		for i, k := range v.keys {
-			parts[i] = pyReprStr(k) + ": " + pyRepr(v.vals[k])
+	case *Obj:
+		parts := make([]string, len(v.Keys))
+		for i, k := range v.Keys {
+			parts[i] = ReprStr(k) + ": " + Repr(v.Vals[k])
 		}
 		return "{" + strings.Join(parts, ", ") + "}"
 	}
 	return ""
 }
 
-func pyReprStr(s string) string {
+// ReprStr is repr() of a str, quoting and escaping as Python does.
+func ReprStr(s string) string {
 	quote := '\''
 	if strings.ContainsRune(s, '\'') && !strings.ContainsRune(s, '"') {
 		quote = '"'
@@ -320,8 +327,8 @@ func pyNum(n json.Number, forJSON bool) string {
 	return s
 }
 
-// pyDumps is json.dumps(v) with its defaults: ", " and ": " separators, ensure_ascii.
-func pyDumps(v any) string {
+// Dumps is json.dumps(v) with its defaults: ", " and ": " separators, ensure_ascii.
+func Dumps(v any) string {
 	switch v := v.(type) {
 	case nil:
 		return "null"
@@ -337,13 +344,13 @@ func pyDumps(v any) string {
 	case []any:
 		parts := make([]string, len(v))
 		for i, x := range v {
-			parts[i] = pyDumps(x)
+			parts[i] = Dumps(x)
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
-	case *obj:
-		parts := make([]string, len(v.keys))
-		for i, k := range v.keys {
-			parts[i] = pyDumpsStr(k) + ": " + pyDumps(v.vals[k])
+	case *Obj:
+		parts := make([]string, len(v.Keys))
+		for i, k := range v.Keys {
+			parts[i] = pyDumpsStr(k) + ": " + Dumps(v.Vals[k])
 		}
 		return "{" + strings.Join(parts, ", ") + "}"
 	}
@@ -391,9 +398,9 @@ const pyWord = `\p{L}\p{N}_`
 
 var pyBoundary = `(?:(?<=[` + pyWord + `])(?![` + pyWord + `])|(?<![` + pyWord + `])(?=[` + pyWord + `]))`
 
-// pyRe compiles a Python re pattern (as handoff_writer.py, facts.py and verify.py write
+// Re compiles a Python re pattern (as handoff_writer.py, facts.py and verify.py write
 // them) for regexp2, whose $, ^ and . already behave as Python's.
-func pyRe(pattern string, opts regexp2.RegexOptions) *regexp2.Regexp {
+func Re(pattern string, opts regexp2.RegexOptions) *regexp2.Regexp {
 	var b strings.Builder
 	inClass := false
 	for i := 0; i < len(pattern); i++ {
@@ -448,19 +455,19 @@ func pyRe(pattern string, opts regexp2.RegexOptions) *regexp2.Regexp {
 	return regexp2.MustCompile(b.String(), opts)
 }
 
-// pyMatchRe is pyRe anchored at the start, for re.match.
-func pyMatchRe(pattern string, opts regexp2.RegexOptions) *regexp2.Regexp {
-	return pyRe(`\A(?:`+pattern+`)`, opts)
+// MatchRe is Re anchored at the start, for re.match.
+func MatchRe(pattern string, opts regexp2.RegexOptions) *regexp2.Regexp {
+	return Re(`\A(?:`+pattern+`)`, opts)
 }
 
-// search is re.search; nil when nothing matches.
-func search(re *regexp2.Regexp, s string) *regexp2.Match {
+// Search is re.search; nil when nothing matches.
+func Search(re *regexp2.Regexp, s string) *regexp2.Match {
 	m, _ := re.FindStringMatch(s)
 	return m
 }
 
-// findAll is re.finditer.
-func findAll(re *regexp2.Regexp, s string) []*regexp2.Match {
+// FindAll is re.finditer.
+func FindAll(re *regexp2.Regexp, s string) []*regexp2.Match {
 	var out []*regexp2.Match
 	for m, _ := re.FindStringMatch(s); m != nil; m, _ = re.FindNextMatch(m) {
 		out = append(out, m)
@@ -468,33 +475,34 @@ func findAll(re *regexp2.Regexp, s string) []*regexp2.Match {
 	return out
 }
 
-// group is m.group(n), with "" for a group that did not take part.
-func group(m *regexp2.Match, n int) string { return m.GroupByNumber(n).String() }
+// Group is m.group(n), with "" for a Group that did not take part.
+func Group(m *regexp2.Match, n int) string { return m.GroupByNumber(n).String() }
 
-// sub is re.sub with a function replacement.
-func sub(re *regexp2.Regexp, s string, rep func(m regexp2.Match) string) string {
+// Sub is re.sub with a function replacement.
+func Sub(re *regexp2.Regexp, s string, rep func(m regexp2.Match) string) string {
 	out, _ := re.ReplaceFunc(s, rep, -1, -1)
 	return out
 }
 
-func subStr(re *regexp2.Regexp, s, rep string) string {
-	return sub(re, s, func(regexp2.Match) string { return rep })
+// SubStr is re.sub with a literal replacement.
+func SubStr(re *regexp2.Regexp, s, rep string) string {
+	return Sub(re, s, func(regexp2.Match) string { return rep })
 }
 
-// pySection is the body of the markdown section headed "<hashes> <title>", as
+// Section is the body of the markdown section headed "<hashes> <title>", as
 // handoff_writer.section (hashes "##", strip=true) and verify.section ("###") take it.
-func pySection(text, hashes, title string, strip bool, titleRest bool) string {
+func Section(text, hashes, title string, strip bool, titleRest bool) string {
 	rest := ""
 	if titleRest {
 		rest = ".*?"
 	}
-	re := pyRe(`^`+hashes+` `+regexp2.Escape(title)+rest+`\n(.*?)(?=^`+hashes+` |\Z)`, regexp2.Multiline|regexp2.Singleline)
-	m := search(re, text)
+	re := Re(`^`+hashes+` `+regexp2.Escape(title)+rest+`\n(.*?)(?=^`+hashes+` |\Z)`, regexp2.Multiline|regexp2.Singleline)
+	m := Search(re, text)
 	if m == nil {
 		return ""
 	}
 	if strip {
-		return pyStrip(group(m, 1))
+		return Strip(Group(m, 1))
 	}
-	return group(m, 1)
+	return Group(m, 1)
 }

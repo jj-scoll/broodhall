@@ -12,6 +12,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/jj-scoll/broodhall/internal/container"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -35,7 +36,7 @@ func parseShell(cmd string) ([]simpleCmd, bool) { return parseShellDepth(cmd, 0,
 
 // parseShellDepth parses cmd, which runs inside a container on filesystem ms (nil on the
 // host); the paths of its commands come back as host paths.
-func parseShellDepth(cmd string, depth int, ms *mountSet) ([]simpleCmd, bool) {
+func parseShellDepth(cmd string, depth int, ms *container.MountSet) ([]simpleCmd, bool) {
 	if depth > maxShellDepth {
 		return nil, false
 	}
@@ -47,8 +48,8 @@ func parseShellDepth(cmd string, depth int, ms *mountSet) ([]simpleCmd, bool) {
 	ok := true
 	// descend adds what a command runs one level down: a script handed to a shell, and the
 	// command a container run|create|exec starts (its bind mounts joining ms).
-	var descend func(words, feeds []string, ms *mountSet)
-	descend = func(words, feeds []string, ms *mountSet) {
+	var descend func(words, feeds []string, ms *container.MountSet)
+	descend = func(words, feeds []string, ms *container.MountSet) {
 		for _, script := range nestedScripts(words, feeds) {
 			inner, innerOK := parseShellDepth(script.text, depth+1, ms)
 			if !innerOK && !script.lenient {
@@ -56,8 +57,8 @@ func parseShellDepth(cmd string, depth int, ms *mountSet) ([]simpleCmd, bool) {
 			}
 			out = append(out, inner...)
 		}
-		if inner, mounts := containerCmd(words); inner != nil {
-			ms = ms.within(mounts)
+		if inner, mounts := container.Cmd(words); inner != nil {
+			ms = ms.Within(mounts)
 			ic := mapCmd(simpleCmd{Words: peelWrappers(inner)}, ms)
 			out = append(out, ic)
 			descend(ic.Words, nil, ms)
@@ -198,4 +199,21 @@ func selfPipeBomb(fn *syntax.FuncDecl) bool {
 		return !found
 	})
 	return found
+}
+
+// mapCmd maps the words and redirect targets of c, which runs on m, to host paths.
+func mapCmd(c simpleCmd, m *container.MountSet) simpleCmd {
+	if m == nil {
+		return c
+	}
+	words := make([]string, len(c.Words))
+	for i, w := range c.Words {
+		words[i] = m.MapPath(w)
+	}
+	redirs := make([]astRedir, len(c.Redirs))
+	for i, r := range c.Redirs {
+		redirs[i] = astRedir{r.Op, m.MapPath(r.Target)}
+	}
+	c.Words, c.Redirs = words, redirs
+	return c
 }

@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"github.com/jj-scoll/broodhall/internal/pytext"
 )
 
 // Capture side of raw search: Claude's reply text and the session's branch and model.
@@ -12,14 +14,14 @@ import (
 // line's uuid (else the message id) plus the block index, so reading a transcript again
 // yields the same key. Blank blocks, and lines with neither id, give no event; thinking
 // blocks never reach here.
-func replyEvent(base memdEvent, line, msg *obj, block int, b *obj, st *memdFileState) (memdEvent, bool) {
-	text := strings.TrimSpace(b.getStr("text"))
+func replyEvent(base memdEvent, line, msg *pytext.Obj, block int, b *pytext.Obj, st *memdFileState) (memdEvent, bool) {
+	text := strings.TrimSpace(b.GetStr("text"))
 	if text == "" {
 		return memdEvent{}, false
 	}
-	id := line.getStr("uuid")
+	id := line.GetStr("uuid")
 	if id == "" {
-		id = msg.getStr("id")
+		id = msg.GetStr("id")
 	}
 	if id == "" {
 		return memdEvent{}, false
