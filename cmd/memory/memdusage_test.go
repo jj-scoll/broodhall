@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jj-scoll/broodhall/internal/pytext"
 )
 
 // usageLine is an assistant transcript line shaped like a real one: one per content block, so
@@ -397,11 +399,11 @@ func TestNumFieldOutOfRange(t *testing.T) {
 		`{"n":"12"}`:                 0,
 		`{"n":9.3e18}`:               0, // just above int64
 	} {
-		v, err := decodeJSON([]byte(in))
+		v, err := pytext.DecodeJSON([]byte(in))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := numField(v.(*obj), "n"); got != want {
+		if got := numField(v.(*pytext.Obj), "n"); got != want {
 			t.Errorf("numField(%s) = %d, want %d", in, got, want)
 		}
 	}

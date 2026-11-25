@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"github.com/dlclark/regexp2"
+	"github.com/jj-scoll/broodhall/internal/pytext"
 )
 
 const (
@@ -90,11 +91,11 @@ func capDigest(lines []string, limit int) string {
 }
 
 // callSummary is one claude call's token counts (input includes cache reads and writes) and cost.
-func callSummary(label string, res *obj) string {
+func callSummary(label string, res *pytext.Obj) string {
 	var in, out int64
-	if u, ok := res.get("usage").(*obj); ok {
+	if u, ok := res.Get("usage").(*pytext.Obj); ok {
 		n := func(k string) int64 {
-			v, _ := u.get(k).(json.Number)
+			v, _ := u.Get(k).(json.Number)
 			i, _ := v.Int64()
 			return i
 		}
@@ -117,11 +118,11 @@ var handoffSkill string
 
 var (
 	handoffFile = regexp.MustCompile(`^HANDOFF[A-Za-z0-9._-]*\.md$`)
-	fileLine    = pyMatchRe(`file:\s*(\S+)`, 0)
-	fileHeader  = pyRe(`\Afile:.*\n?`, 0)
-	jsonObject  = pyRe(`\{.*\}`, regexp2.Singleline)
-	mdFence     = pyRe("^```(?:markdown|md)?\\n(.*)\\n```$", regexp2.Singleline)
-	keyChars    = pyRe(`[^a-z0-9]+`, 0)
+	fileLine    = pytext.MatchRe(`file:\s*(\S+)`, 0)
+	fileHeader  = pytext.Re(`\Afile:.*\n?`, 0)
+	jsonObject  = pytext.Re(`\{.*\}`, regexp2.Singleline)
+	mdFence     = pytext.Re("^```(?:markdown|md)?\\n(.*)\\n```$", regexp2.Singleline)
+	keyChars    = pytext.Re(`[^a-z0-9]+`, 0)
 
 	// The sections are the seven things handoffskill.md says a note must cover.
 	sections = []string{"Goal", "Where Things Stand", "Next Action", "Dead Ends",
@@ -199,42 +200,44 @@ func writerPrompt(skill, dig, facts, next string) string {
 func escapeAt(s string) string { return strings.ReplaceAll(s, at, atEsc) }
 
 // sectionKey is the section's JSON key; the API wants keys matching [a-zA-Z0-9_.-].
-func sectionKey(s string) string { return strings.Trim(subStr(keyChars, pyLower(s), "_"), "_") }
+func sectionKey(s string) string {
+	return strings.Trim(pytext.SubStr(keyChars, pytext.Lower(s), "_"), "_")
+}
 
-func newObj(kv ...any) *obj {
-	o := &obj{vals: map[string]any{}}
+func newObj(kv ...any) *pytext.Obj {
+	o := &pytext.Obj{Vals: map[string]any{}}
 	for i := 0; i < len(kv); i += 2 {
 		k := kv[i].(string)
-		o.keys = append(o.keys, k)
-		o.vals[k] = kv[i+1]
+		o.Keys = append(o.Keys, k)
+		o.Vals[k] = kv[i+1]
 	}
 	return o
 }
 
-func handoffSchema() *obj {
+func handoffSchema() *pytext.Obj {
 	required := []any{}
 	props := newObj()
 	for _, s := range sections {
 		k := sectionKey(s)
 		required = append(required, k)
-		props.keys = append(props.keys, k)
-		props.vals[k] = newObj("type", "string", "minLength", json.Number("1"),
+		props.Keys = append(props.Keys, k)
+		props.Vals[k] = newObj("type", "string", "minLength", json.Number("1"),
 			"description", "Markdown body of the '"+s+"' section, without its heading")
 	}
 	return newObj("type", "object", "additionalProperties", false, "required", required, "properties", props)
 }
 
 func shortInput(inp any) string {
-	o, ok := inp.(*obj)
+	o, ok := inp.(*pytext.Obj)
 	if !ok {
 		return ""
 	}
 	for _, k := range []string{"file_path", "notebook_path", "command", "pattern", "url", "query", "prompt", "description"} {
-		if v := o.get(k); truthy(v) {
-			return k + "=" + pyReprStr(cut(pyStr(v), 300))
+		if v := o.Get(k); pytext.Truthy(v) {
+			return k + "=" + pytext.ReprStr(pytext.Cut(pytext.Str(v), 300))
 		}
 	}
-	return cut(pyDumps(o), 300)
+	return pytext.Cut(pytext.Dumps(o), 300)
 }
 
 // digest is the typed prompts, assistant text, tool calls with short inputs and result heads.
@@ -245,41 +248,41 @@ func digest(path string) (string, error) {
 	}
 	var out []string
 	for _, d := range lines {
-		msg, ok := d.get("message").(*obj)
+		msg, ok := d.Get("message").(*pytext.Obj)
 		if !ok {
 			continue
 		}
 		ts := stamp(d)
-		switch d.get("type") {
+		switch d.Get("type") {
 		case "user":
 			if p := typedPrompt(d, msg); p != "" {
-				out = append(out, "["+ts+"] USER: "+cut(p, 3000))
+				out = append(out, "["+ts+"] USER: "+pytext.Cut(p, 3000))
 			}
-			list, _ := msg.get("content").([]any)
+			list, _ := msg.Get("content").([]any)
 			for _, b := range list {
-				if o, ok := b.(*obj); ok && o.get("type") == "tool_result" {
-					head := cut(strings.ReplaceAll(pyStrip(stripPrivate(textOf(o.get("content")))), "\n", " | "), 300)
+				if o, ok := b.(*pytext.Obj); ok && o.Get("type") == "tool_result" {
+					head := pytext.Cut(strings.ReplaceAll(pytext.Strip(stripPrivate(textOf(o.Get("content")))), "\n", " | "), 300)
 					e := ""
-					if truthy(o.get("is_error")) {
+					if pytext.Truthy(o.Get("is_error")) {
 						e = "ERROR "
 					}
 					out = append(out, resultPrefix+e+head)
 				}
 			}
 		case "assistant":
-			list, _ := msg.get("content").([]any) // a string or dict content has no dict items
+			list, _ := msg.Get("content").([]any) // a string or dict content has no dict items
 			for _, b := range list {
-				o, ok := b.(*obj)
+				o, ok := b.(*pytext.Obj)
 				if !ok {
 					continue
 				}
-				switch o.get("type") {
+				switch o.Get("type") {
 				case "text":
-					if t := pyStrip(getStr(o, "text", "")); t != "" {
-						out = append(out, "["+ts+"] ASSISTANT: "+cut(t, 2000))
+					if t := pytext.Strip(getStr(o, "text", "")); t != "" {
+						out = append(out, "["+ts+"] ASSISTANT: "+pytext.Cut(t, 2000))
 					}
 				case "tool_use":
-					out = append(out, "["+ts+"] TOOL "+pyStr(o.get("name"))+": "+shortInput(o.get("input")))
+					out = append(out, "["+ts+"] TOOL "+pytext.Str(o.Get("name"))+": "+shortInput(o.Get("input")))
 				}
 			}
 		}
@@ -294,13 +297,13 @@ func skillText() (string, error) { return handoffSkill, nil }
 // splitNext reads the next-steps file's text: the handoff file name its "file:" line asks for
 // (else HANDOFF-<session[:8]>.md) and the Next Steps without that line.
 func splitNext(text, session string) (name, next string) {
-	if m := search(fileLine, text); m != nil {
-		name = group(m, 1)
+	if m := pytext.Search(fileLine, text); m != nil {
+		name = pytext.Group(m, 1)
 	}
 	if !handoffFile.MatchString(name) {
-		name = "HANDOFF-" + cut(session, 8) + ".md"
+		name = "HANDOFF-" + pytext.Cut(session, 8) + ".md"
 	}
-	return name, pyStrip(subStr(fileHeader, text, ""))
+	return name, pytext.Strip(pytext.SubStr(fileHeader, text, ""))
 }
 
 // childEnv is the environment for `claude -p`: the parent's, without ANTHROPIC_API_KEY, so the
@@ -328,7 +331,7 @@ func childEnv() []string {
 
 // callClaude runs one isolated `claude -p` and returns its JSON result. It runs in a fresh
 // empty directory so nothing in the project is picked up.
-func callClaude(prompt string, extra ...string) (*obj, error) {
+func callClaude(prompt string, extra ...string) (*pytext.Obj, error) {
 	dir, err := os.MkdirTemp("", "write-handoff-")
 	if err != nil {
 		return nil, err
@@ -343,22 +346,22 @@ func callClaude(prompt string, extra ...string) (*obj, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("claude: %v: %s %s", err, cut(stderr.String(), 300), cut(stdout.String(), 300))
+		return nil, fmt.Errorf("claude: %v: %s %s", err, pytext.Cut(stderr.String(), 300), pytext.Cut(stdout.String(), 300))
 	}
-	v, err := decodeJSON(stdout.Bytes())
+	v, err := pytext.DecodeJSON(stdout.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("claude output: %v", err)
 	}
-	res, ok := v.(*obj)
+	res, ok := v.(*pytext.Obj)
 	if !ok {
 		return nil, errors.New("claude output is not a JSON object")
 	}
 	return res, nil
 }
 
-func costOf(res *obj) float64 {
+func costOf(res *pytext.Obj) float64 {
 	var f float64
-	if n, ok := res.get("total_cost_usd").(json.Number); ok {
+	if n, ok := res.Get("total_cost_usd").(json.Number); ok {
 		f, _ = n.Float64()
 	}
 	return f
@@ -367,14 +370,14 @@ func costOf(res *obj) float64 {
 func briefing(text, path string) string {
 	parts := []string{}
 	for _, t := range []string{"Goal", "Next Action", "Decisions and Constraints"} {
-		parts = append(parts, t+":\n"+pySection(text, "##", t, true, false))
+		parts = append(parts, t+":\n"+pytext.Section(text, "##", t, true, false))
 	}
-	return cut("Full handoff: "+path+" (read it first).\n\n"+strings.Join(parts, "\n\n"), briefingCap)
+	return pytext.Cut("Full handoff: "+path+" (read it first).\n\n"+strings.Join(parts, "\n\n"), briefingCap)
 }
 
 // store offers the briefing to the memory plugin's daemon (work_state_write on its unix
 // socket, $XDG_RUNTIME_DIR/memory.sock) for the next session in the project to show once.
-func store(cwd string, fields *obj) error {
+func store(cwd string, fields *pytext.Obj) error {
 	dir := os.Getenv("XDG_RUNTIME_DIR")
 	if dir == "" {
 		return errors.New("no XDG_RUNTIME_DIR, so no memory socket")
@@ -386,7 +389,7 @@ func store(cwd string, fields *obj) error {
 		},
 		DisableKeepAlives: true,
 	}}
-	body := pyDumps(newObj("list", "handoff", "fields", fields, "cwd", cwd))
+	body := pytext.Dumps(newObj("list", "handoff", "fields", fields, "cwd", cwd))
 	resp, err := client.Post("http://memory/tool/work_state_write", "application/json", strings.NewReader(body))
 	if err != nil {
 		return err
@@ -401,7 +404,7 @@ func store(cwd string, fields *obj) error {
 // writeHandoffFile writes the handoff and returns its path and the summary line.
 func writeHandoffFile(transcript, nextPath, cwd, session string) (string, string, error) {
 	start := time.Now()
-	raw, err := readPyText(nextPath, false)
+	raw, err := pytext.ReadText(nextPath, false)
 	if err != nil {
 		return "", "", err
 	}
@@ -419,30 +422,30 @@ func writeHandoffFile(transcript, nextPath, cwd, session string) (string, string
 	if err != nil {
 		return "", "", err
 	}
-	res, err := callClaude(writerPrompt(skill, dig, facts, next), "--json-schema", pyDumps(handoffSchema()))
+	res, err := callClaude(writerPrompt(skill, dig, facts, next), "--json-schema", pytext.Dumps(handoffSchema()))
 	if err != nil {
 		return "", "", err
 	}
 	cost := costOf(res)
 	fmt.Fprintln(logOut, callSummary("writer", res))
-	out, _ := res.get("structured_output").(*obj)
-	if !truthy(out) {
-		m := search(jsonObject, getStr(res, "result", ""))
+	out, _ := res.Get("structured_output").(*pytext.Obj)
+	if !pytext.Truthy(out) {
+		m := pytext.Search(jsonObject, getStr(res, "result", ""))
 		if m == nil {
 			return "", "", errors.New("claude reply has no JSON object")
 		}
-		v, err := decodeJSON([]byte(m.String()))
-		if out, _ = v.(*obj); err != nil || out == nil {
+		v, err := pytext.DecodeJSON([]byte(m.String()))
+		if out, _ = v.(*pytext.Obj); err != nil || out == nil {
 			return "", "", fmt.Errorf("claude reply: no JSON object (%v)", err)
 		}
 	}
 	body := make([]string, len(sections))
 	for i, s := range sections {
-		v, ok := out.lookup(sectionKey(s))
+		v, ok := out.Lookup(sectionKey(s))
 		if !ok {
 			return "", "", fmt.Errorf("claude reply lacks %q", sectionKey(s))
 		}
-		body[i] = "## " + s + "\n\n" + pyStrip(pyStr(v))
+		body[i] = "## " + s + "\n\n" + pytext.Strip(pytext.Str(v))
 	}
 	text := strings.ReplaceAll(fmt.Sprintf("# Handoff\n\n> Written %s by guardrails write-handoff (%s) from the transcript %s\n> Project: %s\n\n",
 		time.Now().Format("2006-01-02 15:04 MST"), writerModel, transcript, cwd)+strings.Join(body, "\n\n"), atEsc, at)
@@ -462,15 +465,15 @@ func writeHandoffFile(transcript, nextPath, cwd, session string) (string, string
 		}
 		cost += costOf(res)
 		fmt.Fprintln(logOut, callSummary("fix", res))
-		reply := pyStrip(getStr(res, "result", ""))
-		fixed := sub(mdFence, reply, func(m regexp2.Match) string { return group(&m, 1) })
+		reply := pytext.Strip(getStr(res, "result", ""))
+		fixed := pytext.Sub(mdFence, reply, func(m regexp2.Match) string { return pytext.Group(&m, 1) })
 		if strings.HasPrefix(fixed, "# Handoff") {
 			text = strings.ReplaceAll(fixed, atEsc, at)
 			left := verifyGaps(text, facts, known)
 			logGaps("gaps remaining after fix", left)
 			fixedNote = fmt.Sprintf(" fixed remaining=%d", len(left))
 		} else {
-			fmt.Fprintf(logOut, "fix reply rejected (does not start with \"# Handoff\"), keeping the draft: %q\n", cut(reply, 100))
+			fmt.Fprintf(logOut, "fix reply rejected (does not start with \"# Handoff\"), keeping the draft: %q\n", pytext.Cut(reply, 100))
 			fixedNote = " fix-rejected"
 		}
 	}
@@ -479,7 +482,7 @@ func writeHandoffFile(transcript, nextPath, cwd, session string) (string, string
 		text = strings.Replace(text, "\n\n## ", "\n> "+strings.Trim(m, "()")+"\n\n## ", 1)
 	}
 	path := filepath.Join(cwd, name)
-	if err := os.WriteFile(path+".tmp", []byte(pyStrip(text)+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(path+".tmp", []byte(pytext.Strip(text)+"\n"), 0o644); err != nil {
 		return "", "", err
 	}
 	if err := os.Rename(path+".tmp", path); err != nil {

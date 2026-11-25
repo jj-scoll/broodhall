@@ -6,9 +6,6 @@ import (
 	"strings"
 )
 
-// containerValueOpts are docker/podman global options that take a separate value.
-var containerValueOpts = map[string]bool{"-H": true, "--host": true, "-c": true, "--context": true, "--config": true, "-l": true, "--log-level": true, "--connection": true, "--url": true}
-
 // camelRE splits camelCase key names at the lower-to-upper boundary.
 var camelRE = regexp.MustCompile(`([a-z0-9])([A-Z])`)
 

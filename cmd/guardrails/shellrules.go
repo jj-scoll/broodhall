@@ -11,6 +11,8 @@ import (
 	"path"
 	"regexp"
 	"strings"
+
+	"github.com/jj-scoll/broodhall/internal/container"
 )
 
 func dangerous(p string) decision {
@@ -137,12 +139,9 @@ func chownRule(c simpleCmd, home string) decision {
 	return decision{}
 }
 
-// containerValueOpts are docker/podman global options that take a separate value.
-var containerValueOpts = map[string]bool{"-H": true, "--host": true, "-c": true, "--context": true, "--config": true, "-l": true, "--log-level": true, "--connection": true, "--url": true}
-
 // privilegedRule: docker|podman [container] run|create with --privileged or a /dev mount.
 func privilegedRule(c simpleCmd, _ string) decision {
-	sub, rest := containerSub(c.Words)
+	sub, rest := container.Sub(c.Words)
 	if (sub == "run" || sub == "create") && hostDev.MatchString(strings.Join(rest, " ")) {
 		return decision{Exit: 2, Rule: "privileged-container", Msg: privilegedMsg}
 	}

@@ -7,18 +7,20 @@ package main
 import (
 	"fmt"
 	"strings"
+
+	"github.com/jj-scoll/broodhall/internal/pytext"
 )
 
 // jsonLines is `for line in open(path, errors="replace")` plus json.loads: every line that
 // parses, whatever it parses to.
 func jsonLines(path string) ([]any, error) {
-	text, err := readPyText(path, true)
+	text, err := pytext.ReadText(path, true)
 	if err != nil {
 		return nil, err
 	}
 	var out []any
 	for _, line := range strings.SplitAfter(text, "\n") {
-		if v, err := decodeJSON([]byte(line)); err == nil {
+		if v, err := pytext.DecodeJSON([]byte(line)); err == nil {
 			out = append(out, v)
 		}
 	}
@@ -27,14 +29,14 @@ func jsonLines(path string) ([]any, error) {
 
 // transcriptLines is jsonLines for callers that go on to call d.get(...) on each line: one that
 // parses to something other than an object stops it, as d.get raises in Python.
-func transcriptLines(path string) ([]*obj, error) {
+func transcriptLines(path string) ([]*pytext.Obj, error) {
 	values, err := jsonLines(path)
 	if err != nil {
 		return nil, err
 	}
-	var out []*obj
+	var out []*pytext.Obj
 	for _, v := range values {
-		d, ok := v.(*obj)
+		d, ok := v.(*pytext.Obj)
 		if !ok {
 			return nil, fmt.Errorf("%s: a line is JSON but not an object", path)
 		}
@@ -51,12 +53,12 @@ func textOf(content any) string {
 	case []any:
 		var parts []string
 		for _, b := range c {
-			o, ok := b.(*obj)
+			o, ok := b.(*pytext.Obj)
 			if !ok {
-				parts = append(parts, pyStr(b))
+				parts = append(parts, pytext.Str(b))
 				continue
 			}
-			if t := o.get("type"); t == nil || t == "text" {
+			if t := o.Get("type"); t == nil || t == "text" {
 				parts = append(parts, getStr(o, "text", ""))
 			}
 		}
@@ -66,21 +68,21 @@ func textOf(content any) string {
 }
 
 // typedPrompt is ingest.typed_prompt: the text of a prompt the person typed, else "".
-func typedPrompt(d, msg *obj) string {
-	if truthy(d.get("isMeta")) {
+func typedPrompt(d, msg *pytext.Obj) string {
+	if pytext.Truthy(d.Get("isMeta")) {
 		return ""
 	}
-	content := msg.get("content")
+	content := msg.Get("content")
 	if list, ok := content.([]any); ok {
 		for _, b := range list {
-			if o, ok := b.(*obj); ok && o.get("type") == "tool_result" {
+			if o, ok := b.(*pytext.Obj); ok && o.Get("type") == "tool_result" {
 				return ""
 			}
 		}
 	}
-	text := pyStrip(textOf(content))
-	if origin, ok := d.get("origin").(*obj); ok {
-		if origin.get("kind") == "human" {
+	text := pytext.Strip(textOf(content))
+	if origin, ok := d.Get("origin").(*pytext.Obj); ok {
+		if origin.Get("kind") == "human" {
 			return text
 		}
 		return ""
@@ -92,17 +94,17 @@ func typedPrompt(d, msg *obj) string {
 }
 
 // getStr is str(o.get(k, def)), with def when k is absent.
-func getStr(o *obj, k, def string) string {
-	if v, ok := o.lookup(k); ok {
-		return pyStr(v)
+func getStr(o *pytext.Obj, k, def string) string {
+	if v, ok := o.Lookup(k); ok {
+		return pytext.Str(v)
 	}
 	return def
 }
 
 // stamp is (d.get("timestamp") or "")[:19].
-func stamp(d *obj) string {
-	if ts := d.get("timestamp"); truthy(ts) {
-		return cut(pyStr(ts), 19)
+func stamp(d *pytext.Obj) string {
+	if ts := d.Get("timestamp"); pytext.Truthy(ts) {
+		return pytext.Cut(pytext.Str(ts), 19)
 	}
 	return ""
 }

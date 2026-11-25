@@ -13,36 +13,37 @@ import (
 	"time"
 
 	"github.com/dlclark/regexp2"
+	"github.com/jj-scoll/broodhall/internal/pytext"
 )
 
 const promptCap = 1000
 
 var (
-	gitMutating = pyRe(`\bgit\b.*\b(commit|push|checkout|switch|worktree|merge|rebase|reset|tag|cherry-pick|stash)\b`+
+	gitMutating = pytext.Re(`\bgit\b.*\b(commit|push|checkout|switch|worktree|merge|rebase|reset|tag|cherry-pick|stash)\b`+
 		`|\bgh pr (create|merge)\b`, 0)
-	bgID       = pyRe(`running in background with ID: (\w+)\.(?: Output is being written to: (\S+?)\.?(?:\s|$))?`, 0)
-	notif      = pyRe(`<task-id>(\w+)</task-id>.*?<status>(\w+)</status>`, regexp2.Singleline)
-	declinedRe = pyRe(`said:\s*(.*)`, regexp2.Singleline)
-	answerTail = pyRe(`\.?\s*You can now continue with these answers in mind\.?\s*$`, 0)
-	answerEnd  = pyMatchRe(`(.*?)"(?= selected preview:| user notes:|\.\s|\.?$)`, regexp2.Singleline)
-	answerNote = pyRe(` user notes: (.*)`, regexp2.Singleline)
+	bgID       = pytext.Re(`running in background with ID: (\w+)\.(?: Output is being written to: (\S+?)\.?(?:\s|$))?`, 0)
+	notif      = pytext.Re(`<task-id>(\w+)</task-id>.*?<status>(\w+)</status>`, regexp2.Singleline)
+	declinedRe = pytext.Re(`said:\s*(.*)`, regexp2.Singleline)
+	answerTail = pytext.Re(`\.?\s*You can now continue with these answers in mind\.?\s*$`, 0)
+	answerEnd  = pytext.MatchRe(`(.*?)"(?= selected preview:| user notes:|\.\s|\.?$)`, regexp2.Singleline)
+	answerNote = pytext.Re(` user notes: (.*)`, regexp2.Singleline)
 	secrets    = []struct {
 		re   *regexp2.Regexp
 		keep bool // keep group 1 before [REDACTED]
 	}{
-		{pyRe(`(?i)\b((?:aws_)?(?:access_key_id|secret_access_key|session_token)[ \t]*[=:][ \t]*)\S+`, 0), true},
-		{pyRe(`(?i)\b((?:api[_-]?key|secret|token|password|passwd)[ \t]*[=:][ \t]*)\S+`, 0), true},
-		{pyRe(`\b(?:AKIA|ASIA)[A-Z0-9]{16}\b`, 0), false},
-		{pyRe(`\b(?:sk-ant-|ghp_|gho_|github_pat_|xox[bpas]-)[\w-]{8,}`, 0), false},
-		{pyRe(`-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`, regexp2.Singleline), false},
+		{pytext.Re(`(?i)\b((?:aws_)?(?:access_key_id|secret_access_key|session_token)[ \t]*[=:][ \t]*)\S+`, 0), true},
+		{pytext.Re(`(?i)\b((?:api[_-]?key|secret|token|password|passwd)[ \t]*[=:][ \t]*)\S+`, 0), true},
+		{pytext.Re(`\b(?:AKIA|ASIA)[A-Z0-9]{16}\b`, 0), false},
+		{pytext.Re(`\b(?:sk-ant-|ghp_|gho_|github_pat_|xox[bpas]-)[\w-]{8,}`, 0), false},
+		{pytext.Re(`-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`, regexp2.Singleline), false},
 	}
 )
 
 func redact(text string) string {
 	for _, s := range secrets {
-		text = sub(s.re, text, func(m regexp2.Match) string {
+		text = pytext.Sub(s.re, text, func(m regexp2.Match) string {
 			if s.keep {
-				return group(&m, 1) + "[REDACTED]"
+				return pytext.Group(&m, 1) + "[REDACTED]"
 			}
 			return "[REDACTED]"
 		})
@@ -80,7 +81,7 @@ func fromISO(s string) (time.Time, error) {
 
 // answers pairs each question with its answer in the AskUserQuestion result text.
 func answers(questions []string, text string) [][2]string {
-	text = subStr(answerTail, text, "")
+	text = pytext.SubStr(answerTail, text, "")
 	type spot struct {
 		pos int
 		q   string
@@ -107,17 +108,17 @@ func answers(questions []string, text string) [][2]string {
 		if start := f.pos + len(f.q) + 4; start < end {
 			seg = text[start:end]
 		}
-		a := cut(seg, 300)
-		if m := search(answerEnd, seg); m != nil {
-			a = group(m, 1)
+		a := pytext.Cut(seg, 300)
+		if m := pytext.Search(answerEnd, seg); m != nil {
+			a = pytext.Group(m, 1)
 		}
-		if m := search(answerNote, seg); m != nil {
-			a += " (notes: " + pyStrip(strings.TrimRight(pyStrip(group(m, 1)), ". ")) + ".)"
+		if m := pytext.Search(answerNote, seg); m != nil {
+			a += " (notes: " + pytext.Strip(strings.TrimRight(pytext.Strip(pytext.Group(m, 1)), ". ")) + ".)"
 		}
 		out = append(out, [2]string{f.q, a})
 	}
 	if len(out) == 0 {
-		out = append(out, [2]string{"(unparsed)", cut(text, 300)})
+		out = append(out, [2]string{"(unparsed)", pytext.Cut(text, 300)})
 	}
 	return out
 }
@@ -163,12 +164,12 @@ func pyKey(v any) string {
 	if s, ok := v.(string); ok {
 		return s
 	}
-	return "\x00" + pyRepr(v)
+	return "\x00" + pytext.Repr(v)
 }
 
 type toolUse struct {
 	name any
-	inp  *obj
+	inp  *pytext.Obj
 }
 
 type bgJob struct{ desc, output string }
@@ -191,8 +192,8 @@ func buildFacts(path, until string) (string, error) {
 	var changed ordered[*ordered[int]]
 	var bg ordered[bgJob]
 	for _, d := range lines {
-		if ts := d.get("timestamp"); until != "" && truthy(ts) {
-			t, err := fromISO(pyStr(ts))
+		if ts := d.Get("timestamp"); until != "" && pytext.Truthy(ts) {
+			t, err := fromISO(pytext.Str(ts))
 			if err != nil {
 				return "", err
 			}
@@ -200,32 +201,32 @@ func buildFacts(path, until string) (string, error) {
 				break
 			}
 		}
-		if v := d.get("cwd"); truthy(v) {
+		if v := d.Get("cwd"); pytext.Truthy(v) {
 			cwd = v
 		}
-		if v := d.get("gitBranch"); truthy(v) {
+		if v := d.Get("gitBranch"); pytext.Truthy(v) {
 			branch = v
 		}
-		msg, ok := d.get("message").(*obj)
+		msg, ok := d.Get("message").(*pytext.Obj)
 		if !ok {
 			continue
 		}
 		at := stamp(d)
-		content := msg.get("content")
-		var blocks []*obj
+		content := msg.Get("content")
+		var blocks []*pytext.Obj
 		if list, ok := content.([]any); ok {
 			for _, b := range list {
-				if o, ok := b.(*obj); ok {
+				if o, ok := b.(*pytext.Obj); ok {
 					blocks = append(blocks, o)
 				}
 			}
 		}
-		switch d.get("type") {
+		switch d.Get("type") {
 		case "assistant":
 			for _, b := range blocks {
-				if b.get("type") == "tool_use" {
-					inp, _ := b.get("input").(*obj) // `or {}`; a non-dict input has no keys to read
-					uses[pyKey(b.get("id"))] = toolUse{b.get("name"), inp}
+				if b.Get("type") == "tool_use" {
+					inp, _ := b.Get("input").(*pytext.Obj) // `or {}`; a non-dict input has no keys to read
+					uses[pyKey(b.Get("id"))] = toolUse{b.Get("name"), inp}
 				}
 			}
 			continue
@@ -234,35 +235,35 @@ func buildFacts(path, until string) (string, error) {
 			continue
 		}
 		p := ""
-		if !truthy(d.get("isCompactSummary")) {
+		if !pytext.Truthy(d.Get("isCompactSummary")) {
 			p = typedPrompt(d, msg)
 		}
 		if p != "" && !strings.HasPrefix(p, "[Request interrupted") {
-			if n := runeLen(p); n > promptCap {
-				p = cut(p, promptCap) + fmt.Sprintf(" [%d chars cut]", n-promptCap)
+			if n := pytext.RuneLen(p); n > promptCap {
+				p = pytext.Cut(p, promptCap) + fmt.Sprintf(" [%d chars cut]", n-promptCap)
 			}
 			prompts = append(prompts, "["+at+"] "+p)
 		}
-		for _, m := range findAll(notif, textOf(content)) {
-			bg.pop(group(m, 1))
+		for _, m := range pytext.FindAll(notif, textOf(content)) {
+			bg.pop(pytext.Group(m, 1))
 		}
 		for _, b := range blocks {
-			if b.get("type") != "tool_result" {
+			if b.Get("type") != "tool_result" {
 				continue
 			}
-			use, ok := uses[pyKey(b.get("tool_use_id"))]
+			use, ok := uses[pyKey(b.Get("tool_use_id"))]
 			if !ok {
 				continue
 			}
 			inp := use.inp
-			text := textOf(b.get("content"))
-			isErr := truthy(b.get("is_error"))
+			text := textOf(b.Get("content"))
+			isErr := pytext.Truthy(b.Get("is_error"))
 			switch use.name {
 			case "AskUserQuestion":
 				var qs []string
-				if list, ok := inp.get("questions").([]any); ok {
+				if list, ok := inp.Get("questions").([]any); ok {
 					for _, q := range list {
-						if qo, ok := q.(*obj); ok {
+						if qo, ok := q.(*pytext.Obj); ok {
 							qs = append(qs, getStr(qo, "question", ""))
 						}
 					}
@@ -270,8 +271,8 @@ func buildFacts(path, until string) (string, error) {
 				var pairs [][2]string
 				if isErr {
 					a := "(declined)"
-					if m := search(declinedRe, text); m != nil {
-						a += " " + cut(pyStrip(group(m, 1)), 300)
+					if m := pytext.Search(declinedRe, text); m != nil {
+						a += " " + pytext.Cut(pytext.Strip(pytext.Group(m, 1)), 300)
 					}
 					for _, q := range qs {
 						pairs = append(pairs, [2]string{q, a})
@@ -286,40 +287,40 @@ func buildFacts(path, until string) (string, error) {
 				if isErr {
 					continue
 				}
-				fp := inp.get("file_path")
-				if !truthy(fp) {
-					fp = inp.get("notebook_path")
+				fp := inp.Get("file_path")
+				if !pytext.Truthy(fp) {
+					fp = inp.Get("notebook_path")
 				}
-				if truthy(fp) {
-					c, ok := changed.get(pyStr(fp))
+				if pytext.Truthy(fp) {
+					c, ok := changed.get(pytext.Str(fp))
 					if !ok {
 						c = &ordered[int]{}
-						changed.set(pyStr(fp), c)
+						changed.set(pytext.Str(fp), c)
 					}
-					n, _ := c.get(pyStr(use.name))
-					c.set(pyStr(use.name), n+1)
+					n, _ := c.get(pytext.Str(use.name))
+					c.set(pytext.Str(use.name), n+1)
 				}
 			case "Bash":
 				cmd := getStr(inp, "command", "")
-				if search(gitMutating, cmd) != nil {
-					head, _, _ := strings.Cut(pyStrip(text), "\n")
+				if pytext.Search(gitMutating, cmd) != nil {
+					head, _, _ := strings.Cut(pytext.Strip(text), "\n")
 					e := ""
 					if isErr {
 						e = "ERROR "
 					}
-					git = append(git, "- "+cut(cmd, 200)+" -> "+e+cut(head, 200))
+					git = append(git, "- "+pytext.Cut(cmd, 200)+" -> "+e+pytext.Cut(head, 200))
 				}
-				if m := search(bgID, text); truthy(inp.get("run_in_background")) && m != nil {
-					desc := cut(cmd, 120)
-					if v := inp.get("description"); truthy(v) {
-						desc = pyStr(v)
+				if m := pytext.Search(bgID, text); pytext.Truthy(inp.Get("run_in_background")) && m != nil {
+					desc := pytext.Cut(cmd, 120)
+					if v := inp.Get("description"); pytext.Truthy(v) {
+						desc = pytext.Str(v)
 					}
-					bg.set(group(m, 1), bgJob{desc, group(m, 2)})
+					bg.set(pytext.Group(m, 1), bgJob{desc, pytext.Group(m, 2)})
 				}
 			case "KillShell", "TaskStop":
-				id := inp.get("shell_id")
-				if !truthy(id) {
-					id = inp.get("task_id")
+				id := inp.Get("shell_id")
+				if !pytext.Truthy(id) {
+					id = inp.Get("task_id")
 				}
 				if s, ok := id.(string); ok {
 					bg.pop(s)
@@ -344,10 +345,10 @@ func buildFacts(path, until string) (string, error) {
 	}
 	out = append(out, orNone(files)...)
 	br := "(not a git repo)"
-	if truthy(branch) {
-		br = pyStr(branch)
+	if pytext.Truthy(branch) {
+		br = pytext.Str(branch)
 	}
-	out = append(out, "", "### Git", "cwd "+pyStr(cwd)+", branch "+br)
+	out = append(out, "", "### Git", "cwd "+pytext.Str(cwd)+", branch "+br)
 	out = append(out, git...)
 	out = append(out, "", "### Background jobs still running at the cut")
 	out = append(out, orNone(jobLines(&bg))...)

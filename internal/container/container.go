@@ -1,4 +1,6 @@
-package main
+// Package container reads the commands docker and podman hand to a container, mapping their
+// bind mounts back to host paths.
+package container
 
 // Commands run inside a container: `docker|podman [container] run|create|exec [opts] IMAGE
 // cmd...` hands cmd to the container, so the rules read it like a bare command. The -v and
@@ -12,19 +14,22 @@ import (
 	"strings"
 )
 
-// bindMount is one host path mounted at a container path.
-type bindMount struct{ Host, Ctr string }
+// BindMount is one host path mounted at a container path.
+type BindMount struct{ Host, Ctr string }
 
-// mountSet is the filesystem a command runs on when it runs in a container; nil is the host.
-type mountSet struct{ Binds []bindMount }
+// MountSet is the filesystem a command runs on when it runs in a container; nil is the host.
+type MountSet struct{ Binds []BindMount }
 
-// within is the filesystem of a container started with mounts inside m.
-func (m *mountSet) within(mounts []bindMount) *mountSet {
+// Within is the filesystem of a container started with mounts inside m.
+func (m *MountSet) Within(mounts []BindMount) *MountSet {
 	if m == nil {
-		return &mountSet{mounts}
+		return &MountSet{mounts}
 	}
-	return &mountSet{append(mounts[:len(mounts):len(mounts)], m.Binds...)}
+	return &MountSet{append(mounts[:len(mounts):len(mounts)], m.Binds...)}
 }
+
+// containerValueOpts are docker/podman global options that take a separate value.
+var containerValueOpts = map[string]bool{"-H": true, "--host": true, "-c": true, "--context": true, "--config": true, "-l": true, "--log-level": true, "--connection": true, "--url": true}
 
 // containerRunValueOpts are the docker/podman run|create|exec options that take a separate
 // value; every other option is a bare flag.
@@ -49,9 +54,9 @@ var containerRunValueOpts = func() map[string]bool {
 // attached or at the end of a cluster (-itv /:/host, -v/x:/y).
 const containerRunShortValue = "acehlmpuvw"
 
-// containerSub returns the docker|podman subcommand of w (run, exec, ps, ...), skipping
+// Sub returns the docker|podman subcommand of w (run, exec, ps, ...), skipping
 // global options and the `container` management prefix, and the words after it.
-func containerSub(w []string) (sub string, rest []string) {
+func Sub(w []string) (sub string, rest []string) {
 	if len(w) == 0 || path.Base(w[0]) != "docker" && path.Base(w[0]) != "podman" {
 		return "", nil
 	}
@@ -75,11 +80,11 @@ func containerSub(w []string) (sub string, rest []string) {
 	return args[0], args[1:]
 }
 
-// containerCmd returns the command a docker|podman run|create|exec starts in the container
+// Cmd returns the command a docker|podman run|create|exec starts in the container
 // (the words after IMAGE, led by --entrypoint when set) and the bind mounts it declares.
 // inner is nil when w is not such a command or starts none.
-func containerCmd(w []string) (inner []string, mounts []bindMount) {
-	sub, rest := containerSub(w)
+func Cmd(w []string) (inner []string, mounts []BindMount) {
+	sub, rest := Sub(w)
 	if sub != "run" && sub != "create" && sub != "exec" {
 		return nil, nil
 	}
@@ -141,16 +146,16 @@ func hostPathLike(s string) bool {
 	return strings.HasPrefix(s, "/") || strings.HasPrefix(s, "~") || strings.HasPrefix(s, "$") || strings.HasPrefix(s, ".")
 }
 
-func addBind(ms []bindMount, host, ctr string) []bindMount {
+func addBind(ms []BindMount, host, ctr string) []BindMount {
 	ctr = strings.TrimRight(ctr, "/")
 	if hostPathLike(host) && strings.HasPrefix(ctr, "/") {
-		ms = append(ms, bindMount{host, ctr})
+		ms = append(ms, BindMount{host, ctr})
 	}
 	return ms
 }
 
 // appendVolume adds -v host:ctr[:opts].
-func appendVolume(ms []bindMount, v string) []bindMount {
+func appendVolume(ms []BindMount, v string) []BindMount {
 	parts := strings.Split(v, ":")
 	if len(parts) < 2 {
 		return ms
@@ -159,7 +164,7 @@ func appendVolume(ms []bindMount, v string) []bindMount {
 }
 
 // appendMount adds --mount type=bind,source=...,target=... (src, dst and destination too).
-func appendMount(ms []bindMount, v string) []bindMount {
+func appendMount(ms []BindMount, v string) []BindMount {
 	var typ, host, ctr string
 	for _, kv := range strings.Split(v, ",") {
 		k, val, _ := strings.Cut(kv, "=")
@@ -178,10 +183,10 @@ func appendMount(ms []bindMount, v string) []bindMount {
 	return addBind(ms, host, ctr)
 }
 
-// mapPath rewrites an absolute container path under the longest matching mount target to its
+// MapPath rewrites an absolute container path under the longest matching mount target to its
 // host path. A path above a mount target (/, /*) reaches the host through the mount, so it
 // stays as written. Any other absolute path is the container's own and gets a "ctr:" prefix.
-func (m *mountSet) mapPath(w string) string {
+func (m *MountSet) MapPath(w string) string {
 	if !strings.HasPrefix(w, "/") {
 		return w
 	}
@@ -201,21 +206,4 @@ func (m *mountSet) mapPath(w string) string {
 		}
 	}
 	return "ctr:" + w
-}
-
-// mapCmd maps the words and redirect targets of c, which runs on m, to host paths.
-func mapCmd(c simpleCmd, m *mountSet) simpleCmd {
-	if m == nil {
-		return c
-	}
-	words := make([]string, len(c.Words))
-	for i, w := range c.Words {
-		words[i] = m.mapPath(w)
-	}
-	redirs := make([]astRedir, len(c.Redirs))
-	for i, r := range c.Redirs {
-		redirs[i] = astRedir{r.Op, m.mapPath(r.Target)}
-	}
-	c.Words, c.Redirs = words, redirs
-	return c
 }

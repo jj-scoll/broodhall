@@ -7,16 +7,18 @@ runs `go test ./...` with a coverage profile and publishes the total as
 
 ## The numbers
 
-Measured at commit `5836629` with Go 1.27.3 on linux/amd64. The badge has the current total.
+Measured at commit `f145af8` plus the `internal/` extraction, with Go 1.27.3 on linux/amd64. The badge has the current total.
 
 | Package | Statement coverage |
 | --- | --- |
-| `cmd/guardrails` | 88.9% |
+| `cmd/guardrails` | 90.1% |
 | `cmd/guardrails/secretfiles` | 94.1% |
 | `cmd/guardrails/secretrules` | 97.8% |
-| `cmd/memory` | 82.1% |
+| `cmd/memory` | 84.9% |
+| `internal/container` | 98.9% |
+| `internal/pytext` | 98.8% |
 | `tools/hooklatency` (a benchmark tool, no tests) | 0.0% |
-| **Total** (`go tool cover -func`) | **85.1%** |
+| **Total** (`go tool cover -func`) | **87.4%** |
 
 The repository has 33,080 lines of Go outside tests and 26,003 lines of Go tests, in 128 and
 119 files (`git ls-files '*.go'`, split on `_test.go`). That count includes the
