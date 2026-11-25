@@ -380,6 +380,24 @@ func settingsGuard(env *guardEnv, cmd string) decision {
 			return settingsAsk(op)
 		}
 	}
+	// The same test on each command's argv as the shell passes it (parseShell), the words the
+	// rm -rf ~ rule reads: \rm, r''m and a line-continued rm are rm here. Relative paths are
+	// read from the session cwd, and also under ~ from the first cd on.
+	if cmds, ok := parseShell(cmd); ok {
+		cwd, lost = env.Cwd, false
+		for _, c := range cmds {
+			seg := strings.Join(c.Words, " ")
+			for _, r := range c.Redirs {
+				seg += " " + r.Op + " " + r.Target
+			}
+			lost = lost || cdWordRE.MatchString(seg)
+			switch op := fileWriteOp(seg, isFile, isDir); {
+			case op == "", op == "rmdir", op == "find" && !findWrites(seg):
+			default:
+				return settingsAsk(op)
+			}
+		}
+	}
 	return decision{}
 }
 
