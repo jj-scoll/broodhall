@@ -212,3 +212,9 @@ allow	ask:git-push-delete	git push origin -d main
 allow	ask:git-push-delete	git push origin :main
 allow	ask:git-push-delete	git push --delete origin feature/x
 allow	allow	git fetch origin --prune
+# mutation-test gaps: protected targets are compared after resolving the path
+block:dangerous:rm -rf /	block:dangerous:rm -rf ~	rm -rf /nohome/../nohome/user
+block:dangerous:chown -R	block:dangerous:chown -R	chown -R x /nohome/../nohome/user
+allow	block:dangerous:chmod -R	chmod -R 000 /hom[e]
+allow	block:dangerous:rm -rf ~	cd x && T=~ && rm -rf "$T"
+block:dangerous:rm -rf /	allow	rm -rf /tmp/../tmp/x

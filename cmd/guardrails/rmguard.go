@@ -102,6 +102,40 @@ func rootName(t, home string) string {
 	case rmProtected[trimmed]:
 		return trimmed
 	}
+	return resolvedRootName(t, home)
+}
+
+// resolvedRootName is rootName for a path written another way: a leading ~ or $HOME expanded,
+// dot segments and doubled slashes cleaned (/home/../home/user), a trailing /* dropped, and a
+// glob that can match a protected target (/hom[e]/user, /h*) counted as that target.
+func resolvedRootName(t, home string) string {
+	p := t
+	for _, v := range []string{"${HOME}", "$HOME", "~"} {
+		if rest, ok := strings.CutPrefix(p, v); ok && home != "" && (rest == "" || rest[0] == '/') {
+			p = home + rest
+			break
+		}
+	}
+	if !strings.HasPrefix(p, "/") {
+		return ""
+	}
+	p = path.Clean(p)
+	for p != "/" && strings.HasSuffix(p, "/*") {
+		p = path.Dir(p)
+	}
+	names := map[string]string{"/": "/", "/home": "/home", "/nix": "/nix", "/storage": "/storage"}
+	if home != "" {
+		names[path.Clean(home)] = "~"
+	}
+	glob := strings.ContainsAny(p, "*?[")
+	for target, name := range names {
+		if p == target {
+			return name
+		}
+		if ok, _ := path.Match(p, target); glob && ok {
+			return name
+		}
+	}
 	return ""
 }
 

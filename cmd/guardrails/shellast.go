@@ -74,6 +74,7 @@ func parseShellDepth(cmd string, depth int, ms *container.MountSet) ([]simpleCmd
 			descend(ic.Words, nil, ms)
 		}
 	}
+	sx := &shellCtx{vars: map[string]string{}}
 	syntax.Walk(f, func(n syntax.Node) bool {
 		switch n := n.(type) {
 		case *syntax.FuncDecl:
@@ -85,36 +86,42 @@ func parseShellDepth(cmd string, depth int, ms *container.MountSet) ([]simpleCmd
 			if call, isCall := n.Cmd.(*syntax.CallExpr); isCall {
 				ws := make([]string, len(call.Args))
 				for i, w := range call.Args {
-					ws[i] = wordText(w)
+					ws[i] = sx.text(w)
 				}
 				sc.Words, sc.Env = peelWrappersEnv(ws)
 				for _, as := range call.Assigns {
 					if as.Name != nil && as.Value != nil && len(call.Args) > 0 {
-						sc.Env = append(sc.Env, as.Name.Value+"="+wordText(as.Value))
+						sc.Env = append(sc.Env, as.Name.Value+"="+sx.text(as.Value))
 					}
+				}
+				if len(call.Args) == 0 {
+					sx.assign(call.Assigns)
 				}
 			}
-			if decl, isDecl := n.Cmd.(*syntax.DeclClause); isDecl && decl.Variant != nil && decl.Variant.Value == "export" {
-				sc.Words = []string{"export"}
-				for _, as := range decl.Args {
-					if as.Name != nil && as.Value != nil {
-						sc.Env = append(sc.Env, as.Name.Value+"="+wordText(as.Value))
+			if decl, isDecl := n.Cmd.(*syntax.DeclClause); isDecl && decl.Variant != nil {
+				if decl.Variant.Value == "export" {
+					sc.Words = []string{"export"}
+					for _, as := range decl.Args {
+						if as.Name != nil && as.Value != nil {
+							sc.Env = append(sc.Env, as.Name.Value+"="+sx.text(as.Value))
+						}
 					}
 				}
+				sx.assign(decl.Args)
 			}
 			var feeds []string // heredoc / here-string bodies
 			for _, r := range n.Redirs {
 				if r.Word == nil {
 					continue
 				}
-				sc.Redirs = append(sc.Redirs, astRedir{r.Op.String(), wordText(r.Word)})
+				sc.Redirs = append(sc.Redirs, astRedir{r.Op.String(), sx.text(r.Word)})
 				switch r.Op {
 				case syntax.Hdoc, syntax.DashHdoc:
 					if r.Hdoc != nil {
 						feeds = append(feeds, wordText(r.Hdoc))
 					}
 				case syntax.WordHdoc:
-					feeds = append(feeds, wordText(r.Word))
+					feeds = append(feeds, sx.text(r.Word))
 				}
 			}
 			sc = mapCmd(sc, ms)
@@ -179,29 +186,65 @@ func nestedScripts(w []string, feeds []string) []nestedScript {
 
 // wordText is the word as the shell would pass it, except that expansions stay literal
 // ("$HOME", "$(cmd)"), which is what rules compare against.
-func wordText(w *syntax.Word) string {
+func wordText(w *syntax.Word) string { return (*shellCtx)(nil).text(w) }
+
+// shellCtx is what one parse has learned that the shell resolves before it runs a command:
+// the variables assigned earlier in the same command line (c=rm; "$c" ...). A nil shellCtx
+// knows nothing. Control flow is ignored, which can only resolve more, never less.
+type shellCtx struct {
+	vars map[string]string // NAME -> value as text, expansions in it kept as written
+}
+
+// assign records NAME=value assignments (plain or from export, declare, local, readonly).
+func (c *shellCtx) assign(as []*syntax.Assign) {
+	for _, a := range as {
+		if a.Name != nil && a.Value != nil && !a.Naked && !a.Append && a.Array == nil && a.Index == nil {
+			c.vars[a.Name.Value] = c.text(a.Value)
+		}
+	}
+}
+
+// text is wordText with the known variables substituted.
+func (c *shellCtx) text(w *syntax.Word) string {
 	var b strings.Builder
 	for _, p := range w.Parts {
-		partText(&b, p, false)
+		c.part(&b, p, false)
 	}
 	return b.String()
 }
 
-func partText(b *strings.Builder, p syntax.WordPart, dquote bool) {
+func (c *shellCtx) part(b *strings.Builder, p syntax.WordPart, dquote bool) {
 	switch p := p.(type) {
 	case *syntax.Lit:
 		unescapeLit(b, p.Value, dquote)
+		return
 	case *syntax.SglQuoted:
 		b.WriteString(p.Value)
+		return
 	case *syntax.DblQuoted:
 		for _, q := range p.Parts {
-			partText(b, q, true)
+			c.part(b, q, true)
 		}
-	default:
-		var buf bytes.Buffer
-		syntax.NewPrinter().Print(&buf, p)
-		b.Write(buf.Bytes())
+		return
+	case *syntax.ParamExp:
+		if v, ok := c.lookup(p); ok {
+			b.WriteString(v)
+			return
+		}
 	}
+	var buf bytes.Buffer
+	syntax.NewPrinter().Print(&buf, p)
+	b.Write(buf.Bytes())
+}
+
+// lookup is the value of $name or ${name} when the command assigned it.
+func (c *shellCtx) lookup(p *syntax.ParamExp) (string, bool) {
+	if c == nil || p.Param == nil || p.Excl || p.Length || p.Width || p.Index != nil || p.Slice != nil ||
+		p.Repl != nil || p.Exp != nil || p.Names != 0 || p.Flags != nil || p.NestedParam != nil || len(p.Modifiers) > 0 {
+		return "", false
+	}
+	v, ok := c.vars[p.Param.Value]
+	return v, ok
 }
 
 // unescapeLit drops the backslash of an escaped character; inside double quotes only \" \\

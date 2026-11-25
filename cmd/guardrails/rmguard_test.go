@@ -45,6 +45,26 @@ func TestRmRootTarget(t *testing.T) {
 		{"second line", "ls\nrm -rf /", "/"},
 		{"unbalanced quote falls back to substring", `echo "don't; rm -rf /`, "/"},
 
+		// paths are resolved before they are compared: dot segments, $HOME and ~, the
+		// command's own assignments, and glob characters that can match a protected target
+		{"traversal to home", "rm -rf /nohome/../nohome/user", "~"},
+		{"HOME traversal", "rm -rf $HOME/../user", "~"},
+		{"tilde up to /home", "rm -rf ~/../../home", "/home"},
+		{"dot segment root", "rm -rf /./", "/"},
+		{"double slash", "rm -rf //", "/"},
+		{"bracket glob", "rm -rf /nohom[e]/user", "~"},
+		{"star segment", "rm -rf /h*", "/home"},
+		{"question mark", "rm -rf /ni?", "/nix"},
+		{"assigned target", `T=~; rm -rf "$T"`, "~"},
+		{"assigned HOME target", "T=$HOME; rm -rf $T", "$HOME"},
+		{"exported target", "export T=/nohome/user && rm -rf \"$T\"", "~"},
+		{"traversal below tmp", "rm -rf /tmp/../tmp/x", ""},
+		{"HOME subdir traversal", "rm -rf $HOME/.cache/../.cache/pip", ""},
+		{"glob below home", "rm -rf /nohome/user/src/*", ""},
+		{"glob in tmp", "rm -rf /tmp/*", ""},
+		{"assigned subdir", `D=~/.cache/x; rm -rf "$D"`, ""},
+		{"relative dotdot", "rm -rf ../build", ""},
+
 		// heredocs: bodies are data unless a shell reads them
 		{"heredoc data with odd quotes", "python3 - <<'EOF'\ns = '''don't\nrm -rf /\nEOF\nls", ""},
 		{"heredoc file write", "cat > clean.sh <<'EOF'\nrm -rf /\nEOF", ""},
