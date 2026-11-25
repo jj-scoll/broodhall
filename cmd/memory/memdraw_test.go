@@ -418,6 +418,9 @@ func TestMemSearchRawOnlyWhenNotesMiss(t *testing.T) {
 }
 
 func TestReadSession(t *testing.T) {
+	old := memdQueryTZ
+	memdQueryTZ = time.UTC
+	t.Cleanup(func() { memdQueryTZ = old })
 	e := newTailEnv(t, "")
 	bigOut := strings.Repeat("x", 3000)
 	rawScanFile(t, e, "s1.jsonl",
@@ -443,6 +446,10 @@ func TestReadSession(t *testing.T) {
 	}
 	if !strings.Contains(out, "feat/q") || !strings.Contains(out, "claude-opus-5-5") {
 		t.Errorf("header lacks branch or model:\n%s", out)
+	}
+	// The header's times carry the year: without it an agent reading an old session guesses one.
+	if !strings.Contains(out, "Oct 28, 2026, 10:00 AM to Oct 28, 2026, 10:00 AM") {
+		t.Errorf("header times lack the year:\n%s", out)
 	}
 	page, err := memReadSession(e.db, map[string]any{"session_id": "s1", "offset": 1, "limit": 2})
 	if err != nil {
