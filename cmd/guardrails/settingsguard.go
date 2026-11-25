@@ -317,8 +317,21 @@ func settingsGuard(env *guardEnv, cmd string) decision {
 	if cfg := claudeConfigEnv(env.Home); cfg != "" {
 		quick = append(quick, "CLAUDE_CONFIG_DIR", filepath.Base(cfg), filepath.Base(resolveForCompare(cfg, "/")))
 	}
-	if !slices.ContainsFunc(quick, func(q string) bool { return strings.Contains(cmd, q) }) {
-		return decision{}
+	mentions := func(s string) bool {
+		return slices.ContainsFunc(quick, func(q string) bool { return strings.Contains(s, q) })
+	}
+	if !mentions(cmd) {
+		// The text may spell the path another way ($'...', base64 | sh): read what runs.
+		cmds, _ := parseShell(cmd)
+		if !slices.ContainsFunc(cmds, func(c simpleCmd) bool {
+			seg := strings.Join(c.Words, " ")
+			for _, r := range c.Redirs {
+				seg += " " + r.Target
+			}
+			return mentions(seg)
+		}) {
+			return decision{}
+		}
 	}
 	cwd, lost := env.Cwd, false
 	expand := func(tok string) string {

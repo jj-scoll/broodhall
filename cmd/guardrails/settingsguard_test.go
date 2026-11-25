@@ -39,6 +39,7 @@ func TestSettingsGuardAsksOnWrites(t *testing.T) {
 		`r\m -rf ~/.claude`,
 		"rm \\\n  -rf \\\n  ~/.claude",
 		`"rm" -rf ~/.claude`,
+		`echo cm0gLXJmIH4vLmNsYXVkZQo= | base64 -d | sh`, // rm -rf ~/.claude, encoded
 		"find ~/.claude -name settings.json -delete",
 		`find ~/.claude -name 'settings*.json' -exec rm {} \;`,
 		`find ~/.claude -maxdepth 1 -exec sed -i 's/a/b/' {} +`,

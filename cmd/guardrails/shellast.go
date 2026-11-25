@@ -227,6 +227,10 @@ func nestedScripts(w []string, feeds []string) []nestedScript {
 		for _, f := range feeds {
 			out = append(out, nestedScript{text: f})
 		}
+	default:
+		for _, script := range interpreterScripts(w) {
+			out = append(out, nestedScript{text: script, lenient: true})
+		}
 	}
 	return out
 }

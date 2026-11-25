@@ -178,6 +178,16 @@ func TestResolvedCommandNames(t *testing.T) {
 		{"computed data, not a shell", `./gen | sh -c 'wc -l'`, allowed},
 		{"computed data into jq", `./gen | jq .`, allowed},
 		{"base64 to a file", `echo aGkK | base64 -d > out.txt`, allowed},
+
+		// shell commands an interpreter one-liner runs
+		{"python os.system", `python3 -c 'import os; os.system("rm -rf ~")'`, rmHome},
+		{"python subprocess shell", `python3 -c "import subprocess; subprocess.run('git reset --hard', shell=True)"`, "ask:git-reset-hard"},
+		{"python subprocess list", `python3 -c "import subprocess; subprocess.check_call(['rm', '-rf', '/'])"`, rmRoot},
+		{"perl system sh -c ARGV", `perl -e 'system("sh", "-c", $ARGV[0])' 'rm -rf $HOME'`, rmHOME},
+		{"perl system string", `perl -e 'system("git clean -fdx")'`, "ask:git-clean-f"},
+		{"python print", `python3 -c 'print("rm -rf ~")'`, allowed},
+		{"python safe system", `python3 -c 'import os; os.system("ls -la")'`, allowed},
+		{"perl print", `perl -e 'print "rm -rf ~\n"'`, allowed},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
