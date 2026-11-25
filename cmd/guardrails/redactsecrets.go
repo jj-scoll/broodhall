@@ -10,9 +10,12 @@ package main
 // which is why pre-tool-use only masks readers that print whole lines.
 
 import (
+	"path"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/jj-scoll/broodhall/cmd/guardrails/secretfiles"
 )
 
 var (
@@ -21,6 +24,10 @@ var (
 	// not follow "[", so the slug of a tag is never taken for a key.
 	keyCandRE = regexp.MustCompile(`(?:^|[^\[A-Za-z0-9_.-])([A-Za-z0-9_.-]+)["']?[ \t]*[=:][ \t]*`)
 	onlyTagRE = regexp.MustCompile(`^\[[a-z0-9-]+:[0-9a-f]{6}\]$`)
+	// urlCredRE is scheme://user:PASS@ and scheme://:PASS@ (group 2 is the password). The
+	// user and password stop at "/" and "@", so a port (host:8080/x) or a path (/a:b@c) is no
+	// credential, and a URL with no password never matches.
+	urlCredRE = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.-]*://[^\s:/@]*:)([^\s/@]+)@`)
 )
 
 func (x *redactor) maskSecrets(s string) string { return x.maskSecretsMode(s, false) }
@@ -88,7 +95,65 @@ func (x *redactor) maskSecretShapes(s string) string {
 		b.WriteString(x.tag(strings.ToLower(strings.ReplaceAll(sp.Pattern, " ", "-")), s[sp.Start:end]))
 		at = end
 	}
-	return b.String() + s[at:]
+	return x.maskURLPasswords(b.String() + s[at:])
+}
+
+// maskURLPasswords masks the password of scheme://user:pass@host, keeping scheme, user and
+// host readable. A password that is already a tag stays as it is.
+func (x *redactor) maskURLPasswords(s string) string {
+	return urlCredRE.ReplaceAllStringFunc(s, func(m string) string {
+		sub := urlCredRE.FindStringSubmatch(m)
+		if !maskable(sub[2]) {
+			return m
+		}
+		return sub[1] + x.tag("url-password", sub[2]) + "@"
+	})
+}
+
+// secretSourceRE finds the "-N-" of a grep context line (path-12-text); path:N:text and
+// path:text need no pattern, the colon ends the path.
+var secretSourceRE = regexp.MustCompile(`-[0-9]+-`)
+
+// secretSourceLine reports whether a recursive-search output line (grep -rn, rg, git grep:
+// path:line:text, path-line-text for context, rev:path:line:text) comes from a file that
+// secretfiles.Named protects by name. The path is read off the front of the line: every
+// ":" and "-N-" is tried as its end, and a candidate counts from its last ":" (so "HEAD:.env"
+// is .env, and ".env.example:1" is a template, not .env.*).
+func secretSourceLine(l string) bool {
+	named := func(p string) bool {
+		return secretfiles.Named(path.Base(p[strings.LastIndexByte(p, ':')+1:]))
+	}
+	for i := 0; i < len(l); i++ {
+		if l[i] == ':' && named(l[:i]) {
+			return true
+		}
+	}
+	for _, m := range secretSourceRE.FindAllStringIndex(l, -1) {
+		if named(l[:m[0]]) {
+			return true
+		}
+	}
+	return false
+}
+
+// maskSecretFileLines is maskSecrets for recursive search output (redact --by-file): only
+// the lines that name a protected file are masked, so ordinary hits (password = os.Getenv in
+// source) stay readable. Runs of such lines are masked together, so a block is seen whole.
+func (x *redactor) maskSecretFileLines(s string) string {
+	lines := strings.Split(s, "\n")
+	for i := 0; i < len(lines); {
+		if !secretSourceLine(lines[i]) {
+			i++
+			continue
+		}
+		j := i + 1
+		for j < len(lines) && secretSourceLine(lines[j]) {
+			j++
+		}
+		copy(lines[i:j], strings.Split(x.maskSecrets(strings.Join(lines[i:j], "\n")), "\n"))
+		i = j
+	}
+	return strings.Join(lines, "\n")
 }
 
 // maskKeyValues walks the key candidates of one line left to right. A quoted value under a
