@@ -13,6 +13,9 @@ guardrails, memory and context-guard share one version; see
   [`ecs_export_path`](../guardrails/options.md#ecs_export_path)), so a SIEM agent such as
   Wazuh can ship it. An event holds the kind, the rule id, the session id, the host, the user
   and the binary version. It never holds command text, paths or values. (#77)
+- guardrails: `GUARDRAILS_WRITER_CONFIG_DIR` picks the account the handoff writer's `claude -p`
+  calls run as, whichever account the session is on, as `MEMORY_OBSERVER_CONFIG_DIR` does for
+  the memory observer. See [Write handoff](../guardrails/write-handoff.md#login-model-and-cost).
 
 ## 1.12.1
 

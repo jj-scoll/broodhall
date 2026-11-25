@@ -61,7 +61,12 @@ ending in `.md` is replaced by the default name.
 
 The calls use your own Claude Code login and the model `claude-haiku-5-5`. There is no key
 file and no API mode: `ANTHROPIC_API_KEY` is removed from the environment of the `claude`
-child, so a key left in your shell bills nothing. One handoff costs one Haiku call, or two
+child, so a key left in your shell bills nothing. With several accounts, set
+`GUARDRAILS_WRITER_CONFIG_DIR` to one account's Claude config directory (for example
+`~/.claude-api`) and every call runs as that account, whichever account the session is on: the
+child gets it as `CLAUDE_CONFIG_DIR`, and the session's `CLAUDE_CODE_OAUTH_TOKEN` and
+`ANTHROPIC_AUTH_TOKEN` are removed, since they would win over that directory's login. Unset or
+empty, the calls run as the session's account. One handoff costs one Haiku call, or two
 when the check finds gaps. The prompt asks for third-person or impersonal wording, since a
 different session reads the note. The summary line shows the cost Claude Code reports.
 

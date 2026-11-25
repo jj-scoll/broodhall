@@ -4,8 +4,10 @@ Twelve plugin options, two files under `~/.config/guardrails/`, and two environm
 that are not plugin options and have a section here (`HANDOFF_AUTOCLEAR` and
 `GUARDRAILS_BIN`). The older `claude-tools` names still work; see [Older names](#older-names).
 
-Three more variables that are not plugin options are covered elsewhere or here:
-`HANDOFF_STATE_DIR` in [Handoff gate](handoff-gate.md#state), `GUARDRAILS_INSTALL_WAIT` in
+Four more variables that are not plugin options are covered elsewhere or here:
+`HANDOFF_STATE_DIR` in [Handoff gate](handoff-gate.md#state), `GUARDRAILS_WRITER_CONFIG_DIR` (the
+account handoffs are written as) in [Write handoff](write-handoff.md#login-model-and-cost),
+`GUARDRAILS_INSTALL_WAIT` in
 [Updating](../guide/updating.md#between-the-update-and-the-download), and
 `GUARDRAILS_RELEASE_URL`, which sets where the launcher downloads releases from, for a mirror; it
 defaults to this repository's GitHub releases.
