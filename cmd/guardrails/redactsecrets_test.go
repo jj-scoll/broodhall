@@ -153,3 +153,71 @@ func TestRedactSecretsExecAndFilter(t *testing.T) {
 		t.Errorf("filter: exit %d, %q", code, stdout.String())
 	}
 }
+
+// G3 (guard-evasion eval): the password of scheme://user:pass@host and scheme://:pass@host
+// was shown in clear. Scheme, user and host stay readable.
+func TestMaskSecretsURLCredentials(t *testing.T) {
+	x := testRedactor()
+	pw := "s3cr3t" + "Pw-9zQ"
+	for _, c := range []struct{ in, prefix, suffix string }{
+		{"DATABASE_URL=postgres://app:" + pw + "@db.example.org:5432/prod", "DATABASE_URL=postgres://app:[", "]@db.example.org:5432/prod"},
+		{"REDIS_URL=redis://:" + pw + "@cache:6379", "REDIS_URL=redis://:[", "]@cache:6379"},
+		{`"amqps://u:` + pw + `@mq/v?x=1"`, `"amqps://u:[`, `]@mq/v?x=1"`},
+		{"src/.env:3:mongodb+srv://a.b:" + pw + "@c.example.net/db", "src/.env:3:mongodb+srv://a.b:[", "]@c.example.net/db"},
+	} {
+		got := x.maskSecrets(c.in)
+		if strings.Contains(got, pw) || !strings.HasPrefix(got, c.prefix) || !strings.HasSuffix(got, c.suffix) {
+			t.Errorf("maskSecrets(%q) = %q, want %q<tag>%q", c.in, got, c.prefix, c.suffix)
+		}
+	}
+	a, b := secretTagRE.FindString(x.maskSecrets("a://u:"+pw+"@h")), secretTagRE.FindString(x.maskSecrets("b://v:"+pw+"@h2"))
+	if a == "" || a != b {
+		t.Errorf("equal passwords should share a tag: %q %q", a, b)
+	}
+	for _, keep := range []string{
+		"postgres://app@host/db", "postgres://host:5432/db", "https://example.org/a:b@c", "http://localhost:8080",
+		"git@github.com:org/repo.git", "ssh user@host", "mail me@example.org", "redis://:@host", "see ftp://host:21/x",
+	} {
+		if got := x.maskSecrets(keep); got != keep {
+			t.Errorf("kept %q changed to %q", keep, got)
+		}
+	}
+}
+
+// By-file mode masks only the lines that name a protected file, with key names and shapes.
+func TestRedactByFileMasksOnlyProtectedFileLines(t *testing.T) {
+	gh := fakeSecrets["github"]
+	pw := "hunter" + "2-Zq9!xV"
+	in := strings.Join([]string{
+		"./.env:1:STRIPE_SECRET_KEY=" + pw,
+		"./.env:2:DB=postgres://app:" + pw + "@h/db",
+		"./.env-3-API_TOKEN=" + pw,
+		"deploy/prod.tfvars:4:password = \"" + pw + "\"",
+		"HEAD:.env:5:SECRET=" + pw,
+		"./src/config.go:7:password = os.Getenv(\"PW\") // " + "TOKEN=" + "plain",
+		"./README.md:9:set API_KEY=your-key-here",
+		"./.env.example:1:API_KEY=changeme",
+		"./notes.txt:2:token " + gh,
+		"",
+	}, "\n")
+	var stdout, stderr bytes.Buffer
+	code := runRedact(testRedactor(), []string{"--secrets", "--by-file", "--", "sh", "-c", `printf '%s' "$1"`, "sh", in}, nil, &stdout, &stderr)
+	out := stdout.String()
+	if code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, stderr.String())
+	}
+	if strings.Contains(out, pw) {
+		t.Errorf("protected-file value leaked:\n%s", out)
+	}
+	for _, want := range []string{"./.env:1:STRIPE_SECRET_KEY=[secret:", "./.env:2:DB=postgres://app:[", "./.env-3-API_TOKEN=[secret:", "deploy/prod.tfvars:4:password = \"[secret:", "HEAD:.env:5:SECRET=[secret:"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	// Ordinary search output is untouched, templates included.
+	for _, keep := range []string{"./src/config.go:7:password = os.Getenv(\"PW\") // TOKEN=plain", "./README.md:9:set API_KEY=your-key-here", "./.env.example:1:API_KEY=changeme", "./notes.txt:2:token " + gh} {
+		if !strings.Contains(out, keep+"\n") {
+			t.Errorf("ordinary line changed: %q in:\n%s", keep, out)
+		}
+	}
+}

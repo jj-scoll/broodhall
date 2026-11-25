@@ -11,7 +11,9 @@ package main
 //   - Bash: a plain reader of a protected file (cat, head, tail, grep, rg, sed -n 'Np',
 //     jq ., yq .), or a recursive grep/rg of a directory holding one, is rewritten to
 //     `guardrails redact --secrets -- <reader ...>`. Only flags that print whole lines
-//     pass, because key-name masking needs the key on the line. Metadata commands (ls,
+//     pass, because key-name masking needs the key on the line. A recursive grep/rg/git grep
+//     of a directory that holds a file protected by name only runs under `--by-file`, which
+//     masks the lines whose file name is protected. Metadata commands (ls,
 //     stat, test, wc, ...) pass. Any other command naming a protected file asks: base64,
 //     xxd, cp or python would get past the mask. So does a protected path anywhere else in
 //     the text (bash -c, python -c, X=path), and a secret-shaped value in the command.
@@ -21,6 +23,7 @@ package main
 // script written earlier or a path built from variables gets past it.
 
 import (
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -28,6 +31,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jj-scoll/broodhall/cmd/guardrails/secretfiles"
 	"mvdan.cc/sh/v3/syntax"
@@ -230,6 +234,100 @@ func readerOK(name string, args []string) bool {
 	return true
 }
 
+// The walk of searchHoldsNamed is bounded by entries and by wall time; past either it
+// stops and reports "holds one" (fail closed: the search is masked). The budget is the
+// pre-tool-use latency a recursive search may pay: 15ms is below what a person notices next
+// to the shell and model round trip, and on a loaded machine it covers a few thousand
+// entries, so a repo-sized tree is fully checked and a home-sized one fails closed.
+// searchWalkNow is the clock, replaced in tests.
+const searchWalkCap = 50000
+
+var (
+	searchWalkBudget = 15 * time.Millisecond
+	searchWalkNow    = time.Now
+	// searchWalkSkip are dependency, vendor and tool-cache directories: large, rarely hold
+	// a project's own .env, and a hit there is a third party's file. A .env inside one is
+	// not masked by name.
+	searchWalkSkip = map[string]bool{".git": true, "node_modules": true, "vendor": true, ".direnv": true, ".terraform": true, ".venv": true}
+)
+
+// searchHoldsNamed reports whether a recursive search reaches a file protected by name
+// (.env, *.tfvars, ...): a directory among its words, or the cwd when it names none (rg,
+// git grep, grep -r), holds one. Only searches that can print such a file are wrapped, so
+// an ordinary `grep -r` keeps its output (and rtk's compression of it) as typed.
+func (g *secretGuard) searchHoldsNamed(words []string, gitGrep bool) bool {
+	var roots []string
+	for _, w := range words {
+		if gitGrep || strings.HasPrefix(w, "-") {
+			continue
+		}
+		for _, f := range g.files(w) {
+			if fi, err := os.Stat(f); err == nil && fi.IsDir() {
+				roots = append(roots, f)
+			}
+		}
+	}
+	if len(roots) == 0 {
+		roots = []string{g.cwd}
+	}
+	for _, r := range roots {
+		if searchWalkMemo[r] || !searchWalkMemoHas(r) && g.walkHoldsNamed(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// searchWalkMemo remembers each root's walk for the life of the process: pre-tool-use scans
+// a command twice (the rule, then the rewrite) and the answer cannot change in between, so
+// the budget is paid once per call. Tests reset it.
+var searchWalkMemo = map[string]bool{}
+
+func searchWalkMemoHas(r string) bool { _, ok := searchWalkMemo[r]; return ok }
+
+// walkHoldsNamed walks root within the entry and time budget and memoizes the answer.
+func (g *secretGuard) walkHoldsNamed(root string) bool {
+	n, found := 0, false
+	deadline := searchWalkNow().Add(searchWalkBudget)
+	filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if n++; n > searchWalkCap || secretNamed(d.Name()) && !d.IsDir() || n%16 == 0 && searchWalkNow().After(deadline) {
+			found = true
+			return filepath.SkipAll
+		}
+		if d.IsDir() && searchWalkSkip[d.Name()] {
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	searchWalkMemo[root] = found
+	return found
+}
+
+// namesFiles reports whether a grep or rg prints the file name on every line (path:text), as
+// by-file masking reads it: not with -h/--no-filename/-I, rg --heading (the name is its own
+// line), or -Z/-0/--null (a NUL replaces the colon).
+func namesFiles(name string, args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			break
+		}
+		if slices.Contains([]string{"--no-filename", "--heading", "--null", "--null-data"}, a) {
+			return false
+		}
+		bad := "hZz"
+		if name == "rg" {
+			bad = "I0"
+		}
+		if strings.ContainsAny(shortLetters(name, a), bad) && !strings.HasPrefix(a, "--") {
+			return false
+		}
+	}
+	return true
+}
+
 // grepValueFlags are the short grep and rg flags that take a value: in a cluster, the
 // letters after one are its value.
 var grepValueFlags = map[string]string{"grep": "efmABCdD", "rg": "efgmMrtTjABCE"}
@@ -264,7 +362,11 @@ var secretReaders = map[string]bool{"cat": true, "head": true, "tail": true, "gr
 // ask the command that must be confirmed ("" when none).
 type secretScan struct {
 	wrap []int
-	ask  string
+	// byFile holds the offsets of recursive searches of a directory that no listed path is
+	// under: they run under `redact --secrets --by-file`, which masks the lines that name a
+	// protected file by its name (.env, *.tfvars, ...).
+	byFile []int
+	ask    string
 }
 
 func (g *secretGuard) scan(cmd string) secretScan {
@@ -362,7 +464,13 @@ func (g *secretGuard) scan(cmd string) secretScan {
 			f, u := g.protected(w)
 			file, under = file || f, under || u
 		}
-		recursive := name == "rg" || name == "grep" && slices.ContainsFunc(words[1:], func(a string) bool {
+		// git grep searches the tracked tree: recursive without a flag.
+		reader, rargs := name, words[1:]
+		if name == "git" && len(words) > 1 && words[1] == "grep" {
+			reader, rargs = "grep", words[2:]
+		}
+		gitGrep := reader != name
+		recursive := gitGrep || name == "rg" || name == "grep" && slices.ContainsFunc(words[1:], func(a string) bool {
 			return a == "--recursive" || a == "--dereference-recursive" || strings.ContainsAny(shortLetters("grep", a), "rR")
 		})
 		switch {
@@ -384,6 +492,9 @@ func (g *secretGuard) scan(cmd string) secretScan {
 			} else {
 				askOnce(name)
 			}
+		case recursive && (reader == "grep" || reader == "rg") && readerOK(reader, rargs) && namesFiles(reader, rargs) && g.searchHoldsNamed(words[1:], gitGrep):
+			s.byFile = append(s.byFile, int(ce.Args[0].Pos().Offset()))
+			cover(st)
 		case under && name == "find" && slices.ContainsFunc(words[1:], findRunsRE.MatchString):
 			askOnce(name)
 		}
@@ -474,7 +585,7 @@ func secretFileRule(env *guardEnv, cmd string) decision {
 			"Plain cat, head, tail, grep, rg, sed -n 'Np' and jq . reads are masked; ls, stat, test and wc pass; "+
 			`a value the command only passes to the tool that uses it can be captured, T=$(sed -n 's/^password = "\(.*\)"$/\1/p' FILE), `+
 			"but only the user can approve showing or copying it.")
-	case len(s.wrap) > 0:
+	case len(s.wrap)+len(s.byFile) > 0:
 		return decision{Rule: "secret-file:mask", Context: secretMaskNote}
 	}
 	return decision{}
@@ -485,16 +596,31 @@ func secretRewrite(env *guardEnv, cmd, self string) (string, bool) {
 	g := newSecretGuard(env.Home, env.XDGConfig, env.Cwd)
 	g.self = self
 	s := g.scan(cmd)
-	if s.ask != "" || len(s.wrap) == 0 {
+	if s.ask != "" || len(s.wrap)+len(s.byFile) == 0 {
 		return "", false
 	}
 	qself, err := syntax.Quote(self, syntax.LangBash)
 	if err != nil {
 		return "", false
 	}
-	sort.Sort(sort.Reverse(sort.IntSlice(s.wrap)))
+	type ins struct {
+		at     int
+		byFile bool
+	}
+	var all []ins
 	for _, at := range s.wrap {
-		cmd = cmd[:at] + qself + " redact --secrets -- " + cmd[at:]
+		all = append(all, ins{at, false})
+	}
+	for _, at := range s.byFile {
+		all = append(all, ins{at, true})
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].at > all[j].at })
+	for _, w := range all {
+		mode := " redact --secrets -- "
+		if w.byFile {
+			mode = " redact --secrets --by-file -- "
+		}
+		cmd = cmd[:w.at] + qself + mode + cmd[w.at:]
 	}
 	return cmd, true
 }

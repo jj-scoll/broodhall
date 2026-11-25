@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -253,5 +254,97 @@ func TestPreToolUseMasksSecretRead(t *testing.T) {
 	code, out, rtkSaw := runPreHook(t, "cat ~/.config/mark.toml", `{"hookSpecificOutput":{"updatedInput":{"command":"rtk read"}}}`)
 	if code != 0 || rtkSaw != nil || !strings.Contains(out, `CT redact --secrets -- cat ~/.config/mark.toml`) || !strings.Contains(out, "masked") {
 		t.Errorf("exit %d, rtk ran=%v, out %s", code, rtkSaw != nil, out)
+	}
+}
+
+// G4 (guard-evasion eval): a recursive search of a directory that holds a protected file by
+// name (.env, *.tfvars, ...) printed the file's lines unmasked, because only dirs holding a
+// path-listed file counted. It now runs under `redact --secrets --by-file`.
+func TestRecursiveSearchIsMaskedByFile(t *testing.T) {
+	env := secretEnv(t)
+	os.WriteFile(filepath.Join(env.Cwd, ".env"), []byte("STRIPE_KEY=x\n"), 0o600)
+	os.MkdirAll(filepath.Join(env.Cwd, "src/deep"), 0o700)
+	os.WriteFile(filepath.Join(env.Cwd, "src/deep/prod.tfvars"), []byte("x\n"), 0o600)
+	os.MkdirAll(filepath.Join(env.Cwd, "clean"), 0o700)
+	os.WriteFile(filepath.Join(env.Cwd, "clean/a.go"), []byte("x\n"), 0o600)
+	os.WriteFile(filepath.Join(env.Cwd, "clean/.env.example"), []byte("x\n"), 0o600)
+	const self = "/bin/guardrails"
+	const pre = self + " redact --secrets --by-file -- "
+	for _, c := range []struct{ cmd, want string }{
+		{"grep -rn STRIPE .", pre + "grep -rn STRIPE ."},
+		{"grep -r STRIPE", pre + "grep -r STRIPE"},
+		{"rg STRIPE", pre + "rg STRIPE"},
+		{"rg -n STRIPE src", pre + "rg -n STRIPE src"},
+		{"git grep -n STRIPE", pre + "git grep -n STRIPE"},
+		{"cd src && grep -R foo . | head", "cd src && " + pre + "grep -R foo . | head"},
+		// Output without file names cannot be told apart: left as before.
+		{"grep -rhn STRIPE .", ""},
+		{"rg --no-filename STRIPE", ""},
+		{"rg --heading STRIPE", ""},
+		{"grep -rZ STRIPE .", ""},
+		// A directory with no protected file (a template is none), no recursion, no search:
+		// untouched, so rtk still compresses an ordinary search.
+		{"grep -rn foo clean", ""},
+		{"cd clean && rg foo", ""},
+		{"grep STRIPE notes.md", ""},
+		{"ls -R", ""},
+		{"git log --oneline", ""},
+	} {
+		got, ok := secretRewrite(env, c.cmd, self)
+		if c.want == "" && ok || c.want != "" && (!ok || got != c.want) {
+			t.Errorf("secretRewrite(%q) = %q, %v; want %q", c.cmd, got, ok, c.want)
+		}
+	}
+	// A recursive search of a dir holding a path-listed file keeps the full mask.
+	if got, _ := secretRewrite(env, "grep -rn token ~/.config", self); got != self+" redact --secrets -- grep -rn token ~/.config" {
+		t.Errorf("path-listed dir: %q", got)
+	}
+	// Our own wrapper is not wrapped again.
+	if got, ok := secretRewrite(env, pre+"grep -rn STRIPE .", self); ok {
+		t.Errorf("rewrapped: %q", got)
+	}
+}
+
+// The walk that looks for a protected file is bounded by time and skips dependency dirs.
+func TestSearchWalkBudgetAndSkips(t *testing.T) {
+	env := secretEnv(t)
+	for i := 0; i < 200; i++ {
+		os.WriteFile(filepath.Join(env.Cwd, "f"+strconv.Itoa(i)+".go"), []byte("x\n"), 0o600)
+	}
+	const self = "/bin/guardrails"
+	g := newSecretGuard(env.Home, "", env.Cwd)
+	if g.searchHoldsNamed([]string{"-rn", "x", "."}, false) {
+		t.Fatal("a clean tree within the budget holds nothing")
+	}
+	reset := func() { clear(searchWalkMemo) }
+	reset()
+	// Dependency dirs are not walked.
+	for _, d := range []string{"node_modules", "vendor", ".direnv", ".git"} {
+		os.MkdirAll(filepath.Join(env.Cwd, d, "p"), 0o700)
+		os.WriteFile(filepath.Join(env.Cwd, d, "p", ".env"), []byte("x\n"), 0o600)
+	}
+	if g.searchHoldsNamed([]string{"-rn", "x", "."}, false) {
+		t.Error("a .env under node_modules, vendor, .direnv or .git was walked")
+	}
+	reset()
+	// Out of time: the tree is taken to hold a protected file, so the search is wrapped.
+	old, now := searchWalkNow, time.Unix(0, 0)
+	searchWalkNow = func() time.Time { now = now.Add(time.Hour); return now }
+	t.Cleanup(func() { searchWalkNow = old })
+	if !g.searchHoldsNamed([]string{"-rn", "x", "."}, false) {
+		t.Error("an exhausted budget must fail closed")
+	}
+	if got, ok := secretRewrite(env, "grep -rn x .", self); !ok || !strings.Contains(got, "--by-file") {
+		t.Errorf("exhausted budget not wrapped: %q %v", got, ok)
+	}
+	reset()
+	// A search that is not recursive never reads the clock, so never walks.
+	calls := 0
+	searchWalkNow = func() time.Time { calls++; return time.Unix(0, 0) }
+	for _, c := range []string{"grep -n x notes.md", "grep x f1.go f2.go", "cat f1.go", "ls -R"} {
+		secretRewrite(env, c, self)
+	}
+	if calls != 0 {
+		t.Errorf("non-recursive commands walked (%d clock reads)", calls)
 	}
 }

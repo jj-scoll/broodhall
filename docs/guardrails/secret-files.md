@@ -81,7 +81,13 @@ aws_secret_access_key = [aws-secret-key:07646e]
 
 The tags are derived per machine, so yours differ. Only flags that print whole lines keep
 the mask working (the key name must stay on the line); other flags on a reader ask instead.
-A recursive `grep` or `rg` of a directory that holds a protected file is masked the same way.
+A recursive `grep`, `rg` or `git grep` of a directory that holds a protected file is masked the
+same way. For a directory that holds a protected path from the list above (such as `~/.aws`)
+every line is masked. For one that only holds a file protected by name (`.env`, `*.tfvars`,
+`*.pem`), the search runs under `redact --secrets --by-file`, which masks the lines whose
+file name is protected and leaves the other hits as they are. The password of
+`scheme://user:pass@host` is masked as `[url-password:tag]` wherever the mask runs; the
+scheme, user and host stay readable.
 
 In auto mode a rewrite can be denied, and Claude then re-issues the rewritten command as
 it is. The guard lets that through, without wrapping it again, when it is exactly its own
@@ -137,9 +143,14 @@ The block runs in the plugin's Read hook (`large-read-guard`), not in `pre-tool-
 This is a speed bump, not a wall. Claude runs as you, and a script written earlier or a path
 built from variables gets past the check. So does a program that opens the file itself:
 `cat .env` is masked, but `python3 -c "print(open('.env').read())"` is not seen, because
-a file name alone in a script is not a reason to ask. A recursive `grep` or `rg` is masked
-for a directory that holds a protected path from the list above (such as `~/.aws`), but
-not for a directory that merely holds a `.env`; name the file.
+a file name alone in a script is not a reason to ask. A recursive `grep`, `rg` or `git grep` is
+masked for a directory that holds a protected file. The `.env` kind is found by a walk of
+the directory (at most 50000 entries or 15 ms, skipping `.git`, `node_modules`, `vendor`,
+`.direnv`, `.terraform` and `.venv`; a tree too large for that counts as holding one, so the
+search is masked and loses rtk's compression, and a `.env` inside a skipped directory is not
+masked by name), and its lines are recognised by the file name at the front of each output line, so
+`grep -h`, `rg --no-filename`, `--heading` and `-Z` searches (no name to read) and files
+protected only by a line of your `secret-paths` list are not masked that way; name the file.
 
 ## Turning it off
 

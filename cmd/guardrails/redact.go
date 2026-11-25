@@ -405,7 +405,7 @@ func scalarText(v any) (string, bool) {
 }
 
 func runRedact(x *redactor, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	pii, secrets, private, o := false, false, false, redactOpts{in: "auto"}
+	pii, secrets, byFile, private, o := false, false, false, false, redactOpts{in: "auto"}
 	var argv []string
 	for i, a := range args {
 		switch {
@@ -413,6 +413,8 @@ func runRedact(x *redactor, args []string, stdin io.Reader, stdout, stderr io.Wr
 			pii = true
 		case a == "--secrets":
 			secrets = true
+		case a == "--by-file":
+			byFile = true
 		case a == "--private":
 			private = true
 		case strings.HasPrefix(a, "--in="):
@@ -438,7 +440,7 @@ func runRedact(x *redactor, args []string, stdin io.Reader, stdout, stderr io.Wr
 		}
 	}
 	if !pii && !secrets {
-		fmt.Fprintln(stderr, "usage: guardrails redact --pii|--secrets [--in=csv|html|json|jsonl|text|auto] [--to=csv|unaligned|aligned|line|markdown|json] [--sep=S] [--no-header] [--footer] [--cap] [--private] [-- command args...]")
+		fmt.Fprintln(stderr, "usage: guardrails redact --pii|--secrets [--by-file] [--in=csv|html|json|jsonl|text|auto] [--to=csv|unaligned|aligned|line|markdown|json] [--sep=S] [--no-header] [--footer] [--cap] [--private] [-- command args...]")
 		return 2
 	}
 	mask := func(b []byte) []byte {
@@ -454,7 +456,10 @@ func runRedact(x *redactor, args []string, stdin io.Reader, stdout, stderr io.Wr
 				b = x.redactOutput(o, b)
 			}()
 		}
-		if secrets {
+		switch {
+		case secrets && byFile:
+			b = []byte(x.maskSecretFileLines(string(b)))
+		case secrets:
 			b = []byte(x.maskSecrets(string(b)))
 		}
 		if private {
